@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Adapter · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../" data-tab="clean-code" data-page="adapter/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Adapter</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como encaixar uma interface que você não controla na interface que o seu código espera, sem espalhar a diferença pelo sistema inteiro.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>O seu código já sabe o que quer: <code>enviar(destino, texto)</code>. Aí entra um serviço de fora — uma SDK, uma API, uma biblioteca legada — que faz exatamente isso, mas com outro nome, outra ordem de argumentos e outro formato de retorno.</p>
+          <p>A saída preguiçosa é chamar o serviço direto, de dentro das regras de negócio:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — a diferença vaza para dentro</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">AvisoDePedido</span>:
+    <span class="t-k">def</span> <span class="t-f">confirmar</span>(self, pedido):
+        <span class="t-c"># a regra de negócio agora sabe o nome da SDK,</span>
+        <span class="t-c"># o formato do telefone e o código de retorno dela</span>
+        resp = twilio.<span class="t-f">messages</span>.<span class="t-f">create</span>(
+            to=<span class="t-s">"+55"</span> + pedido.telefone,
+            body=<span class="t-s">f"Pedido {pedido.id} confirmado"</span>,
+        )
+        <span class="t-k">if</span> resp.status_code != <span class="t-n">201</span>:
+            <span class="t-k">raise</span> <span class="t-f">RuntimeError</span>(resp.error_message)</code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram daqui a pouco: trocar de provedor vira busca e substituição no projeto inteiro; testar exige a SDK de verdade; e a regra de negócio passa a ter um motivo a mais para mudar — exatamente o que o Single Responsibility pede para evitar.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Uma peça no meio, que fala as duas línguas. São sempre quatro papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Alvo</td><td>A interface que o seu código espera</td><td><code>Notificador</code></td></tr>
+                <tr><td>Cliente</td><td>Quem usa o alvo, sem saber de mais nada</td><td><code>AvisoDePedido</code></td></tr>
+                <tr><td>Adaptado</td><td>O que já existe, com a interface errada</td><td>A SDK do provedor</td></tr>
+                <tr><td>Adaptador</td><td>Implementa o alvo e chama o adaptado</td><td><code>NotificadorTwilio</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é a direção da dependência: quem define a interface é o <strong>seu</strong> lado, não o de fora. O adaptador é a única parte do sistema que conhece a SDK.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+
+<span class="t-c"># 1. o alvo: a interface que o seu código escolheu</span>
+<span class="t-k">class</span> <span class="t-f">Notificador</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, destino: <span class="t-f">str</span>, texto: <span class="t-f">str</span>) -&gt; <span class="t-f">None</span>: ...
+
+<span class="t-c"># 2. o adaptador: traduz, e só</span>
+<span class="t-k">class</span> <span class="t-f">NotificadorTwilio</span>(Notificador):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, sdk):
+        self._sdk = sdk
+
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, destino, texto):
+        resp = self._sdk.<span class="t-f">messages</span>.<span class="t-f">create</span>(to=<span class="t-s">"+55"</span> + destino, body=texto)
+        <span class="t-k">if</span> resp.status_code != <span class="t-n">201</span>:
+            <span class="t-k">raise</span> <span class="t-f">EnvioFalhou</span>(resp.error_message)
+
+<span class="t-c"># 3. o cliente: não conhece provedor nenhum</span>
+<span class="t-k">class</span> <span class="t-f">AvisoDePedido</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, notificador: Notificador):
+        self._notificador = notificador
+
+    <span class="t-k">def</span> <span class="t-f">confirmar</span>(self, pedido):
+        self._notificador.<span class="t-f">enviar</span>(pedido.telefone, <span class="t-s">f"Pedido {pedido.id} confirmado"</span>)</code></pre>
+              <pre><code><span class="t-c">// 1. o alvo: a interface que o seu código escolheu</span>
+<span class="t-k">interface</span> <span class="t-f">Notificador</span> {
+  <span class="t-f">enviar</span>(destino: <span class="t-f">string</span>, texto: <span class="t-f">string</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">void</span>&gt;;
+}
+
+<span class="t-c">// 2. o adaptador: traduz, e só</span>
+<span class="t-k">class</span> <span class="t-f">NotificadorTwilio</span> <span class="t-k">implements</span> <span class="t-f">Notificador</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> sdk: TwilioClient) {}
+
+  <span class="t-k">async</span> <span class="t-f">enviar</span>(destino: <span class="t-f">string</span>, texto: <span class="t-f">string</span>) {
+    <span class="t-k">const</span> resp = <span class="t-k">await</span> <span class="t-k">this</span>.sdk.messages.<span class="t-f">create</span>({ to: <span class="t-s">`+55${destino}`</span>, body: texto });
+    <span class="t-k">if</span> (resp.statusCode !== <span class="t-n">201</span>) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">EnvioFalhou</span>(resp.errorMessage);
+  }
+}
+
+<span class="t-c">// 3. o cliente: não conhece provedor nenhum</span>
+<span class="t-k">class</span> <span class="t-f">AvisoDePedido</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> notificador: Notificador) {}
+
+  <span class="t-f">confirmar</span>(pedido: Pedido) {
+    <span class="t-k">return</span> <span class="t-k">this</span>.notificador.<span class="t-f">enviar</span>(pedido.telefone, <span class="t-s">`Pedido ${pedido.id} confirmado`</span>);
+  }
+}</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste do cliente agora é uma classe de cinco linhas que implementa <code>Notificador</code> e guarda o que recebeu. Nenhuma rede, nenhum mock de biblioteca.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <ul>
+            <li>Você precisa de algo que <strong>já existe</strong>, mas a interface não bate com a sua.</li>
+            <li>O código é de terceiros ou é legado, e <strong>mudar a fonte não é opção</strong>.</li>
+            <li>Você quer poder trocar o fornecedor depois sem tocar nas regras de negócio.</li>
+            <li>Os testes estão difíceis porque a dependência externa está grudada na lógica.</li>
+          </ul>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <ul>
+            <li><strong>Quando você controla os dois lados.</strong> Se dá para mudar a interface na origem, mude — um adaptador a menos.</li>
+            <li><strong>Quando há um fornecedor só e nunca haverá outro.</strong> A camada extra cobra preço de leitura todo dia e só paga no dia da troca.</li>
+            <li><strong>Quando o adaptador começa a decidir coisas.</strong> Adaptador que valida, repete tentativas ou escolhe caminho virou outra coisa; isso é um Facade ou um serviço de verdade.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>Sinal de que o padrão saiu do lugar: a interface alvo cresceu até ficar igual à da SDK, campo por campo. Aí o adaptador não protege de nada — só adiciona um arquivo entre você e o erro.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Facade</td><td>Simplifica um subsistema inteiro; o Adapter converte <em>uma</em> interface em outra que já existia</td></tr>
+                <tr><td>Decorator</td><td>Mantém a mesma interface e acrescenta comportamento; o Adapter muda a interface e não acrescenta nada</td></tr>
+                <tr><td>Bridge</td><td>É desenhado antes, para abstração e implementação crescerem separadas; o Adapter entra depois, para consertar um encaixe</td></tr>
+                <tr><td>Proxy</td><td>Mesma interface, controlando o acesso (cache, permissão, preguiça)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se a interface antes e depois é a mesma, não é Adapter.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../assets/js/site.js"></script>
+<script src="../../../assets/js/shell.js"></script>
+<script src="../../../assets/js/ds.js"></script>
+</body>
+</html>

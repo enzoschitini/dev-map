@@ -1,0 +1,78 @@
+<!doctype html>
+<!--
+  Template de página do DevMap.
+
+  Os caminhos aqui já são os do destino (pages/<aba>/), então abrir este
+  arquivo onde ele está não funciona — ele é molde, não página.
+
+  Para criar uma página:
+    1. registre o nó em assets/js/site.js
+    2. copie este arquivo para o caminho correspondente
+    3. ajuste data-tab, data-page e data-root no <body>
+    4. troque o <title>, o .eyebrow, o .page-title e o .lead
+    5. escreva o conteúdo dentro de .prose
+
+  Dentro de uma pasta (ex.: pages/clean-code/adapter/explicacao.html) há um
+  nível a mais: data-root vira "../../../" e os src/href dos assets também.
+
+  Só mexa no que está marcado com TROQUE. O resto é a moldura, montada
+  pelo shell.js a partir do mapa do site.
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- TROQUE: Página | Aba · DevMap -->
+<title>Template | DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../assets/css/design-system.css">
+</head>
+<!-- TROQUE: data-tab e data-page. data-page é o caminho dentro da aba, sem
+     .html — "overview" ou, dentro de uma pasta, "adapter/explicacao" -->
+<body data-root="../../" data-tab="" data-page="">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas desta área" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <!-- TROQUE: cabeçalho da página -->
+          <div class="eyebrow">Aba</div>
+          <h1 class="page-title" tabindex="-1">Título da página</h1>
+          <p class="lead">Uma ou duas linhas dizendo o que a pessoa encontra aqui. Obrigatório em página de conteúdo.</p>
+        </header>
+
+        <!-- TROQUE: o conteúdo. Use só os componentes do design system. -->
+        <div class="prose">
+          <h2>Primeira seção</h2>
+          <p>Texto corrido. Os <code>h2</code> e <code>h3</code> daqui viram o índice da direita, sem nenhum JS na página.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../assets/js/site.js"></script>
+<script src="../../assets/js/shell.js"></script>
+<script src="../../assets/js/ds.js"></script>
+</body>
+</html>

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="assets/css/design-system.css">
+</head>
+<body data-root="" data-tab="" data-page="">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Mapa do site" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <h1 class="page-title" tabindex="-1">DevMap</h1>
+          <p class="lead">Meus estudos de programação, documentados em um só lugar: o que é este site, como ele está organizado e como eu escrevo nele.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-que-e">O que é o DevMap</h2>
+          <p>Um lugar só meu para registrar o que eu estudo de programação. Nasceu de um problema simples: anotação espalhada em editor de texto, favorito do navegador e print de tela não vira conhecimento. Escrever a mesma coisa em um formato fixo, com um lugar certo para ela morar, vira.</p>
+          <p>Não é blog nem portfólio. É material de consulta para mim mesmo, escrito no tom de quem explica para alguém que vai esquecer — porque esse alguém sou eu em três meses.</p>
+
+          <h2 id="areas">Áreas</h2>
+          <p>Cada aba é um assunto grande. Cada página dentro dela é um recorte que cabe em uma leitura. Quando uma aba passar de umas dez páginas, as páginas entram em grupos no menu lateral.</p>
+          <div class="cards" data-shell="areas"></div>
+          <p>Esta grade é montada a partir de <code>assets/js/site.js</code>. Ao registrar uma aba nova lá, o cartão aparece aqui sozinho.</p>
+
+          <h2 id="como-escrevo">Como eu escrevo uma página</h2>
+          <p>Quatro regras, as mesmas em toda página:</p>
+          <ul>
+            <li><strong>Resumo obrigatório.</strong> Uma ou duas linhas abaixo do título dizendo o que a pessoa encontra. Se eu não consigo escrever o resumo, a página ainda não tem foco.</li>
+            <li><strong>O problema antes da solução.</strong> Nenhuma técnica entra sem a situação que a justifica.</li>
+            <li><strong>Código que roda.</strong> Exemplo curto, completo e testado. Nada de pseudocódigo com <code>...</code> no meio.</li>
+            <li><strong>Quando não usar.</strong> Toda página termina sabendo onde aquilo é má ideia.</li>
+          </ul>
+          <div class="callout" data-kind="tip"><p>Comece sempre por <code>pages/_template.html</code>. O template já vem com a moldura certa; sobra escrever o conteúdo.</p></div>
+
+          <h2 id="como-funciona">Como este site funciona</h2>
+          <p>São três partes: o <strong>mapa</strong>, a <strong>moldura</strong> e o <strong>conteúdo</strong>. O mapa fica em um arquivo só. A moldura é montada a partir dele. O conteúdo é a única coisa escrita à mão em cada página.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Parte</th><th>Arquivo</th><th>O que é</th></tr></thead>
+              <tbody>
+                <tr><td>Mapa</td><td><code>assets/js/site.js</code></td><td>As abas e as páginas, na ordem em que aparecem</td></tr>
+                <tr><td>Moldura</td><td><code>assets/js/shell.js</code></td><td>Cabeçalho, abas, menu lateral, busca, rodapé e paginação</td></tr>
+                <tr><td>Componentes</td><td><code>assets/js/ds.js</code></td><td>Ícones, tema, abas de código, copiar e índice da página</td></tr>
+                <tr><td>Visual</td><td><code>assets/css/design-system.css</code></td><td>O único CSS que uma página importa</td></tr>
+                <tr><td>Conteúdo</td><td><code>pages/&lt;aba&gt;/&lt;pagina&gt;.html</code></td><td>Só o que vai dentro de <code>.prose</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="arvore">A árvore de arquivos</h3>
+          <div class="code plain">
+            <div class="code-body">
+              <pre><code>dev_map/
+├─ index.html                  esta página
+├─ assets/
+│  ├─ css/
+│  │  ├─ design-system.css     o único arquivo que as páginas importam
+│  │  ├─ tokens.css            cores, fontes e raios
+│  │  ├─ base.css              reset e acessibilidade
+│  │  ├─ layout.css            cabeçalho, menu lateral e índice
+│  │  ├─ content.css           tudo que vive dentro de .prose
+│  │  ├─ search.css            diálogo de busca
+│  │  └─ responsive.css        gaveta no celular, índice recolhido
+│  └─ js/
+│     ├─ site.js               o mapa: abas e páginas
+│     ├─ shell.js              monta a moldura a partir do mapa
+│     └─ ds.js                 comportamento dos componentes
+├─ pages/
+│  ├─ _template.html           copie para criar uma página
+│  └─ clean-code/              uma aba = uma pasta
+│     ├─ overview.html
+│     ├─ introducao.html
+│     └─ adapter/              uma pasta do menu = uma pasta aqui
+│        └─ explicacao.html
+└─ _design-system/             o catálogo visual, herdado do BetterAI</code></pre>
+              <button class="copy floating" type="button"></button>
+            </div>
+          </div>
+
+          <h3 id="criar-aba">Criar uma aba</h3>
+          <ol>
+            <li>Adicione um objeto em <code>tabs</code>, em <code>assets/js/site.js</code>.</li>
+            <li>Crie a pasta <code>pages/&lt;id-da-aba&gt;/</code>.</li>
+            <li>Crie a primeira página da aba, pelo passo abaixo.</li>
+          </ol>
+          <div class="code">
+            <div class="code-head"><span class="code-title">assets/js/site.js</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code>{
+  id: <span class="t-s">'algoritmos'</span>,                <span class="t-c">// vira a pasta pages/algoritmos/</span>
+  label: <span class="t-s">'Algoritmos'</span>,             <span class="t-c">// o texto da aba</span>
+  icon: <span class="t-s">'bolt'</span>,                    <span class="t-c">// window.DS.icons lista todos</span>
+  summary: <span class="t-s">'Complexidade, ordenação e busca.'</span>,
+  pages: [
+    <span class="t-c">// uma página solta</span>
+    { id: <span class="t-s">'overview'</span>, label: <span class="t-s">'Overview'</span>, summary: <span class="t-s">'Por onde começar.'</span> },
+
+    <span class="t-c">// uma sessão: só um título no menu, não é pasta</span>
+    { group: <span class="t-s">'Ordenação'</span>, pages: [
+
+      <span class="t-c">// uma pasta: vira pasta de verdade em pages/algoritmos/quicksort/</span>
+      { folder: <span class="t-s">'quicksort'</span>, label: <span class="t-s">'Quicksort'</span>, pages: [
+        { id: <span class="t-s">'explicacao'</span>, label: <span class="t-s">'Explicação'</span>, summary: <span class="t-s">'Dividir, particionar, repetir.'</span> }
+      ]}
+    ]}
+  ]
+}</code></pre>
+            </div>
+          </div>
+
+          <h3 id="criar-pagina">Criar uma página</h3>
+          <ol>
+            <li>Adicione o nó da página em <code>site.js</code>, no lugar certo da árvore.</li>
+            <li>Copie <code>pages/_template.html</code> para o caminho correspondente.</li>
+            <li>No <code>&lt;body&gt;</code>, ajuste <code>data-tab</code>, <code>data-page</code> e <code>data-root</code>.</li>
+            <li>Troque o <code>&lt;title&gt;</code>, a categoria, o título e o resumo.</li>
+            <li>Escreva o conteúdo dentro de <code>.prose</code>.</li>
+          </ol>
+          <p>O <code>data-page</code> é o caminho dentro da aba, sem <code>.html</code>, e o <code>data-root</code> é o caminho de volta até a raiz — um <code>../</code> por nível:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Arquivo</th><th><code>data-page</code></th><th><code>data-root</code></th></tr></thead>
+              <tbody>
+                <tr><td><code>pages/clean-code/overview.html</code></td><td><code>overview</code></td><td><code>../../</code></td></tr>
+                <tr><td><code>pages/clean-code/adapter/explicacao.html</code></td><td><code>adapter/explicacao</code></td><td><code>../../../</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="warn"><p>Uma página que existe mas não está no <code>site.js</code> abre pelo endereço direto e funciona, só não aparece no menu, na busca nem na paginação. Registre sempre.</p></div>
+
+          <h2 id="estado">Em que estado isto está</h2>
+          <p>Esta é a primeira versão: a estrutura de base, montada para receber conteúdo. O que já funciona:</p>
+          <ul>
+            <li>Abas, menu lateral e paginação gerados do mapa do site</li>
+            <li>Busca por página com <kbd>Ctrl</kbd> <kbd>K</kbd> ou <kbd>/</kbd></li>
+            <li>Índice da página montado a partir dos títulos</li>
+            <li>Tema claro e escuro, com a escolha guardada no navegador</li>
+          </ul>
+          <div class="callout" data-kind="note"><p>As páginas de conteúdo de verdade vêm depois. Por enquanto, a única aba tem só a sua visão geral.</p></div>
+
+          <h2 id="design">Design</h2>
+          <p>O visual é o mesmo do BetterAI: os tokens, os componentes e as regras estão em <a href="_design-system/index.html">Design System</a>. A única diferença é que aqui não existe seletor de idioma — o DevMap é só em português.</p>
+          <div class="callout" data-kind="danger"><p>Não escreva cor, raio ou fonte dentro de uma página. Tudo vem das variáveis de <code>assets/css/tokens.css</code>. Para mudar o visual, mude o token — nunca o CSS de uma página.</p></div>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="assets/js/site.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ds.js"></script>
+</body>
+</html>

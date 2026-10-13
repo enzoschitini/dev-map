@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview | Clean Code · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../assets/css/design-system.css">
+</head>
+<body data-root="../../" data-tab="clean-code" data-page="overview">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code</div>
+          <h1 class="page-title" tabindex="-1">Overview</h1>
+          <p class="lead">O que entra nesta aba, como ela está dividida e o formato que toda página segue.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-que-e">O que é código limpo</h2>
+          <p>Código que a próxima pessoa entende sem precisar perguntar nada. Essa pessoa quase sempre sou eu, meses depois, então o critério é prático e não estético: se eu preciso reconstruir o raciocínio inteiro para mudar uma linha, o código não está limpo.</p>
+          <p>Nada aqui é regra absoluta. Cada princípio tem um custo, e metade do estudo é saber quando o custo não compensa.</p>
+
+          <h2 id="divisao">Como esta aba está dividida</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Sessão</th><th>O que entra</th></tr></thead>
+              <tbody>
+                <tr><td>SOLID</td><td>Os cinco princípios de projeto orientado a objetos, um por página</td></tr>
+                <tr><td>Design Pattern</td><td>Padrões de projeto; cada padrão é uma pasta com as suas páginas</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>A diferença entre as duas: <strong>SOLID diz onde cortar</strong> as responsabilidades; <strong>os padrões dizem como ligar</strong> as peças depois do corte. Costumam aparecer juntos — boa parte dos padrões é um princípio do SOLID aplicado a um caso concreto.</p>
+
+          <h2 id="formato">O formato de cada página</h2>
+          <p>Toda página segue a mesma ordem de seções, para dar para comparar dois assuntos lado a lado sem reler tudo.</p>
+          <div class="code plain">
+            <div class="code-body">
+              <pre><code>Nome do princípio ou padrão
+├─ O problema          o código que dói, antes
+├─ A solução           as peças e o papel de cada uma
+├─ Implementação       um exemplo curto que roda
+├─ Quando usar         os sinais de que é este o caso
+├─ Quando não usar     o custo e as alternativas mais simples
+└─ Parecidos           o que se confunde com este</code></pre>
+              <button class="copy floating" type="button"></button>
+            </div>
+          </div>
+          <p>A seção <strong>Parecidos</strong> é a que mais ajuda: boa parte da confusão com padrões é não saber diferenciar dois que resolvem coisas próximas, como Strategy e State.</p>
+
+          <h2 id="pastas">Por que cada padrão é uma pasta</h2>
+          <p>Um padrão raramente cabe em uma página só: tem a explicação, e depois exemplos em linguagens diferentes, armadilhas e comparações. Cada padrão vira uma pasta em <code>pages/clean-code/</code>, e a explicação é a primeira página de dentro.</p>
+          <div class="callout" data-kind="note"><p>No menu lateral, as pastas abrem e fecham. A que guarda a página aberta já começa aberta.</p></div>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../assets/js/site.js"></script>
+<script src="../../assets/js/shell.js"></script>
+<script src="../../assets/js/ds.js"></script>
+</body>
+</html>

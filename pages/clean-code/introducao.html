@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Introdução | SOLID · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../assets/css/design-system.css">
+</head>
+<body data-root="../../" data-tab="clean-code" data-page="introducao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / SOLID</div>
+          <h1 class="page-title" tabindex="-1">Introdução</h1>
+          <p class="lead">Os cinco princípios, o problema que cada um resolve e por onde começar a aplicar.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-que-e">O que é SOLID</h2>
+          <p>Cinco princípios de projeto orientado a objetos, reunidos sob essa sigla por Robert C. Martin. Todos atacam o mesmo inimigo: a <strong>mudança que se espalha</strong>. Código rígido é aquele em que mexer num lugar obriga a mexer em outros cinco.</p>
+          <p>Nenhum deles é sobre deixar o código bonito. São sobre onde colocar as costuras, para que a próxima mudança caiba em um arquivo só.</p>
+
+          <h2 id="os-cinco">Os cinco princípios</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Sigla</th><th>Princípio</th><th>Em uma linha</th></tr></thead>
+              <tbody>
+                <tr><td><code>S</code></td><td>Single Responsibility</td><td>Uma classe muda por um motivo só</td></tr>
+                <tr><td><code>O</code></td><td>Open/Closed</td><td>Dá para estender sem editar o que já funciona</td></tr>
+                <tr><td><code>L</code></td><td>Liskov Substitution</td><td>Um filho pode substituir o pai sem quebrar quem chama</td></tr>
+                <tr><td><code>I</code></td><td>Interface Segregation</td><td>Ninguém depende de método que não usa</td></tr>
+                <tr><td><code>D</code></td><td>Dependency Inversion</td><td>Depender da abstração, não da implementação</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="por-onde-comecar">Por onde começar</h2>
+          <p>Na ordem de retorno, não na ordem da sigla:</p>
+          <ol>
+            <li><strong>Single Responsibility.</strong> É o que mais muda o dia a dia e o mais fácil de ver: classe grande demais, com métodos que não conversam entre si.</li>
+            <li><strong>Dependency Inversion.</strong> É o que destrava os testes. Sem ele, testar qualquer coisa exige banco, rede e relógio de verdade.</li>
+            <li><strong>Open/Closed</strong> e <strong>Liskov</strong>, que quase sempre caem junto com algum padrão de projeto.</li>
+            <li><strong>Interface Segregation</strong>, o mais situacional dos cinco.</li>
+          </ol>
+          <div class="callout" data-kind="warn"><p>O erro mais comum não é ignorar SOLID: é aplicar os cinco de uma vez em código que ainda não mudou nenhuma vez. Abstração criada antes da segunda mudança costuma ser a abstração errada.</p></div>
+
+          <h2 id="relacao">Relação com os padrões</h2>
+          <p>Os princípios dizem <em>onde</em> cortar; os padrões dão o <em>formato</em> do corte. O <a href="adapter/explicacao.html">Adapter</a>, por exemplo, é Dependency Inversion aplicado quando a interface de fora não é a que o seu código espera.</p>
+          <div class="callout" data-kind="note"><p>As páginas de cada princípio vêm depois. Esta é a visão geral da sessão.</p></div>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../assets/js/site.js"></script>
+<script src="../../assets/js/shell.js"></script>
+<script src="../../assets/js/ds.js"></script>
+</body>
+</html>
