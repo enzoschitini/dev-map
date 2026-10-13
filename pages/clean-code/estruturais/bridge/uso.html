@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Bridge · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/bridge/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Bridge</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o Bridge resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que a ponte mantém separado em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Bridge. Quando dois casos se resolvem com o mesmo raciocínio — tema escuro contra componentes de UI e fila de tarefas contra broker, por exemplo, são os mesmos dois eixos do primeiro exemplo — só um fica. O Bridge tem poucos motivos genuínos, e vários casos que parecem Bridge são outra coisa. Sobraram três. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que a ponte separa</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#avisos-e-canais">Avisos e canais que crescem juntos</a></td><td>O conteúdo do aviso do transporte que o entrega</td></tr>
+                <tr><td>2</td><td><a href="#mesmo-grafico-varios-ambientes">O mesmo gráfico no navegador e no servidor</a></td><td>O que desenhar do lugar onde se desenha</td></tr>
+                <tr><td>3</td><td><a href="#bancos-de-dados">Vários bancos na mesma biblioteca de consultas</a></td><td>A lógica de alto nível das primitivas de cada banco</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="note"><p>O gateway de SMS do primeiro exemplo é fictício. O e-mail usa a biblioteca padrão e o Slack usa o formato real do webhook de entrada, simplificado.</p></div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="avisos-e-canais">1. Avisos e canais que crescem juntos</h2>
+          <p><strong>Situação.</strong> A loja avisa o cliente sobre a confirmação do pedido e sobre cobrança atrasada, por e-mail e por SMS. Chegou o Slack para o time interno, e vem um aviso de estoque baixo. O que cada aviso diz e por onde ele sai são decisões de pessoas diferentes: o comercial muda o texto; a infraestrutura troca o provedor.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — uma classe para cada par aviso × canal</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ConfirmacaoPorEmail</span>:
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, pedido):
+        msg = <span class="t-f">EmailMessage</span>()
+        msg[<span class="t-s">"To"</span>] = pedido.email
+        msg[<span class="t-s">"Subject"</span>] = <span class="t-s">f"Pedido {pedido.id} confirmado"</span>
+        msg.<span class="t-f">set_content</span>(<span class="t-s">f"Total: R$ {pedido.total:.2f}"</span>)
+        <span class="t-k">with</span> smtplib.<span class="t-f">SMTP</span>(SMTP_HOST) <span class="t-k">as</span> s:
+            s.<span class="t-f">send_message</span>(msg)
+
+<span class="t-k">class</span> <span class="t-f">ConfirmacaoPorSms</span>:
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, pedido):
+        texto = <span class="t-s">f"Pedido {pedido.id} confirmado. Total: R$ {pedido.total:.2f}"</span>
+        sms_gateway.<span class="t-f">enviar</span>(pedido.telefone, texto[:<span class="t-n">160</span>])
+
+<span class="t-k">class</span> <span class="t-f">CobrancaAtrasadaPorEmail</span>:
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, fatura):
+        msg = <span class="t-f">EmailMessage</span>()      <span class="t-c"># o mesmo SMTP, de novo</span>
+        ...
+
+<span class="t-k">class</span> <span class="t-f">CobrancaAtrasadaPorSms</span>:
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, fatura):
+        texto = <span class="t-s">f"Fatura {fatura.id} vencida. Valor: R$ {fatura.valor:.2f}"</span>
+        sms_gateway.<span class="t-f">enviar</span>(fatura.telefone, texto[:<span class="t-n">140</span>])  <span class="t-c"># 140? em outras é 160</span>
+
+<span class="t-c"># ConfirmacaoPorSlack, CobrancaAtrasadaPorSlack,</span>
+<span class="t-c"># EstoqueBaixoPorEmail, EstoqueBaixoPorSms, EstoqueBaixoPorSlack...</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Três avisos e três canais são nove classes, e a décima não custa uma: um canal novo (WhatsApp) é uma classe em cada aviso, e um aviso novo é uma em cada canal. O código do canal está copiado — e já divergiu, com o corte do SMS em 160 num lugar e 140 em outro. Mudar a redação de "Pedido confirmado" é abrir três arquivos.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o aviso produz o texto, o canal o entrega</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># a implementação: o canal escolhe qual contato usar e como entregar</span>
+<span class="t-k">class</span> <span class="t-f">Canal</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">entregar</span>(self, dest: Destinatario, assunto: <span class="t-f">str</span>, corpo: <span class="t-f">str</span>) -&gt; <span class="t-k">None</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">CanalEmail</span>:
+    <span class="t-k">def</span> <span class="t-f">entregar</span>(self, dest, assunto, corpo):
+        msg = <span class="t-f">EmailMessage</span>()
+        msg[<span class="t-s">"To"</span>], msg[<span class="t-s">"Subject"</span>] = dest.email, assunto
+        msg.<span class="t-f">set_content</span>(corpo)
+        <span class="t-k">with</span> smtplib.<span class="t-f">SMTP</span>(SMTP_HOST) <span class="t-k">as</span> s:
+            s.<span class="t-f">send_message</span>(msg)
+
+<span class="t-k">class</span> <span class="t-f">CanalSms</span>:
+    LIMITE = <span class="t-n">160</span>   <span class="t-c"># uma regra do SMS, em um lugar só</span>
+
+    <span class="t-k">def</span> <span class="t-f">entregar</span>(self, dest, assunto, corpo):
+        sms_gateway.<span class="t-f">enviar</span>(dest.telefone, <span class="t-s">f"{assunto}: {corpo}"</span>[:self.LIMITE])
+
+<span class="t-k">class</span> <span class="t-f">CanalSlack</span>:
+    <span class="t-k">def</span> <span class="t-f">entregar</span>(self, dest, assunto, corpo):
+        requests.<span class="t-f">post</span>(dest.slack_webhook, json={<span class="t-s">"text"</span>: <span class="t-s">f"*{assunto}*\n{corpo}"</span>})
+
+<span class="t-c"># a abstração: o conteúdo, sem saber como sai</span>
+<span class="t-k">class</span> <span class="t-f">Aviso</span>(ABC):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, canal: Canal):
+        self._canal = canal
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">assunto</span>(self) -&gt; <span class="t-f">str</span>: ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">corpo</span>(self) -&gt; <span class="t-f">str</span>: ...
+
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, dest: Destinatario):
+        self._canal.<span class="t-f">entregar</span>(dest, self.<span class="t-f">assunto</span>(), self.<span class="t-f">corpo</span>())
+
+<span class="t-k">class</span> <span class="t-f">ConfirmacaoDePedido</span>(Aviso):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, canal, pedido):
+        <span class="t-f">super</span>().<span class="t-f">__init__</span>(canal)
+        self._pedido = pedido
+
+    <span class="t-k">def</span> <span class="t-f">assunto</span>(self):
+        <span class="t-k">return</span> <span class="t-s">f"Pedido {self._pedido.id} confirmado"</span>
+
+    <span class="t-k">def</span> <span class="t-f">corpo</span>(self):
+        <span class="t-k">return</span> <span class="t-s">f"Total: R$ {self._pedido.total:.2f}"</span>
+
+<span class="t-c"># qualquer aviso com qualquer canal</span>
+<span class="t-f">ConfirmacaoDePedido</span>(<span class="t-f">CanalSms</span>(), pedido).<span class="t-f">enviar</span>(cliente)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a ponte separa.</strong> O texto e o transporte. Três avisos e três canais são <strong>6</strong> classes, não 9, e o WhatsApp vira uma classe que todos os avisos já sabem usar. O limite de 160 caracteres mora em <code>CanalSms</code>, que é onde ele pertence: o aviso nunca soube que SMS tem limite. O canal também decide qual campo do destinatário usar (<code>email</code>, <code>telefone</code>), então o aviso não carrega endereços.</p>
+          <div class="callout" data-kind="warn"><p>Mantenha o conteúdo neutro. Quando o aviso começa a produzir "negrito para o Slack" e "HTML para o e-mail", o canal vazou para dentro da abstração e você voltou ao ponto de partida. Entregue texto simples e deixe o canal enriquecer.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="mesmo-grafico-varios-ambientes">2. O mesmo gráfico no navegador e no servidor</h2>
+          <p><strong>Situação.</strong> O painel web desenha gráficos em um <code>&lt;canvas&gt;</code>. O relatório semanal por e-mail precisa dos mesmos gráficos, gerados no servidor, onde não existe DOM. E-mail não executa script, então o servidor vai devolver SVG. O desenho precisa ser o mesmo nos dois lugares.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada gráfico desenha duas vezes</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">GraficoDeBarras</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> dados: <span class="t-f">number</span>[]) {}
+
+  <span class="t-f">desenhar</span>(canvas?: <span class="t-f">HTMLCanvasElement</span>): <span class="t-f">string</span> | <span class="t-k">void</span> {
+    <span class="t-k">if</span> (canvas) {
+      <span class="t-k">const</span> ctx = canvas.<span class="t-f">getContext</span>(<span class="t-s">"2d"</span>)!;
+      <span class="t-k">this</span>.dados.<span class="t-f">forEach</span>((v, i) =&gt; {
+        ctx.fillStyle = <span class="t-s">"#2563eb"</span>;
+        ctx.<span class="t-f">fillRect</span>(i * <span class="t-n">48</span>, <span class="t-n">200</span> - v, <span class="t-n">40</span>, v);
+      });
+    } <span class="t-k">else</span> {
+      <span class="t-c">// servidor: o mesmo layout, escrito à mão em SVG</span>
+      <span class="t-k">const</span> barras = <span class="t-k">this</span>.dados.<span class="t-f">map</span>((v, i) =&gt;
+        <span class="t-s">`&lt;rect x="${i * 48}" y="${200 - v}" width="40" height="${v}" fill="#2563eb"/&gt;`</span>);
+      <span class="t-k">return</span> <span class="t-s">`&lt;svg width="400" height="200"&gt;${barras.join("")}&lt;/svg&gt;`</span>;
+    }
+  }
+}
+
+<span class="t-c">// GraficoDeLinha: o mesmo if/else. GraficoDePizza: idem.</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O layout (posição, largura, espaçamento) está escrito duas vezes por gráfico, e as duas cópias divergem na primeira semana: a barra do painel fica 4 pixels mais larga que a do e-mail. O tipo <code>HTMLCanvasElement</code> aparece em código que também roda no Node. E um terceiro destino (PDF, PNG) é mais um <code>else</code> em cada gráfico.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o gráfico desenha em uma superfície abstrata</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c">// a implementação: três primitivas de desenho</span>
+<span class="t-k">interface</span> <span class="t-f">Superficie</span> {
+  <span class="t-f">retangulo</span>(x: <span class="t-f">number</span>, y: <span class="t-f">number</span>, larg: <span class="t-f">number</span>, alt: <span class="t-f">number</span>, cor: <span class="t-f">string</span>): <span class="t-f">void</span>;
+  <span class="t-f">linha</span>(x1: <span class="t-f">number</span>, y1: <span class="t-f">number</span>, x2: <span class="t-f">number</span>, y2: <span class="t-f">number</span>, cor: <span class="t-f">string</span>): <span class="t-f">void</span>;
+  <span class="t-f">texto</span>(x: <span class="t-f">number</span>, y: <span class="t-f">number</span>, conteudo: <span class="t-f">string</span>): <span class="t-f">void</span>;
+}
+
+<span class="t-k">class</span> <span class="t-f">SuperficieCanvas</span> <span class="t-k">implements</span> <span class="t-f">Superficie</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> ctx: <span class="t-f">CanvasRenderingContext2D</span>) {}
+
+  <span class="t-f">retangulo</span>(x, y, larg, alt, cor) {
+    <span class="t-k">this</span>.ctx.fillStyle = cor;
+    <span class="t-k">this</span>.ctx.<span class="t-f">fillRect</span>(x, y, larg, alt);
+  }
+  <span class="t-f">linha</span>(x1, y1, x2, y2, cor) {
+    <span class="t-k">this</span>.ctx.strokeStyle = cor;
+    <span class="t-k">this</span>.ctx.<span class="t-f">beginPath</span>();
+    <span class="t-k">this</span>.ctx.<span class="t-f">moveTo</span>(x1, y1);
+    <span class="t-k">this</span>.ctx.<span class="t-f">lineTo</span>(x2, y2);
+    <span class="t-k">this</span>.ctx.<span class="t-f">stroke</span>();
+  }
+  <span class="t-f">texto</span>(x, y, conteudo) { <span class="t-k">this</span>.ctx.<span class="t-f">fillText</span>(conteudo, x, y); }
+}
+
+<span class="t-k">class</span> <span class="t-f">SuperficieSvg</span> <span class="t-k">implements</span> <span class="t-f">Superficie</span> {
+  <span class="t-k">private</span> partes: <span class="t-f">string</span>[] = [];
+
+  <span class="t-f">retangulo</span>(x, y, larg, alt, cor) {
+    <span class="t-k">this</span>.partes.<span class="t-f">push</span>(<span class="t-s">`&lt;rect x="${x}" y="${y}" width="${larg}" height="${alt}" fill="${cor}"/&gt;`</span>);
+  }
+  <span class="t-f">linha</span>(x1, y1, x2, y2, cor) {
+    <span class="t-k">this</span>.partes.<span class="t-f">push</span>(<span class="t-s">`&lt;line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${cor}"/&gt;`</span>);
+  }
+  <span class="t-f">texto</span>(x, y, conteudo) {
+    <span class="t-k">this</span>.partes.<span class="t-f">push</span>(<span class="t-s">`&lt;text x="${x}" y="${y}"&gt;${conteudo}&lt;/text&gt;`</span>);
+  }
+  <span class="t-f">resultado</span>() { <span class="t-k">return</span> <span class="t-s">`&lt;svg width="400" height="200"&gt;${</span><span class="t-k">this</span>.partes.<span class="t-f">join</span>(<span class="t-s">""</span>)<span class="t-s">}&lt;/svg&gt;`</span>; }
+}
+
+<span class="t-c">// a abstração: o gráfico, sem saber onde desenha</span>
+<span class="t-k">abstract</span> <span class="t-k">class</span> <span class="t-f">Grafico</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">protected</span> superficie: <span class="t-f">Superficie</span>, <span class="t-k">protected</span> dados: <span class="t-f">number</span>[]) {}
+  <span class="t-k">abstract</span> <span class="t-f">desenhar</span>(): <span class="t-f">void</span>;
+}
+
+<span class="t-k">class</span> <span class="t-f">GraficoDeBarras</span> <span class="t-k">extends</span> <span class="t-f">Grafico</span> {
+  <span class="t-f">desenhar</span>() {
+    <span class="t-k">this</span>.dados.<span class="t-f">forEach</span>((v, i) =&gt; <span class="t-k">this</span>.superficie.<span class="t-f">retangulo</span>(i * <span class="t-n">48</span>, <span class="t-n">200</span> - v, <span class="t-n">40</span>, v, <span class="t-s">"#2563eb"</span>));
+  }
+}
+
+<span class="t-c">// painel (navegador)</span>
+<span class="t-k">new</span> <span class="t-f">GraficoDeBarras</span>(<span class="t-k">new</span> <span class="t-f">SuperficieCanvas</span>(ctx), dados).<span class="t-f">desenhar</span>();
+
+<span class="t-c">// relatório por e-mail (servidor)</span>
+<span class="t-k">const</span> svg = <span class="t-k">new</span> <span class="t-f">SuperficieSvg</span>();
+<span class="t-k">new</span> <span class="t-f">GraficoDeBarras</span>(svg, dados).<span class="t-f">desenhar</span>();
+<span class="t-k">return</span> svg.<span class="t-f">resultado</span>();</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a ponte separa.</strong> O que desenhar do lugar onde se desenha. O layout existe uma vez, em <code>GraficoDeBarras</code>, e por isso o painel e o e-mail <em>não podem</em> divergir. Quem escolhe a superfície é a montagem, em cada ambiente: nenhum gráfico testa <code>typeof document</code>. O que muda em relação ao exemplo anterior é o <strong>momento</strong> da decisão: o gráfico é escolhido pelo código, mas a superfície é escolhida pelo ambiente em que ele roda.</p>
+          <p>A interface de implementação tem três métodos de propósito. Uma superfície nova (PNG, PDF, terminal) implementa três coisas, e todos os gráficos passam a funcionar nela.</p>
+          <div class="callout" data-kind="tip"><p>O teste vira trivial: uma <code>SuperficieEspia</code> guarda as chamadas, e <code>expect(espia.retangulos).toHaveLength(3)</code> confere o gráfico sem navegador, sem DOM e sem imagem.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="bancos-de-dados">3. Vários bancos na mesma biblioteca de consultas</h2>
+          <p><strong>Situação.</strong> A biblioteca interna de relatórios monta consultas por uma API encadeada: <code>Consulta("pedidos").onde("status", "pago").limite(10)</code>. Ela nasceu no Postgres. Agora o time de dados quer rodar os testes no SQLite, e um cliente exige SQL Server. A biblioteca é usada por outros times, que vão querer o próprio banco.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — um if por banco em cada método</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Consulta</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, tabela, banco=<span class="t-s">"postgres"</span>):
+        self._tabela, self._banco = tabela, banco
+        self._filtros, self._limite = [], <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">montar</span>(self):
+        <span class="t-k">if</span> self._banco == <span class="t-s">"postgres"</span>:
+            nome = <span class="t-s">f'"{self._tabela}"'</span>
+        <span class="t-k">elif</span> self._banco == <span class="t-s">"sqlserver"</span>:
+            nome = <span class="t-s">f"[{self._tabela}]"</span>
+        <span class="t-k">else</span>:
+            nome = self._tabela
+
+        sql = <span class="t-s">f"SELECT * FROM {nome}"</span>
+        <span class="t-k">if</span> self._filtros:
+            marcador = <span class="t-s">"%s"</span> <span class="t-k">if</span> self._banco == <span class="t-s">"postgres"</span> <span class="t-k">else</span> <span class="t-s">"?"</span>
+            <span class="t-c"># ...e as aspas dos nomes das colunas, repetidas aqui</span>
+            sql += <span class="t-s">" WHERE "</span> + <span class="t-s">" AND "</span>.<span class="t-f">join</span>(<span class="t-s">f"{c} = {marcador}"</span> <span class="t-k">for</span> c, _ <span class="t-k">in</span> self._filtros)
+
+        <span class="t-k">if</span> self._limite:
+            <span class="t-k">if</span> self._banco == <span class="t-s">"sqlserver"</span>:
+                sql = sql.<span class="t-f">replace</span>(<span class="t-s">"SELECT"</span>, <span class="t-s">f"SELECT TOP {self._limite}"</span>, <span class="t-n">1</span>)
+            <span class="t-k">else</span>:
+                sql += <span class="t-s">f" LIMIT {self._limite}"</span>
+        <span class="t-k">return</span> sql, [v <span class="t-k">for</span> _, v <span class="t-k">in</span> self._filtros]</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada recurso novo (<code>ordenar_por</code>, <code>juntar</code>) exige um <code>if</code> por banco, e o método cresce na vertical. O quarto banco só entra editando a classe central, que é de outro time. E a lógica de "montar uma consulta" está embaralhada com a de "como este banco escreve isso", então ninguém sabe se uma mudança é segura.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o dialeto só sabe três coisas</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># a implementação: só o que muda de banco para banco</span>
+<span class="t-k">class</span> <span class="t-f">Dialeto</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">identificador</span>(self, nome: <span class="t-f">str</span>) -&gt; <span class="t-f">str</span>: ...
+    <span class="t-k">def</span> <span class="t-f">marcador</span>(self) -&gt; <span class="t-f">str</span>: ...
+    <span class="t-k">def</span> <span class="t-f">limitar</span>(self, sql: <span class="t-f">str</span>, n: <span class="t-f">int</span>) -&gt; <span class="t-f">str</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">Postgres</span>:
+    <span class="t-k">def</span> <span class="t-f">identificador</span>(self, nome):
+        <span class="t-k">return</span> <span class="t-s">'"'</span> + nome.<span class="t-f">replace</span>(<span class="t-s">'"'</span>, <span class="t-s">'""'</span>) + <span class="t-s">'"'</span>
+    <span class="t-k">def</span> <span class="t-f">marcador</span>(self):
+        <span class="t-k">return</span> <span class="t-s">"%s"</span>
+    <span class="t-k">def</span> <span class="t-f">limitar</span>(self, sql, n):
+        <span class="t-k">return</span> <span class="t-s">f"{sql} LIMIT {n}"</span>
+
+<span class="t-k">class</span> <span class="t-f">Sqlite</span>:
+    <span class="t-k">def</span> <span class="t-f">identificador</span>(self, nome):
+        <span class="t-k">return</span> <span class="t-s">'"'</span> + nome.<span class="t-f">replace</span>(<span class="t-s">'"'</span>, <span class="t-s">'""'</span>) + <span class="t-s">'"'</span>
+    <span class="t-k">def</span> <span class="t-f">marcador</span>(self):
+        <span class="t-k">return</span> <span class="t-s">"?"</span>
+    <span class="t-k">def</span> <span class="t-f">limitar</span>(self, sql, n):
+        <span class="t-k">return</span> <span class="t-s">f"{sql} LIMIT {n}"</span>
+
+<span class="t-k">class</span> <span class="t-f">SqlServer</span>:
+    <span class="t-k">def</span> <span class="t-f">identificador</span>(self, nome):
+        <span class="t-k">return</span> <span class="t-s">"["</span> + nome.<span class="t-f">replace</span>(<span class="t-s">"]"</span>, <span class="t-s">"]]"</span>) + <span class="t-s">"]"</span>
+    <span class="t-k">def</span> <span class="t-f">marcador</span>(self):
+        <span class="t-k">return</span> <span class="t-s">"?"</span>
+    <span class="t-k">def</span> <span class="t-f">limitar</span>(self, sql, n):
+        <span class="t-k">return</span> sql.<span class="t-f">replace</span>(<span class="t-s">"SELECT"</span>, <span class="t-s">f"SELECT TOP {n}"</span>, <span class="t-n">1</span>)
+
+<span class="t-c"># a abstração: monta a consulta, sem conhecer nenhum banco pelo nome</span>
+<span class="t-k">class</span> <span class="t-f">Consulta</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, tabela: <span class="t-f">str</span>, dialeto: Dialeto):
+        self._tabela, self._dialeto = tabela, dialeto
+        self._filtros, self._limite = [], <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">onde</span>(self, coluna, valor):
+        self._filtros.<span class="t-f">append</span>((coluna, valor))
+        <span class="t-k">return</span> self
+
+    <span class="t-k">def</span> <span class="t-f">limite</span>(self, n):
+        self._limite = n
+        <span class="t-k">return</span> self
+
+    <span class="t-k">def</span> <span class="t-f">montar</span>(self):
+        d = self._dialeto
+        sql = <span class="t-s">f"SELECT * FROM {d.identificador(self._tabela)}"</span>
+        <span class="t-k">if</span> self._filtros:
+            condicoes = <span class="t-s">" AND "</span>.<span class="t-f">join</span>(
+                <span class="t-s">f"{d.identificador(c)} = {d.marcador()}"</span> <span class="t-k">for</span> c, _ <span class="t-k">in</span> self._filtros
+            )
+            sql += <span class="t-s">f" WHERE {condicoes}"</span>
+        <span class="t-k">if</span> self._limite <span class="t-k">is</span> <span class="t-k">not</span> <span class="t-k">None</span>:
+            sql = d.<span class="t-f">limitar</span>(sql, self._limite)
+        <span class="t-k">return</span> sql, [v <span class="t-k">for</span> _, v <span class="t-k">in</span> self._filtros]
+
+<span class="t-f">Consulta</span>(<span class="t-s">"pedidos"</span>, <span class="t-f">SqlServer</span>()).<span class="t-f">onde</span>(<span class="t-s">"status"</span>, <span class="t-s">"pago"</span>).<span class="t-f">limite</span>(<span class="t-n">10</span>).<span class="t-f">montar</span>()</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a ponte separa.</strong> A lógica de alto nível das primitivas de cada banco. Este exemplo ensina o que os outros dois não ensinam: a interface de implementação é feita de <strong>operações pequenas</strong> (<code>identificador</code>, <code>marcador</code>, <code>limitar</code>), e a composição fica toda na abstração. Por isso um banco novo é um punhado de métodos, escrito por quem quiser, sem tocar em <code>Consulta</code>. A mesma separação aparece no SQLAlchemy, que constrói a consulta em Python e delega a um dialeto a escrita do SQL para cada banco.</p>
+          <p>O outro lado também rende: <code>Consulta</code> pode ganhar refinações (paginação, agregação) sem que nenhum dialeto precise saber, desde que elas só usem as primitivas que já existem.</p>
+          <div class="callout" data-kind="warn"><p>Cada primitiva nova é um custo para todos os dialetos, inclusive os escritos por outros times. Acrescente uma só quando dois bancos <em>realmente</em> divergem naquele ponto, e não por conforto da abstração.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Tema (claro, escuro, alto contraste) contra componentes de UI</td><td>1 — dois eixos que se combinam</td></tr>
+                <tr><td>Fila de tarefas (imediata, agendada) contra broker (Redis, SQS)</td><td>1 — dois eixos que se combinam</td></tr>
+                <tr><td>Tipos de etiqueta contra modelos de impressora</td><td>1 — e, se a impressora é uma linguagem de comandos, 3 — primitivas</td></tr>
+                <tr><td>Renderizar o mesmo documento na web e no app nativo</td><td>2 — o ambiente escolhe a implementação</td></tr>
+                <tr><td>Drivers de dispositivo, de banco ou de impressora</td><td>3 — implementações escritas por outras pessoas, sobre primitivas</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E dois casos que parecem Bridge, mas não são. O primeiro: uma interface com duas implementações escolhidas por configuração, como o <code>Armazenamento</code> local e S3 do <a href="../adapter/uso.html#dependencia-de-infra">exemplo 4 do Adapter</a>. Só um lado varia, e a "abstração" não tem variantes próprias: é injeção de dependência, e o nome do pattern aqui só complica. O segundo: um cliente que alterna entre WebSocket e <em>polling</em> quando a conexão falha. A implementação troca durante a vida do objeto, e isso é Strategy (ou State). Veja a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

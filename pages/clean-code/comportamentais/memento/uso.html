@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Memento · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/memento/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Memento</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Quatro situações em que o Memento resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que a foto guarda em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que quatro</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Memento. Quando dois casos se resolvem com o mesmo raciocínio — desfazer em um editor de texto e desfazer em um editor de planilha, por exemplo — só um fica. Seguindo essa regra, sobraram quatro motivos. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o Memento congela</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#historico-do-editor">Histórico barato em um editor com muito estado</a></td><td>Referências a peças imutáveis, não cópias delas</td></tr>
+                <tr><td>2</td><td><a href="#simular-e-decidir">Simular o efeito antes de decidir</a></td><td>Um ponto de partida para a simulação voltar a ele</td></tr>
+                <tr><td>3</td><td><a href="#rascunho-que-sobrevive">Rascunho que sobrevive ao fechar a aba</a></td><td>Um estado que sai do processo e volta com versão</td></tr>
+                <tr><td>4</td><td><a href="#tentar-e-voltar">Tentar um caminho e voltar se não der</a></td><td>Poucos números privados, muitas vezes por segundo</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="historico-do-editor">1. Histórico barato em um editor com muito estado</h2>
+          <p><strong>Situação.</strong> Um editor de imagens tem documentos com até 200 camadas, cada uma com seus pixels. Desfazer é a funcionalidade mais usada: a pessoa aplica um filtro, olha e volta. As janelas de camadas e de propriedades guardam referência para o documento aberto e se atualizam quando ele muda.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — uma cópia profunda a cada clique</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Editor</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, documento):
+        self.documento = documento
+        self._pilha = []
+
+    <span class="t-k">def</span> <span class="t-f">aplicar</span>(self, operacao):
+        self._pilha.<span class="t-f">append</span>(copy.<span class="t-f">deepcopy</span>(self.documento))  <span class="t-c"># 200 camadas, a cada clique</span>
+        <span class="t-f">operacao</span>(self.documento)
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        <span class="t-k">if</span> self._pilha:
+            self.documento = self._pilha.<span class="t-f">pop</span>()  <span class="t-c"># e os painéis, que seguravam o objeto antigo?</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Copiar todos os pixels para mudar a opacidade de uma camada é lento e consome memória; com cinquenta passos, o histórico pesa gigabytes. Além disso, <code>self.documento = …</code> troca o objeto: os painéis continuam olhando para o documento antigo e mostram o estado de antes do desfazer.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a foto guarda referências, o documento continua o mesmo</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">Camada</span>:                <span class="t-c"># imutável: uma alteração cria outra camada</span>
+    nome: <span class="t-f">str</span>
+    pixels: <span class="t-f">bytes</span>
+    opacidade: <span class="t-f">float</span> = <span class="t-n">1.0</span>
+
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">_Foto</span>:
+    camadas: <span class="t-f">tuple</span>[Camada, ...]   <span class="t-c"># só referências: nenhum pixel é copiado</span>
+    ativa: <span class="t-f">int</span>
+
+<span class="t-k">class</span> <span class="t-f">Documento</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._camadas: <span class="t-f">list</span>[Camada] = []
+        self._ativa = <span class="t-n">0</span>
+        self._miniaturas: <span class="t-f">dict</span> = {}      <span class="t-c"># derivado: nunca vai para a foto</span>
+
+    <span class="t-k">def</span> <span class="t-f">salvar</span>(self) -&gt; _Foto:
+        <span class="t-k">return</span> <span class="t-f">_Foto</span>(<span class="t-f">tuple</span>(self._camadas), self._ativa)
+
+    <span class="t-k">def</span> <span class="t-f">restaurar</span>(self, foto: _Foto) -&gt; <span class="t-k">None</span>:
+        self._camadas = <span class="t-f">list</span>(foto.camadas)
+        self._ativa = foto.ativa
+        self._miniaturas.<span class="t-f">clear</span>()         <span class="t-c"># recalculado quando alguém pedir</span>
+
+<span class="t-k">class</span> <span class="t-f">Editor</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, documento: Documento, limite: <span class="t-f">int</span> = <span class="t-n">50</span>):
+        self.documento = documento             <span class="t-c"># o mesmo objeto, sempre</span>
+        self._passado = <span class="t-f">deque</span>(maxlen=limite)
+
+    <span class="t-k">def</span> <span class="t-f">aplicar</span>(self, operacao):
+        self._passado.<span class="t-f">append</span>(self.documento.<span class="t-f">salvar</span>())
+        <span class="t-f">operacao</span>(self.documento)
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        <span class="t-k">if</span> self._passado:
+            self.documento.<span class="t-f">restaurar</span>(self._passado.<span class="t-f">pop</span>())</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a foto guarda.</strong> Uma tupla de referências. Como a <code>Camada</code> é imutável, 49 das 50 fotos apontam para as mesmas 199 camadas que não mudaram, e o custo de um passo é o da tupla, não o dos pixels. O documento nunca é trocado: <code>restaurar</code> muda o que há dentro dele, e os painéis, que continuam olhando para o mesmo objeto, só precisam ser avisados.</p>
+          <p>Para um editor em que cada ação tem uma volta simples, o <a href="../command/uso.html#desfazer-refazer">Command</a> resolve com menos memória ainda. O Memento vale quando o "inverso" de uma operação é difícil de escrever (um filtro de desfoque não tem inverso) e a foto, graças à imutabilidade, é barata.</p>
+          <div class="callout" data-kind="warn"><p>O que é <em>derivado</em> fica fora da foto, e o <code>restaurar</code> o invalida. Só o originador sabe que <code>_miniaturas</code> é cache; por isso a regra mora nele e não no editor.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="simular-e-decidir">2. Simular o efeito antes de decidir</h2>
+          <p><strong>Situação.</strong> O financeiro de uma escola quer saber quanto a receita mensal muda se a mensalidade subir 8%, respeitando o teto por contrato, o arredondamento para o real mais próximo e a carência de contratos novos. A decisão só vem depois de olhar o número. A regra de reajuste é complicada, e já existe e funciona: <code>Carteira.reajustar</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — a simulação é uma segunda cópia da regra</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Carteira</span>:
+    <span class="t-k">def</span> <span class="t-f">reajustar</span>(self, pct):
+        <span class="t-k">for</span> c <span class="t-k">in</span> self._contratos:
+            <span class="t-k">if</span> c.em_carencia():
+                <span class="t-k">continue</span>
+            novo = <span class="t-f">round</span>(c.valor * (<span class="t-n">1</span> + pct))
+            c.valor = <span class="t-f">min</span>(novo, c.teto)
+
+    <span class="t-k">def</span> <span class="t-f">simular_reajuste</span>(self, pct):
+        total = <span class="t-n">0</span>
+        <span class="t-k">for</span> c <span class="t-k">in</span> self._contratos:
+            novo = c.valor * (<span class="t-n">1</span> + pct)
+            total += <span class="t-f">min</span>(novo, c.teto)   <span class="t-c"># sem arredondar, sem carência</span>
+        <span class="t-k">return</span> total</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A simulação já nasceu diferente da regra: esqueceu o arredondamento e a carência, então o número que a diretoria vê não é o que sai quando o reajuste é aplicado. Cada ajuste na regra real exige lembrar de mexer na cópia, e ninguém tem um teste que compare as duas.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a regra real roda, e depois tudo volta</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Carteira</span>:
+    <span class="t-k">def</span> <span class="t-f">salvar</span>(self) -&gt; <span class="t-f">tuple</span>[Contrato, ...]:
+        <span class="t-k">return</span> <span class="t-f">tuple</span>(self._contratos)         <span class="t-c"># Contrato é frozen</span>
+
+    <span class="t-k">def</span> <span class="t-f">restaurar</span>(self, foto) -&gt; <span class="t-k">None</span>:
+        self._contratos = <span class="t-f">list</span>(foto)
+
+    <span class="t-k">def</span> <span class="t-f">reajustar</span>(self, pct):              <span class="t-c"># a única cópia da regra</span>
+        self._contratos = [
+            c <span class="t-k">if</span> c.<span class="t-f">em_carencia</span>() <span class="t-k">else</span> <span class="t-f">replace</span>(c, valor=<span class="t-f">min</span>(<span class="t-f">round</span>(c.valor * (<span class="t-n">1</span> + pct)), c.teto))
+            <span class="t-k">for</span> c <span class="t-k">in</span> self._contratos
+        ]
+
+<span class="t-f">@contextmanager</span>
+<span class="t-k">def</span> <span class="t-f">simulacao</span>(carteira: Carteira):
+    foto = carteira.<span class="t-f">salvar</span>()
+    <span class="t-k">try</span>:
+        <span class="t-k">yield</span> carteira
+    <span class="t-k">finally</span>:
+        carteira.<span class="t-f">restaurar</span>(foto)
+
+<span class="t-k">with</span> <span class="t-f">simulacao</span>(carteira):
+    carteira.<span class="t-f">reajustar</span>(<span class="t-n">0.08</span>)
+    projecao = carteira.<span class="t-f">receita_mensal</span>()
+<span class="t-c"># fora do with, a carteira é a de antes. Para aplicar de verdade: carteira.reajustar(0.08)</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que a foto guarda.</strong> Só o ponto de partida. O trabalho de verdade é feito pelo código real, então a projeção e o resultado aplicado não têm como divergir. O <code>finally</code> devolve a carteira até quando <code>reajustar</code> lança uma exceção no meio, e é isso que torna seguro experimentar em cima do objeto verdadeiro.</p>
+          <div class="callout" data-kind="warn"><p>A foto cobre a <em>carteira</em>, e nada além dela. Se <code>reajustar</code> enviasse e-mail ou gravasse no banco, a simulação já teria feito os dois. A regra para entrar em um <code>with simulacao</code> é: tudo o que acontece lá dentro só mexe na memória do objeto.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="rascunho-que-sobrevive">3. Rascunho que sobrevive ao fechar a aba</h2>
+          <p><strong>Situação.</strong> O cadastro de um imóvel tem quatro etapas, com fotos, endereço, preço e descrição. Quem anuncia leva meia hora, fecha a aba por engano, ou volta no dia seguinte. O produto prometeu "continuar de onde parou". Daqui a três meses o formulário vai ganhar uma quinta etapa.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — um setItem por campo, em cada etapa</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c">// etapa-1.tsx</span>
+localStorage.<span class="t-f">setItem</span>(<span class="t-s">"cadastro.titulo"</span>, titulo);
+localStorage.<span class="t-f">setItem</span>(<span class="t-s">"cadastro.preco"</span>, <span class="t-f">String</span>(preco));
+
+<span class="t-c">// etapa-3.tsx — esqueceu de salvar as fotos</span>
+localStorage.<span class="t-f">setItem</span>(<span class="t-s">"cadastro.cep"</span>, cep);
+
+<span class="t-c">// ao voltar</span>
+<span class="t-k">const</span> preco = <span class="t-f">Number</span>(localStorage.<span class="t-f">getItem</span>(<span class="t-s">"cadastro.preco"</span>));  <span class="t-c">// null vira 0, em silêncio</span>
+<span class="t-k">const</span> etapa = <span class="t-f">Number</span>(localStorage.<span class="t-f">getItem</span>(<span class="t-s">"cadastro.etapa"</span>)) || <span class="t-n">1</span>;</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada etapa conhece o formato do armazenamento e a chave que as outras usam. Não existe uma noção de "o rascunho", então não há como apagá-lo inteiro, nem saber se está completo. E, quando a quinta etapa chegar, quem voltar com o rascunho de ontem vai receber um formulário com dados de antes e de depois misturados.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o estado vira um valor serializável e com versão</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c">// o memento aqui é dado puro: precisa sobreviver ao processo</span>
+<span class="t-k">export</span> <span class="t-k">interface</span> <span class="t-f">Rascunho</span> {
+  versao: <span class="t-n">2</span>;
+  etapa: <span class="t-f">number</span>;
+  dados: <span class="t-f">DadosDoImovel</span>;
+}
+<span class="t-k">interface</span> <span class="t-f">RascunhoV1</span> { versao: <span class="t-n">1</span>; etapa: <span class="t-f">number</span>; dados: <span class="t-f">DadosDoImovelV1</span> }
+
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">CadastroDeImovel</span> {
+  <span class="t-k">private</span> etapa = <span class="t-n">1</span>;
+  <span class="t-k">private</span> dados: <span class="t-f">DadosDoImovel</span> = <span class="t-f">vazio</span>();
+
+  <span class="t-f">salvar</span>(): <span class="t-f">Rascunho</span> {
+    <span class="t-k">return</span> { versao: <span class="t-n">2</span>, etapa: <span class="t-k">this</span>.etapa, dados: <span class="t-f">structuredClone</span>(<span class="t-k">this</span>.dados) };
+  }
+
+  <span class="t-f">restaurar</span>(r: <span class="t-f">Rascunho</span> | <span class="t-f">RascunhoV1</span>): <span class="t-f">void</span> {
+    <span class="t-k">const</span> atual = r.versao === <span class="t-n">1</span> ? <span class="t-f">migrarV1</span>(r) : r;
+    <span class="t-k">this</span>.etapa = atual.etapa;
+    <span class="t-k">this</span>.dados = <span class="t-f">structuredClone</span>(atual.dados);
+  }
+}
+
+<span class="t-c">// o zelador: grava e lê; não sabe o que tem dentro</span>
+<span class="t-k">const</span> CHAVE = <span class="t-s">"rascunho.cadastro-imovel"</span>;
+
+<span class="t-k">export</span> <span class="t-k">const</span> rascunhos = {
+  <span class="t-f">gravar</span>(r: <span class="t-f">Rascunho</span>) { localStorage.<span class="t-f">setItem</span>(CHAVE, JSON.<span class="t-f">stringify</span>(r)); },
+  <span class="t-f">ler</span>(): <span class="t-f">Rascunho</span> | <span class="t-f">RascunhoV1</span> | <span class="t-k">null</span> {
+    <span class="t-k">const</span> bruto = localStorage.<span class="t-f">getItem</span>(CHAVE);
+    <span class="t-k">return</span> bruto ? JSON.<span class="t-f">parse</span>(bruto) : <span class="t-k">null</span>;
+  },
+  <span class="t-f">descartar</span>() { localStorage.<span class="t-f">removeItem</span>(CHAVE); },
+};</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a foto guarda.</strong> Aqui a foto sai do processo, e isso muda o desenho: ela precisa ser dado puro, sem referência a objetos vivos, e ganha um número de <code>versao</code>. O <code>restaurar</code> é o único lugar que sabe ler o formato antigo. Quando a quinta etapa chegar, é ali que o rascunho de ontem é migrado, e nenhuma tela é tocada.</p>
+          <div class="callout" data-kind="warn"><p>O <code>localStorage</code> grava texto, no disco da pessoa, sem criptografia. O que entra na foto é uma decisão: CPF, telefone e documentos anexados provavelmente não devem ficar lá.</p></div>
+
+          <!-- 4 ─────────────────────────────────────────────── -->
+          <h2 id="tentar-e-voltar">4. Tentar um caminho e voltar se não der</h2>
+          <p><strong>Situação.</strong> Um parser de filtros — <code>preco &gt; 10 e total(itens) &lt; 50</code> — lê uma lista de tokens. Em alguns pontos, a gramática é ambígua: um nome pode ser uma chamada (<code>total(itens)</code>) ou um caminho (<code>cliente.endereco</code>), e só dá para saber olhando o que vem depois. A saída é tentar uma e, se falhar, voltar e tentar a outra.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o parser guarda e devolve cada campo da leitura</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Parser</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, tokens):
+        self.tokens = tokens
+        self.pos = <span class="t-n">0</span>
+        self.nivel = <span class="t-n">0</span>          <span class="t-c"># profundidade de parênteses</span>
+        self.avisos = []
+
+    <span class="t-k">def</span> <span class="t-f">valor</span>(self):
+        pos, nivel, n_avisos = self.pos, self.nivel, <span class="t-f">len</span>(self.avisos)
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> self.<span class="t-f">chamada</span>()
+        <span class="t-k">except</span> ErroDeSintaxe:
+            self.pos, self.nivel = pos, nivel
+            <span class="t-k">del</span> self.avisos[n_avisos:]
+            <span class="t-k">return</span> self.<span class="t-f">caminho</span>()
+
+    <span class="t-c"># e o mesmo bloco de salvar e devolver reaparece em comparacao(),</span>
+    <span class="t-c"># em lista(), em grupo()... cada um com os campos que lembrou</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Todo ponto com alternativa repete o "salvar e devolver" com os campos que o autor lembrou na hora. Quando a leitura ganha um novo estado (a linha atual, para mensagens de erro), é preciso achar cada <code>try</code> e acrescentar mais uma atribuição. Os que forem esquecidos viram bugs que só aparecem com uma entrada específica.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a leitura sabe marcar e voltar; o parser só tenta</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">_Marca</span>:                       <span class="t-c"># poderia ser uma tupla; o nome só deixa claro</span>
+    pos: <span class="t-f">int</span>
+    nivel: <span class="t-f">int</span>
+    avisos: <span class="t-f">int</span>
+
+<span class="t-k">class</span> <span class="t-f">Fita</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, tokens):
+        self._tokens = tokens
+        self._pos = <span class="t-n">0</span>
+        self._nivel = <span class="t-n">0</span>
+        self._avisos: <span class="t-f">list</span>[<span class="t-f">str</span>] = []
+
+    <span class="t-k">def</span> <span class="t-f">marcar</span>(self) -&gt; _Marca:
+        <span class="t-k">return</span> <span class="t-f">_Marca</span>(self._pos, self._nivel, <span class="t-f">len</span>(self._avisos))
+
+    <span class="t-k">def</span> <span class="t-f">voltar</span>(self, marca: _Marca) -&gt; <span class="t-k">None</span>:
+        self._pos, self._nivel = marca.pos, marca.nivel
+        <span class="t-k">del</span> self._avisos[marca.avisos:]
+
+<span class="t-k">class</span> <span class="t-f">Parser</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, fita: Fita):
+        self._fita = fita
+
+    <span class="t-k">def</span> <span class="t-f">tentar</span>(self, *alternativas):
+        <span class="t-k">for</span> alternativa <span class="t-k">in</span> alternativas:
+            marca = self._fita.<span class="t-f">marcar</span>()
+            <span class="t-k">try</span>:
+                <span class="t-k">return</span> <span class="t-f">alternativa</span>()
+            <span class="t-k">except</span> ErroDeSintaxe:
+                self._fita.<span class="t-f">voltar</span>(marca)
+        <span class="t-k">raise</span> <span class="t-f">ErroDeSintaxe</span>(<span class="t-s">"nenhuma alternativa serve"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">valor</span>(self):
+        <span class="t-k">return</span> self.<span class="t-f">tentar</span>(self.chamada, self.caminho)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a foto guarda.</strong> Três inteiros privados da leitura, tirados e devolvidos a cada tentativa, muitas vezes por segundo. O custo é desprezível, e por isso aqui o histórico não precisa de limite. O ganho é o mesmo dos outros casos em outra escala: quando a <code>Fita</code> ganhar a linha atual, muda <code>marcar</code> e <code>voltar</code>, e as quatorze alternativas do parser seguem iguais.</p>
+          <div class="callout" data-kind="tip"><p>Os motores de expressão regular e os parsers com <em>backtracking</em> fazem exatamente isso por dentro: marcam a posição, tentam, voltam. É o Memento em sua forma mais enxuta.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos quatro:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Desfazer e refazer em um editor de texto ou de planilha</td><td>1 — o mesmo raciocínio, com outro objeto. Se o documento é grande, guarde só a diferença (Command)</td></tr>
+                <tr><td>"Restaurar padrões de fábrica" em uma tela de configurações</td><td>1 — é voltar a uma foto tirada na abertura</td></tr>
+                <tr><td>Rollback em memória em um teste, para cada caso começar do mesmo ponto</td><td>2 — foto, mexe, restaura</td></tr>
+                <tr><td>Salvar o jogo, ou o ponto de retomada de um processamento longo</td><td>3 — o estado sai do processo e volta com versão</td></tr>
+                <tr><td>Voltar a posição da rolagem e a ordenação da lista ao retornar a uma tela</td><td>Nenhum: são dois valores simples. Guarde-os em variáveis; um Memento aqui só acrescenta classes</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E dois casos que parecem Memento, mas não são: copiar um objeto para criar <em>outro</em> igual a ele (Prototype), e registrar cada mudança, com autor e data, para auditar o que aconteceu (um log de eventos). Nos dois, a foto não serve para voltar a algum lugar — veja a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Template Method · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/template-method/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Template Method</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o Template Method resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que a classe base passa a garantir.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Template Method. Quando dois casos se resolvem com o mesmo raciocínio — importar CSV e importar JSON, ou gerar relatório de vendas e de estoque — só um fica. Seguindo essa regra, sobraram três motivos. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que a classe base fixa</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#mesmo-roteiro">Mesmo roteiro, um miolo diferente</a></td><td>A ordem dos passos</td></tr>
+                <tr><td>2</td><td><a href="#passo-obrigatorio">Um passo que ninguém pode pular</a></td><td>O passo que não pode faltar</td></tr>
+                <tr><td>3</td><td><a href="#ganchos-opcionais">Passos opcionais com padrão sensato</a></td><td>O comportamento de cada passo que ninguém trocou</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="mesmo-roteiro">1. Mesmo roteiro, um miolo diferente</h2>
+          <p><strong>Situação.</strong> O financeiro recebe por e-mail um relatório de vendas do mês. A logística pediu o de estoque, e em seguida virão o de devoluções e o de comissões. Todos seguem a mesma sequência: buscar as linhas, calcular o total, gerar o CSV, enviar e registrar. Mudam a consulta, as colunas, a conta do total e o destinatário.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — uma função por relatório, copiada da anterior</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">relatorio_de_vendas</span>(periodo):
+    linhas = db.<span class="t-f">consultar</span>(<span class="t-s">"vendas"</span>, periodo)
+    total = <span class="t-f">sum</span>(l.valor <span class="t-k">for</span> l <span class="t-k">in</span> linhas)
+    arquivo = <span class="t-f">csv_de</span>(linhas, [<span class="t-s">"data"</span>, <span class="t-s">"produto"</span>, <span class="t-s">"valor"</span>], rodape=total)
+    email.<span class="t-f">enviar</span>(<span class="t-s">"financeiro@loja.com"</span>, arquivo)
+    log.<span class="t-f">info</span>(<span class="t-s">"vendas: %d linhas"</span>, <span class="t-f">len</span>(linhas))
+
+<span class="t-k">def</span> <span class="t-f">relatorio_de_estoque</span>(periodo):
+    linhas = db.<span class="t-f">consultar</span>(<span class="t-s">"estoque"</span>, periodo)
+    total = <span class="t-f">sum</span>(l.quantidade <span class="t-k">for</span> l <span class="t-k">in</span> linhas)
+    arquivo = <span class="t-f">csv_de</span>(linhas, [<span class="t-s">"sku"</span>, <span class="t-s">"deposito"</span>, <span class="t-s">"quantidade"</span>], rodape=total)
+    email.<span class="t-f">enviar</span>(<span class="t-s">"logistica@loja.com"</span>, arquivo)
+    log.<span class="t-f">info</span>(<span class="t-s">"estoque: %d linhas"</span>, <span class="t-f">len</span>(linhas))</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada relatório novo é copiar seis linhas e trocar quatro. A política muda de vez em quando (mandar cópia ao arquivo morto, trocar CSV por XLSX) e vira uma edição em todas as funções. E, quando alguém acrescenta um passo em uma delas, as outras ficam sem, sem nenhum aviso.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o roteiro uma vez; cada relatório diz só o que é seu</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Relatorio</span>(ABC):
+    colunas: <span class="t-f">list</span>[<span class="t-f">str</span>]
+    destinatario: <span class="t-f">str</span>
+
+    <span class="t-k">def</span> <span class="t-f">gerar</span>(self, periodo):                       <span class="t-c"># o roteiro</span>
+        linhas = self.<span class="t-f">buscar</span>(periodo)
+        arquivo = <span class="t-f">csv_de</span>(linhas, self.colunas, rodape=self.<span class="t-f">totalizar</span>(linhas))
+        email.<span class="t-f">enviar</span>(self.destinatario, arquivo)
+        log.<span class="t-f">info</span>(<span class="t-s">"%s: %d linhas"</span>, <span class="t-f">type</span>(self).__name__, <span class="t-f">len</span>(linhas))
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, periodo): ...
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">totalizar</span>(self, linhas): ...
+
+<span class="t-k">class</span> <span class="t-f">RelatorioDeVendas</span>(Relatorio):
+    colunas = [<span class="t-s">"data"</span>, <span class="t-s">"produto"</span>, <span class="t-s">"valor"</span>]
+    destinatario = <span class="t-s">"financeiro@loja.com"</span>
+
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, periodo):
+        <span class="t-k">return</span> db.<span class="t-f">consultar</span>(<span class="t-s">"vendas"</span>, periodo)
+
+    <span class="t-k">def</span> <span class="t-f">totalizar</span>(self, linhas):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(l.valor <span class="t-k">for</span> l <span class="t-k">in</span> linhas)
+
+<span class="t-c"># RelatorioDeEstoque: a mesma forma, com outros quatro itens</span>
+<span class="t-f">RelatorioDeVendas</span>().<span class="t-f">gerar</span>(periodo)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a classe base guarda.</strong> A <em>ordem</em>: buscar, totalizar, gerar, enviar, registrar. Os pontos que variam ficam nomeados, e um relatório novo é uma classe pequena que só responde "de onde vêm as linhas e como se soma". Trocar CSV por XLSX, ou mandar cópia ao arquivo morto, é uma edição em <code>gerar</code> e vale para todos.</p>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="passo-obrigatorio">2. Um passo que ninguém pode pular</h2>
+          <p><strong>Situação.</strong> A loja recebe webhooks do gateway de pagamento, do correio e do marketplace. Para todos, o roteiro é o mesmo: conferir a assinatura (senão qualquer pessoa na internet marca pedidos como pagos), descartar eventos repetidos e só então tratar. O trabalho de tratar é de cada integração, escrita por pessoas diferentes ao longo do ano.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada handler lembra (ou não) das proteções</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">webhook_pagamento</span>(request):
+    <span class="t-k">if</span> <span class="t-k">not</span> <span class="t-f">assinatura_valida</span>(request, SEGREDO_PAGAMENTO):
+        <span class="t-k">return</span> <span class="t-f">Resposta</span>(<span class="t-n">401</span>)
+    evento = json.<span class="t-f">loads</span>(request.body)
+    <span class="t-k">if</span> <span class="t-f">ja_processado</span>(evento[<span class="t-s">"id"</span>]):
+        <span class="t-k">return</span> <span class="t-f">Resposta</span>(<span class="t-n">200</span>)
+    <span class="t-f">marcar_pedido_pago</span>(evento[<span class="t-s">"pedido"</span>])
+    <span class="t-k">return</span> <span class="t-f">Resposta</span>(<span class="t-n">200</span>)
+
+<span class="t-k">def</span> <span class="t-f">webhook_correio</span>(request):
+    evento = json.<span class="t-f">loads</span>(request.body)       <span class="t-c"># e a assinatura? e o evento repetido?</span>
+    <span class="t-f">marcar_pedido_entregue</span>(evento[<span class="t-s">"pedido"</span>])
+    <span class="t-k">return</span> <span class="t-f">Resposta</span>(<span class="t-n">200</span>)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O handler do correio, escrito às pressas, esqueceu duas proteções, e ninguém notou porque ele "funciona". Uma pessoa de fora consegue marcar qualquer pedido como entregue. A auditoria de segurança precisa ler cada handler, um por um, para saber se está tudo lá.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — as proteções ficam no roteiro, e o handler só trata</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Webhook</span>(ABC):
+    segredo: <span class="t-f">str</span>
+
+    <span class="t-k">def</span> <span class="t-f">receber</span>(self, request):                      <span class="t-c"># o roteiro: ninguém pula passo</span>
+        <span class="t-k">if</span> <span class="t-k">not</span> <span class="t-f">assinatura_valida</span>(request, self.segredo):
+            <span class="t-k">return</span> <span class="t-f">Resposta</span>(<span class="t-n">401</span>)
+        evento = json.<span class="t-f">loads</span>(request.body)
+        <span class="t-k">if</span> <span class="t-f">ja_processado</span>(evento[<span class="t-s">"id"</span>]):
+            <span class="t-k">return</span> <span class="t-f">Resposta</span>(<span class="t-n">200</span>)
+        self.<span class="t-f">tratar</span>(evento)
+        <span class="t-f">registrar_processado</span>(evento[<span class="t-s">"id"</span>])
+        <span class="t-k">return</span> <span class="t-f">Resposta</span>(<span class="t-n">200</span>)
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">tratar</span>(self, evento): ...
+
+<span class="t-k">class</span> <span class="t-f">WebhookCorreio</span>(Webhook):
+    segredo = SEGREDO_CORREIO
+
+    <span class="t-k">def</span> <span class="t-f">tratar</span>(self, evento):
+        <span class="t-f">marcar_pedido_entregue</span>(evento[<span class="t-s">"pedido"</span>])</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a classe base guarda.</strong> O que <em>não pode faltar</em>. Quem escreve o handler nem chega a ver o código da assinatura: o que ele escreve é <code>tratar</code>, e a verificação acontece antes dele. A diferença para o exemplo 1 é o motivo: lá o pattern evita copiar; aqui ele torna impossível esquecer, e a auditoria passa a ler um método.</p>
+          <div class="callout" data-kind="warn"><p>Python não tem <code>final</code>: nada impede uma subclasse de redefinir <code>receber</code> e deixar a proteção de fora. Feche a brecha com um teste: <code>assert all("receber" not in vars(s) for s in Webhook.__subclasses__())</code>.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="ganchos-opcionais">3. Passos opcionais com padrão sensato</h2>
+          <p><strong>Situação.</strong> Uma equipe mantém doze jobs agendados em Node: fechamento do dia, limpeza de sessões, reindexação. O roteiro é igual (decidir se roda, executar, tratar sucesso, tratar falha), mas cada job tem pequenas exceções: o fechamento pula fim de semana e avisa o financeiro; a limpeza avisa o plantão quando falha; o resto só quer um log.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada job decide a própria política</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">async</span> <span class="t-k">function</span> <span class="t-f">jobFechamentoDoDia</span>() {
+  <span class="t-k">if</span> (!<span class="t-f">ehDiaUtil</span>()) <span class="t-k">return</span>;                 <span class="t-c">// este pula fim de semana</span>
+  <span class="t-k">try</span> {
+    <span class="t-k">await</span> <span class="t-f">fecharCaixa</span>();
+    <span class="t-k">await</span> <span class="t-f">avisarFinanceiro</span>(<span class="t-s">"fechamento ok"</span>);
+  } <span class="t-k">catch</span> (e) {
+    console.<span class="t-f">error</span>(e);                       <span class="t-c">// este só loga</span>
+  }
+}
+
+<span class="t-k">async</span> <span class="t-k">function</span> <span class="t-f">jobLimpezaDeSessoes</span>() {
+  <span class="t-k">try</span> {
+    <span class="t-k">await</span> <span class="t-f">apagarSessoesExpiradas</span>();
+  } <span class="t-k">catch</span> (e) {
+    <span class="t-k">await</span> <span class="t-f">avisarPlantao</span>(e);                <span class="t-c">// este avisa o plantão</span>
+    <span class="t-k">throw</span> e;                                <span class="t-c">// e este relança</span>
+  }
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada job inventou a sua política de falha, e ninguém sabe qual é a regra da equipe. Registrar a duração de todos os jobs, ou impedir que um job falhe em silêncio, é uma edição em doze funções. E um job novo começa copiando "o último que funcionou", com as exceções dele.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — um passo obrigatório e três ganchos com padrão</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">abstract</span> <span class="t-k">class</span> <span class="t-f">Job</span> {
+  <span class="t-k">async</span> <span class="t-f">rodar</span>() {                                       <span class="t-c">// o roteiro</span>
+    <span class="t-k">if</span> (!<span class="t-k">this</span>.<span class="t-f">deveRodar</span>()) <span class="t-k">return</span>;
+    <span class="t-k">const</span> inicio = <span class="t-f">Date</span>.<span class="t-f">now</span>();
+    <span class="t-k">try</span> {
+      <span class="t-k">await</span> <span class="t-k">this</span>.<span class="t-f">executar</span>();
+      <span class="t-k">await</span> <span class="t-k">this</span>.<span class="t-f">aoSucesso</span>();
+    } <span class="t-k">catch</span> (erro) {
+      <span class="t-k">await</span> <span class="t-k">this</span>.<span class="t-f">aoFalhar</span>(erro <span class="t-k">as</span> <span class="t-f">Error</span>);
+    } <span class="t-k">finally</span> {
+      console.<span class="t-f">log</span>(<span class="t-s">`${this.constructor.name}: ${Date.now() - inicio}ms`</span>);
+    }
+  }
+
+  <span class="t-k">protected</span> <span class="t-k">abstract</span> <span class="t-f">executar</span>(): <span class="t-f">Promise</span>&lt;<span class="t-f">void</span>&gt;;       <span class="t-c">// obrigatório</span>
+
+  <span class="t-k">protected</span> <span class="t-f">deveRodar</span>(): <span class="t-f">boolean</span> { <span class="t-k">return</span> <span class="t-k">true</span>; }          <span class="t-c">// ganchos: têm padrão</span>
+  <span class="t-k">protected</span> <span class="t-k">async</span> <span class="t-f">aoSucesso</span>(): <span class="t-f">Promise</span>&lt;<span class="t-f">void</span>&gt; {}
+  <span class="t-k">protected</span> <span class="t-k">async</span> <span class="t-f">aoFalhar</span>(erro: <span class="t-f">Error</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">void</span>&gt; { console.<span class="t-f">error</span>(erro); }
+}
+
+<span class="t-k">class</span> <span class="t-f">FechamentoDoDia</span> <span class="t-k">extends</span> <span class="t-f">Job</span> {
+  <span class="t-k">protected</span> <span class="t-f">deveRodar</span>() { <span class="t-k">return</span> <span class="t-f">ehDiaUtil</span>(); }
+  <span class="t-k">protected</span> <span class="t-k">async</span> <span class="t-f">executar</span>() { <span class="t-k">await</span> <span class="t-f">fecharCaixa</span>(); }
+  <span class="t-k">protected</span> <span class="t-k">async</span> <span class="t-f">aoSucesso</span>() { <span class="t-k">await</span> <span class="t-f">avisarFinanceiro</span>(<span class="t-s">"fechamento ok"</span>); }
+}
+
+<span class="t-k">class</span> <span class="t-f">LimpezaDeSessoes</span> <span class="t-k">extends</span> <span class="t-f">Job</span> {
+  <span class="t-k">protected</span> <span class="t-k">async</span> <span class="t-f">executar</span>() { <span class="t-k">await</span> <span class="t-f">apagarSessoesExpiradas</span>(); }
+  <span class="t-k">protected</span> <span class="t-k">async</span> <span class="t-f">aoFalhar</span>(erro: <span class="t-f">Error</span>) { <span class="t-k">await</span> <span class="t-f">avisarPlantao</span>(erro); }
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a classe base guarda.</strong> O <em>padrão de cada passo</em>. O código separa o que é obrigatório (<code>executar</code>, abstrato: o compilador cobra) do que é opcional (os ganchos, com um comportamento sensato que só quem precisa troca). Um job comum escreve uma linha. A política da equipe (medir duração, por exemplo) vive em <code>rodar</code> e chega a todos.</p>
+          <div class="callout" data-kind="warn"><p>Cada gancho é uma promessa de que o pai chamará aquele método naquele ponto, para sempre. Comece com os que dois jobs já precisaram. Doze ganchos "por precaução" viram uma classe base que ninguém consegue ler.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Importar CSV, JSON e XML com o mesmo fluxo</td><td>1 — veja a <a href="explicacao.html#o-problema">Explicação</a></td></tr>
+                <tr><td>Gerar o mesmo recibo em PDF e em HTML</td><td>1 — o roteiro é igual; muda a renderização</td></tr>
+                <tr><td>Jogo de turnos com regras diferentes (iniciar, jogar turno, ver se acabou)</td><td>1 — a ordem é fixa, e os passos mudam</td></tr>
+                <tr><td>Autenticar, autorizar, validar e só então executar uma ação</td><td>2 — os primeiros passos não podem faltar</td></tr>
+                <tr><td><code>setUp</code> e <code>tearDown</code> de uma classe de testes</td><td>3 — ganchos com padrão vazio; e 2, porque o <code>tearDown</code> sempre roda</td></tr>
+                <tr><td>Métodos de ciclo de vida de um componente (<code>aoMontar</code>, <code>aoDestruir</code>)</td><td>3 — o framework é dono do roteiro e você preenche ganchos</td></tr>
+                <tr><td>Abrir e fechar um recurso em volta de um trecho</td><td>2 — mas um <code>with</code> costuma bastar (veja <a href="explicacao.html#quando-nao-usar">Quando não usar</a>)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Template Method, mas não é: <code>sorted(itens, key=preco)</code>. O roteiro é da biblioteca e você preenche um passo, mas o passo vai como <em>função</em>, sem herança, e pode ser trocado a cada chamada. Isso é Strategy, ou um callback simples. Veja também <a href="explicacao.html#parecidos">Parecidos</a>.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

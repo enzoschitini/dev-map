@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interface Segregation | SOLID · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../assets/css/design-system.css">
+</head>
+<body data-root="../../" data-tab="clean-code" data-page="interface-segregation">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / SOLID / Interface Segregation</div>
+          <h1 class="page-title" tabindex="-1">Interface Segregation</h1>
+          <p class="lead">Como evitar que uma classe seja obrigada a implementar, e quem a usa a conhecer, métodos que não têm nada a ver com o que ela faz.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Uma empresa tem uma interface <code>Multifuncional</code> com <code>imprimir</code>, <code>escanear</code> e <code>enviar_fax</code>. Faz sentido para a máquina grande do escritório. Aí compram uma impressora simples, que só imprime, e ela precisa "implementar" a interface inteira.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — uma interface larga demais para quem implementa</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Multifuncional</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">imprimir</span>(self, doc): ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">escanear</span>(self) -&gt; <span class="t-f">bytes</span>: ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">enviar_fax</span>(self, doc, numero): ...
+
+<span class="t-k">class</span> <span class="t-f">ImpressoraSimples</span>(<span class="t-f">Multifuncional</span>):
+    <span class="t-k">def</span> <span class="t-f">imprimir</span>(self, doc):
+        ...                                    <span class="t-c"># esse faz</span>
+    <span class="t-k">def</span> <span class="t-f">escanear</span>(self):
+        <span class="t-k">raise</span> <span class="t-f">NotImplementedError</span>             <span class="t-c"># esses dois ela nunca vai fazer</span>
+    <span class="t-k">def</span> <span class="t-f">enviar_fax</span>(self, doc, numero):
+        <span class="t-k">raise</span> <span class="t-f">NotImplementedError</span>
+
+<span class="t-k">def</span> <span class="t-f">imprimir_relatorio</span>(maquina: <span class="t-f">Multifuncional</span>):   <span class="t-c"># só usa imprimir()</span>
+    maquina.<span class="t-f">imprimir</span>(relatorio)</code></pre>
+            </div>
+          </div>
+          <p>Dois males andam juntos. Do lado de quem implementa: métodos que lançam erro ou ficam vazios, o que já é uma violação de <a href="liskov-substitution.html">Liskov</a>. Do lado de quem usa: <code>imprimir_relatorio</code> declara que precisa de uma máquina completa, e para testá-la você monta um falso com três métodos, dois deles sem uso.</p>
+
+          <h2 id="a-ideia">A ideia</h2>
+          <p>Ninguém deve ser forçado a depender de métodos que não usa. Em vez de uma interface grande para todos, <strong>várias pequenas</strong>, cada uma desenhada pelo que quem <em>usa</em> precisa, não pelo que quem implementa consegue.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Quem</th><th>Precisa de</th><th>Interface</th></tr></thead>
+              <tbody>
+                <tr><td>Rotina de relatório</td><td>Só imprimir</td><td><code>Impressora</code></td></tr>
+                <tr><td>Rotina de digitalização</td><td>Só escanear</td><td><code>Scanner</code></td></tr>
+                <tr><td>Máquina grande</td><td>Os dois, e o fax</td><td>Implementa as três</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é de que lado se desenha. Quem implementa pode juntar quantas interfaces quiser; quem usa pede só a fatia que precisa.</p>
+
+          <h2 id="depois">Como fica</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> typing <span class="t-k">import</span> Protocol
+
+<span class="t-c"># 1. uma interface por capacidade</span>
+<span class="t-k">class</span> <span class="t-f">Impressora</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">imprimir</span>(self, doc) -&gt; <span class="t-f">None</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">Scanner</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">escanear</span>(self) -&gt; <span class="t-f">bytes</span>: ...
+
+<span class="t-c"># 2. cada classe faz só o que sabe fazer</span>
+<span class="t-k">class</span> <span class="t-f">ImpressoraSimples</span>:
+    <span class="t-k">def</span> <span class="t-f">imprimir</span>(self, doc): ...
+
+<span class="t-k">class</span> <span class="t-f">MaquinaDoEscritorio</span>:
+    <span class="t-k">def</span> <span class="t-f">imprimir</span>(self, doc): ...
+    <span class="t-k">def</span> <span class="t-f">escanear</span>(self): ...
+
+<span class="t-c"># 3. quem usa pede só a fatia de que precisa</span>
+<span class="t-k">def</span> <span class="t-f">imprimir_relatorio</span>(impressora: <span class="t-f">Impressora</span>):
+    impressora.<span class="t-f">imprimir</span>(relatorio)</code></pre>
+              <pre><code><span class="t-c">// 1. uma interface por capacidade</span>
+<span class="t-k">interface</span> <span class="t-f">Impressora</span> {
+  <span class="t-f">imprimir</span>(doc: <span class="t-f">Documento</span>): <span class="t-f">void</span>;
+}
+
+<span class="t-k">interface</span> <span class="t-f">Scanner</span> {
+  <span class="t-f">escanear</span>(): <span class="t-f">Uint8Array</span>;
+}
+
+<span class="t-c">// 2. cada classe implementa só o que sabe fazer</span>
+<span class="t-k">class</span> <span class="t-f">ImpressoraSimples</span> <span class="t-k">implements</span> <span class="t-f">Impressora</span> {
+  <span class="t-f">imprimir</span>(doc: <span class="t-f">Documento</span>) { <span class="t-c">/* ... */</span> }
+}
+
+<span class="t-k">class</span> <span class="t-f">MaquinaDoEscritorio</span> <span class="t-k">implements</span> <span class="t-f">Impressora</span>, <span class="t-f">Scanner</span> {
+  <span class="t-f">imprimir</span>(doc: <span class="t-f">Documento</span>) { <span class="t-c">/* ... */</span> }
+  <span class="t-f">escanear</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">Uint8Array</span>(); }
+}
+
+<span class="t-c">// 3. quem usa pede só a fatia de que precisa</span>
+<span class="t-k">function</span> <span class="t-f">imprimirRelatorio</span>(impressora: <span class="t-f">Impressora</span>) {
+  impressora.<span class="t-f">imprimir</span>(relatorio);
+}</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste de <code>imprimir_relatorio</code> agora recebe um falso de uma linha: qualquer objeto com <code>imprimir</code>. Um bom sinal de que a interface está do tamanho certo é o falso do teste caber em uma tela.</p></div>
+          <div class="callout" data-kind="note"><p>Em Python, com <em>duck typing</em>, o <code>Protocol</code> não obriga ninguém a nada em tempo de execução; ele serve para a leitura e para o verificador de tipos. O princípio vale igual: a assinatura de <code>imprimir_relatorio</code> diz, a quem a lê, do que ela depende de verdade.</p></div>
+
+          <h2 id="como-reconhecer">Como reconhecer a violação</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Sintoma</th><th>O que está acontecendo</th></tr></thead>
+              <tbody>
+                <tr><td>Implementações com métodos que só lançam <code>NotImplementedError</code> ou ficam vazios</td><td>A interface pede mais do que a classe consegue honrar</td></tr>
+                <tr><td>Interface com 8 ou 10 métodos, e cada cliente usa dois</td><td>Vários papéis foram colados em um nome só</td></tr>
+                <tr><td>Falso de teste enorme, quase todo <code>pass</code></td><td>O teste precisa fingir o que não usa</td></tr>
+                <tr><td>Mudança num método que ninguém chama quebra o build de quem implementa</td><td>Dependência por conveniência, não por necessidade</td></tr>
+                <tr><td>Parâmetro tipado como o serviço inteiro, usado para um único método</td><td>Quem chama depende do mundo para usar um pedaço</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="quando-nao-aplicar">Quando não aplicar</h2>
+          <p>Segregar demais cria o problema oposto: dezenas de interfaces de um método, nomes difíceis de achar e um construtor que recebe seis delas. O custo é o de navegação.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Todos os clientes usam todos os métodos juntos</td><td>A interface já é coesa; dividir só obriga a pedir três coisas em vez de uma</td><td>Mantenha uma interface</td></tr>
+                <tr><td>Uma única implementação e um único cliente</td><td>Nada está sendo forçado a depender do que não usa</td><td>Espere o segundo cliente com necessidades diferentes</td></tr>
+                <tr><td>A interface é de uma biblioteca que você não controla</td><td>Não dá para dividir o que não é seu</td><td>Declare, do seu lado, a fatia que usa; é o <a href="estruturais/adapter/explicacao.html">Adapter</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="danger"><p>Sinal de exagero: uma interface por método, com nome de verbo (<code>Imprimivel</code>, <code>Escaneavel</code>, <code>Faxavel</code>) e classes que implementam cinco delas sempre em conjunto. Se elas andam sempre juntas, são uma interface só.</p></div>
+
+          <h2 id="relacao">Relação com os outros</h2>
+          <p>Interface Segregation é a prevenção natural do <a href="liskov-substitution.html">Liskov</a>: se ninguém é obrigado a assinar o que não cumpre, ninguém lança <code>NotImplementedError</code>. Ela também alimenta o <a href="dependency-inversion.html">Dependency Inversion</a>, porque abstrações pequenas e orientadas a quem usa são as mais fáceis de inverter. E o <a href="estruturais/facade/explicacao.html">Facade</a> faz o movimento contrário, de propósito: junta uma interface grande em uma porta simples para quem não quer ver o detalhe.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../assets/js/site.js"></script>
+<script src="../../assets/js/shell.js"></script>
+<script src="../../assets/js/ds.js"></script>
+</body>
+</html>

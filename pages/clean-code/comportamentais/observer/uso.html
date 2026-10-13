@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Observer · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/observer/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Observer</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Cinco situações em que o Observer resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o assunto deixa de saber.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que cinco</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Observer. Quando dois casos se resolvem com o mesmo raciocínio — avisar o comprador e registrar auditoria na mesma mudança, por exemplo — só um fica. Seguindo essa regra, sobraram cinco motivos. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o assunto deixa de saber</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#varios-interessados">Um fato, várias reações independentes</a></td><td>Quem reage, e quantos são</td></tr>
+                <tr><td>2</td><td><a href="#tela-acompanha-modelo">A tela acompanha o modelo</a></td><td>Que existe tela</td></tr>
+                <tr><td>3</td><td><a href="#entram-e-saem">Quem escuta entra e sai</a></td><td>Quem está ouvindo agora</td></tr>
+                <tr><td>4</td><td><a href="#plugins">Extensões de terceiros</a></td><td>Quais pacotes existem</td></tr>
+                <tr><td>5</td><td><a href="#progresso">Biblioteca que reporta progresso</a></td><td>Quem consome: barra, log ou terminal</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="varios-interessados">1. Um fato, várias reações independentes</h2>
+          <p><strong>Situação.</strong> No galpão, quando a quantidade de um produto cai abaixo do mínimo, três coisas precisam acontecer: compras abre um pedido ao fornecedor, o canal dos compradores é avisado no chat e o anúncio no marketplace é pausado para não vender o que não existe. Hoje as três moram dentro do método que baixa o estoque.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o estoque chama os três</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Estoque</span>:
+    <span class="t-k">def</span> <span class="t-f">baixar</span>(self, sku, quantidade):
+        item = self._itens[sku]
+        item.quantidade -= quantidade
+
+        <span class="t-k">if</span> item.quantidade &lt; item.minimo:
+            compras.<span class="t-f">abrir_pedido</span>(sku, item.lote_ideal)
+            chat.<span class="t-f">enviar</span>(<span class="t-s">"#compras"</span>, <span class="t-s">f"{sku} abaixo do mínimo"</span>)  <span class="t-c"># e se o chat cair?</span>
+            marketplace.<span class="t-f">pausar_anuncio</span>(sku)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O módulo mais básico do sistema importa compras, chat e marketplace. Se o chat estiver fora do ar, a exceção sobe e o anúncio nunca é pausado, com o produto já zerado. E quando o BI pedir "registre toda vez que algo ficar abaixo do mínimo", é mais uma edição no <code>baixar</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o estoque avisa; a montagem decide quem ouve</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Estoque</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._itens = {}
+        self._ao_ficar_baixo = []          <span class="t-c"># quem quer saber</span>
+
+    <span class="t-k">def</span> <span class="t-f">ao_ficar_baixo</span>(self, ouvinte):
+        self._ao_ficar_baixo.<span class="t-f">append</span>(ouvinte)
+
+    <span class="t-k">def</span> <span class="t-f">baixar</span>(self, sku, quantidade):
+        item = self._itens[sku]
+        item.quantidade -= quantidade
+        <span class="t-k">if</span> item.quantidade &lt; item.minimo:
+            self.<span class="t-f">_avisar</span>(sku, item.quantidade)
+
+    <span class="t-k">def</span> <span class="t-f">_avisar</span>(self, sku, restante):
+        <span class="t-k">for</span> ouvinte <span class="t-k">in</span> self._ao_ficar_baixo:
+            <span class="t-k">try</span>:
+                <span class="t-f">ouvinte</span>(sku, restante)
+            <span class="t-k">except</span> <span class="t-f">Exception</span>:
+                log.<span class="t-f">exception</span>(<span class="t-s">"ouvinte de estoque baixo falhou"</span>)   <span class="t-c"># os outros seguem</span>
+
+<span class="t-c"># a montagem: o único lugar que conhece todo mundo</span>
+estoque.<span class="t-f">ao_ficar_baixo</span>(<span class="t-k">lambda</span> sku, q: compras.<span class="t-f">abrir_pedido</span>(sku))
+estoque.<span class="t-f">ao_ficar_baixo</span>(<span class="t-k">lambda</span> sku, q: chat.<span class="t-f">enviar</span>(<span class="t-s">"#compras"</span>, <span class="t-s">f"{sku}: {q} restantes"</span>))
+estoque.<span class="t-f">ao_ficar_baixo</span>(<span class="t-k">lambda</span> sku, q: marketplace.<span class="t-f">pausar_anuncio</span>(sku))</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o assunto deixa de saber.</strong> Que existem compras, chat e marketplace, e quantos deles há. O <code>Estoque</code> não importa nenhum dos três, e o BI vira mais uma linha na montagem. Repare que cada reação falha sozinha: o <code>try</code> dentro do laço é o que impede o chat fora do ar de segurar o anúncio. Aqui o ouvinte é uma função simples; uma interface com um método só seria cerimônia.</p>
+          <div class="callout" data-kind="warn"><p>Sem o <code>try</code>, o laço volta a ser o problema de antes: o primeiro ouvinte que levanta impede os seguintes. Decida o que fazer com a falha (registrar, tentar de novo, avisar alguém) <em>antes</em> de ter ouvintes demais.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="tela-acompanha-modelo">2. A tela acompanha o modelo</h2>
+          <p><strong>Situação.</strong> Na loja web, o mesmo carrinho aparece em três lugares: o número no ícone do cabeçalho, o mini-carrinho lateral e o total no fim do checkout. Itens entram e saem por vários caminhos: botão da vitrine, página do produto, cupom, "comprar de novo".</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — quem altera é quem lembra de atualizar a tela</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Carrinho</span> {
+  itens: <span class="t-f">Item</span>[] = [];
+
+  <span class="t-f">adicionar</span>(item: <span class="t-f">Item</span>) {
+    <span class="t-k">this</span>.itens.<span class="t-f">push</span>(item);
+    <span class="t-f">renderBadgeDoHeader</span>(<span class="t-k">this</span>);
+    <span class="t-f">renderMiniCarrinho</span>(<span class="t-k">this</span>);
+    <span class="t-f">renderTotalDoCheckout</span>(<span class="t-k">this</span>);
+  }
+
+  <span class="t-f">remover</span>(item: <span class="t-f">Item</span>) {
+    <span class="t-k">this</span>.itens = <span class="t-k">this</span>.itens.<span class="t-f">filter</span>(i =&gt; i !== item);
+    <span class="t-f">renderBadgeDoHeader</span>(<span class="t-k">this</span>);
+    <span class="t-f">renderMiniCarrinho</span>(<span class="t-k">this</span>);
+    <span class="t-c">// esqueceu o total do checkout</span>
+  }
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O modelo importa funções de tela: não roda em teste de unidade nem no servidor. Cada tela nova é uma edição em todo método que altera o carrinho, e <code>aplicarCupom</code> é o próximo a esquecer uma. O bug que isso produz é o pior tipo: o total do checkout fica desatualizado só depois de remover um item.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — todo caminho termina no mesmo aviso</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">type</span> <span class="t-f">Ouvinte</span>&lt;<span class="t-f">T</span>&gt; = (valor: <span class="t-f">T</span>) =&gt; <span class="t-f">void</span>;
+
+<span class="t-k">class</span> <span class="t-f">Carrinho</span> {
+  <span class="t-k">private</span> itens: <span class="t-f">Item</span>[] = [];
+  <span class="t-k">private</span> ouvintes: <span class="t-f">Ouvinte</span>&lt;<span class="t-k">readonly</span> <span class="t-f">Item</span>[]&gt;[] = [];
+
+  <span class="t-f">aoMudar</span>(ouvinte: <span class="t-f">Ouvinte</span>&lt;<span class="t-k">readonly</span> <span class="t-f">Item</span>[]&gt;) {
+    <span class="t-k">this</span>.ouvintes.<span class="t-f">push</span>(ouvinte);
+  }
+
+  <span class="t-f">adicionar</span>(item: <span class="t-f">Item</span>) {
+    <span class="t-k">this</span>.itens.<span class="t-f">push</span>(item);
+    <span class="t-k">this</span>.<span class="t-f">avisar</span>();
+  }
+
+  <span class="t-f">remover</span>(item: <span class="t-f">Item</span>) {
+    <span class="t-k">this</span>.itens = <span class="t-k">this</span>.itens.<span class="t-f">filter</span>(i =&gt; i !== item);
+    <span class="t-k">this</span>.<span class="t-f">avisar</span>();
+  }
+
+  <span class="t-k">private</span> <span class="t-f">avisar</span>() {
+    <span class="t-k">for</span> (<span class="t-k">const</span> ouvinte <span class="t-k">of</span> <span class="t-k">this</span>.ouvintes) <span class="t-f">ouvinte</span>(<span class="t-k">this</span>.itens);
+  }
+}
+
+<span class="t-c">// cada pedaço da tela se registra; o carrinho não sabe que eles existem</span>
+carrinho.<span class="t-f">aoMudar</span>(itens =&gt; badge.textContent = <span class="t-f">String</span>(itens.length));
+carrinho.<span class="t-f">aoMudar</span>(itens =&gt; <span class="t-f">renderMiniCarrinho</span>(itens));
+carrinho.<span class="t-f">aoMudar</span>(itens =&gt; <span class="t-f">renderTotal</span>(itens));</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o assunto deixa de saber.</strong> Que existe uma tela. O ganho aqui não é a lista, é o <code>avisar()</code>: um ponto só, chamado no fim de <em>todo</em> método que altera. Esquecer uma tela deixa de ser possível, porque nenhuma tela é lembrada por quem altera. O ouvinte recebe o estado novo como <code>readonly</code>, então ele lê e não consegue mexer no carrinho de volta.</p>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="entram-e-saem">3. Quem escuta entra e sai</h2>
+          <p><strong>Situação.</strong> Um painel de cotações recebe o preço do dólar por uma única conexão. Cada widget (gráfico, ticker, alerta de preço) mostra esse valor, e a pessoa abre e fecha widgets o dia inteiro.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — dá para entrar, mas não dá para sair</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">FeedDeCotacao</span> {
+  <span class="t-k">private</span> widgets: <span class="t-f">Widget</span>[] = [];
+
+  <span class="t-f">registrar</span>(widget: <span class="t-f">Widget</span>) {
+    <span class="t-k">this</span>.widgets.<span class="t-f">push</span>(widget);      <span class="t-c">// e para sair?</span>
+  }
+
+  <span class="t-f">receber</span>(preco: <span class="t-f">number</span>) {
+    <span class="t-k">for</span> (<span class="t-k">const</span> w <span class="t-k">of</span> <span class="t-k">this</span>.widgets) w.<span class="t-f">atualizar</span>(preco);
+  }
+}
+
+<span class="t-c">// a pessoa fecha o gráfico...</span>
+grafico.<span class="t-f">destruir</span>();   <span class="t-c">// ...mas ele continua na lista: recebe preço e mexe em DOM que não existe</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada widget fechado fica na lista para sempre: a memória cresce, e cada preço novo tenta atualizar um elemento que já saiu da página e levanta erro. Abrir o mesmo widget dez vezes o registra dez vezes. E, para tirar um, quem fecha precisaria ter o feed e acesso à lista.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — assinar devolve o jeito de cancelar</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">type</span> <span class="t-f">Cancelar</span> = () =&gt; <span class="t-f">void</span>;
+
+<span class="t-k">class</span> <span class="t-f">FeedDeCotacao</span> {
+  <span class="t-k">private</span> ouvintes = <span class="t-k">new</span> <span class="t-f">Set</span>&lt;(preco: <span class="t-f">number</span>) =&gt; <span class="t-f">void</span>&gt;();
+
+  <span class="t-f">assinar</span>(ouvinte: (preco: <span class="t-f">number</span>) =&gt; <span class="t-f">void</span>): <span class="t-f">Cancelar</span> {
+    <span class="t-k">this</span>.ouvintes.<span class="t-f">add</span>(ouvinte);
+    <span class="t-k">return</span> () =&gt; <span class="t-k">this</span>.ouvintes.<span class="t-f">delete</span>(ouvinte);   <span class="t-c">// a saída vai com quem entrou</span>
+  }
+
+  <span class="t-f">receber</span>(preco: <span class="t-f">number</span>) {
+    <span class="t-k">for</span> (<span class="t-k">const</span> ouvinte <span class="t-k">of</span> [...<span class="t-k">this</span>.ouvintes]) <span class="t-f">ouvinte</span>(preco);   <span class="t-c">// cópia: dá para cancelar durante o aviso</span>
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">WidgetGrafico</span> {
+  <span class="t-k">private</span> cancelar: <span class="t-f">Cancelar</span>;
+
+  <span class="t-k">constructor</span>(feed: <span class="t-f">FeedDeCotacao</span>, <span class="t-k">private</span> el: <span class="t-f">HTMLElement</span>) {
+    <span class="t-k">this</span>.cancelar = feed.<span class="t-f">assinar</span>(preco =&gt; <span class="t-k">this</span>.<span class="t-f">desenhar</span>(preco));
+  }
+
+  <span class="t-f">destruir</span>() {
+    <span class="t-k">this</span>.<span class="t-f">cancelar</span>();
+    <span class="t-k">this</span>.el.<span class="t-f">remove</span>();
+  }
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o assunto deixa de saber.</strong> Quem está ouvindo <em>agora</em>. A lista muda a cada clique e o feed não acompanha: quem assinou guarda a função de saída e a chama quando for embora, sem tocar na lista. O <code>Set</code> impede o registro duplicado, e a cópia no laço protege do ouvinte que se cancela no meio do aviso, caso comum em "avisar uma vez e sair".</p>
+          <div class="callout" data-kind="warn"><p>Toda assinatura precisa de um ponto onde o cancelamento acontece de verdade: <code>destruir</code>, o <em>cleanup</em> do <code>useEffect</code>, o <code>ngOnDestroy</code>. Um <code>assinar</code> sem <code>cancelar</code> correspondente é um vazamento, mesmo que hoje não pareça.</p></div>
+
+          <!-- 4 ─────────────────────────────────────────────── -->
+          <h2 id="plugins">4. Extensões de terceiros</h2>
+          <p><strong>Situação.</strong> Um CMS é um pacote que outras equipes e fornecedores instalam. Quando um artigo é salvo, o time de SEO quer gerar o slug, a infraestrutura quer invalidar o cache do CDN e um plugin de terceiros quer postar no Twitter. O núcleo não é de nenhum deles, e não dá para editá-lo para cada extensão.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o núcleo sabe quais extensões existem</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">salvar</span>(artigo):
+    artigo.slug = <span class="t-f">gerar_slug</span>(artigo.titulo)              <span class="t-c"># SEO</span>
+    banco.<span class="t-f">gravar</span>(artigo)
+
+    <span class="t-k">if</span> config.cdn_ativo:
+        cdn.<span class="t-f">invalidar</span>(artigo.url)                        <span class="t-c"># infraestrutura</span>
+    <span class="t-k">if</span> config.twitter_ativo:
+        twitter.<span class="t-f">postar</span>(artigo.titulo, artigo.url)        <span class="t-c"># terceiro</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O núcleo importa o que não é dele, e há um <code>if config.x_ativo</code> a mais para cada extensão. O terceiro só entra abrindo PR no repositório do núcleo. E nada diz quais pontos do ciclo de vida são oferecidos: cada plugin pede o seu, e vira uma negociação caso a caso.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — eventos nomeados, e o núcleo não importa ninguém</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> collections <span class="t-k">import</span> defaultdict
+
+<span class="t-k">class</span> <span class="t-f">Ganchos</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._ouvintes = <span class="t-f">defaultdict</span>(<span class="t-f">list</span>)
+
+    <span class="t-k">def</span> <span class="t-f">ao</span>(self, evento: <span class="t-f">str</span>):
+        <span class="t-k">def</span> <span class="t-f">registrar</span>(funcao):
+            self._ouvintes[evento].<span class="t-f">append</span>(funcao)
+            <span class="t-k">return</span> funcao
+        <span class="t-k">return</span> registrar
+
+    <span class="t-k">def</span> <span class="t-f">disparar</span>(self, evento: <span class="t-f">str</span>, **dados):
+        <span class="t-k">for</span> funcao <span class="t-k">in</span> self._ouvintes[evento]:
+            <span class="t-f">funcao</span>(**dados)
+
+ganchos = <span class="t-f">Ganchos</span>()
+
+<span class="t-k">def</span> <span class="t-f">salvar</span>(artigo):
+    ganchos.<span class="t-f">disparar</span>(<span class="t-s">"antes_de_salvar"</span>, artigo=artigo)
+    banco.<span class="t-f">gravar</span>(artigo)
+    ganchos.<span class="t-f">disparar</span>(<span class="t-s">"depois_de_salvar"</span>, artigo=artigo)
+
+<span class="t-c"># em outro pacote, que o núcleo nunca importa:</span>
+<span class="t-f">@ganchos.ao</span>(<span class="t-s">"depois_de_salvar"</span>)
+<span class="t-k">def</span> <span class="t-f">invalidar_cdn</span>(artigo):
+    cdn.<span class="t-f">invalidar</span>(artigo.url)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o assunto deixa de saber.</strong> Que pacotes existem. Cada extensão é um módulo que se registra a si mesmo; instalar ou remover um plugin não toca no núcleo. O que o núcleo passa a prometer são os <em>nomes dos eventos</em> e os dados que cada um leva: <code>antes_de_salvar</code> deixa o plugin ajustar o artigo (o slug, por exemplo), e por isso o nome diz "antes"; <code>depois_de_salvar</code> só avisa.</p>
+          <div class="callout" data-kind="warn"><p>Os nomes dos eventos e o conteúdo de <code>**dados</code> passam a ser API pública. Renomear um evento ou tirar um campo quebra plugins que você nem sabe que existem. Ofereça poucos pontos, bem nomeados, e documente-os.</p></div>
+
+          <!-- 5 ─────────────────────────────────────────────── -->
+          <h2 id="progresso">5. Biblioteca que reporta progresso</h2>
+          <p><strong>Situação.</strong> A equipe tem uma biblioteca interna que exporta o relatório anual (dois milhões de linhas) para CSV. Ela é usada pelo job noturno, que quer log; pela tela do admin, que quer uma barra; e por um CLI, que quer escrever no terminal.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — um parâmetro para cada consumidor</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">exportar</span>(consulta, destino, barra=<span class="t-k">None</span>, logger=<span class="t-k">None</span>, modo_cli=<span class="t-k">False</span>):
+    total = consulta.<span class="t-f">contar</span>()
+    <span class="t-k">with</span> <span class="t-f">open</span>(destino, <span class="t-s">"w"</span>) <span class="t-k">as</span> f:
+        <span class="t-k">for</span> i, linha <span class="t-k">in</span> <span class="t-f">enumerate</span>(consulta.<span class="t-f">linhas</span>(), start=<span class="t-n">1</span>):
+            f.<span class="t-f">write</span>(<span class="t-f">formatar</span>(linha))
+            <span class="t-k">if</span> barra:
+                barra.<span class="t-f">atualizar</span>(i / total)
+            <span class="t-k">if</span> logger <span class="t-k">and</span> i % <span class="t-n">10_000</span> == <span class="t-n">0</span>:
+                logger.<span class="t-f">info</span>(<span class="t-s">f"{i}/{total}"</span>)
+            <span class="t-k">if</span> modo_cli:
+                <span class="t-f">print</span>(<span class="t-s">f"\r{i}/{total}"</span>, end=<span class="t-s">""</span>)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A função que exporta conhece barras, loggers e terminal. O próximo consumidor (uma métrica no Prometheus) é mais um parâmetro e mais um <code>if</code> no laço. E uma biblioteca que escreve na tela por conta própria deixa de poder rodar dentro de outra aplicação.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a biblioteca avisa; cada consumidor pluga o seu</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Exportador</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._ouvintes = []
+
+    <span class="t-k">def</span> <span class="t-f">ao_progredir</span>(self, ouvinte):
+        self._ouvintes.<span class="t-f">append</span>(ouvinte)
+
+    <span class="t-k">def</span> <span class="t-f">exportar</span>(self, consulta, destino):
+        total = consulta.<span class="t-f">contar</span>()
+        <span class="t-k">with</span> <span class="t-f">open</span>(destino, <span class="t-s">"w"</span>) <span class="t-k">as</span> f:
+            <span class="t-k">for</span> i, linha <span class="t-k">in</span> <span class="t-f">enumerate</span>(consulta.<span class="t-f">linhas</span>(), start=<span class="t-n">1</span>):
+                f.<span class="t-f">write</span>(<span class="t-f">formatar</span>(linha))
+                <span class="t-k">for</span> ouvinte <span class="t-k">in</span> self._ouvintes:
+                    <span class="t-f">ouvinte</span>(i, total)
+
+<span class="t-c"># cada consumidor pluga o que quer; quem não quer nada não escreve nada</span>
+exportador.<span class="t-f">ao_progredir</span>(<span class="t-k">lambda</span> i, t: barra.<span class="t-f">atualizar</span>(i / t))                       <span class="t-c"># tela do admin</span>
+exportador.<span class="t-f">ao_progredir</span>(<span class="t-k">lambda</span> i, t: i % <span class="t-n">10_000</span> <span class="t-k">or</span> logger.<span class="t-f">info</span>(<span class="t-s">f"{i}/{t}"</span>))   <span class="t-c"># job noturno</span>
+exportador.<span class="t-f">ao_progredir</span>(<span class="t-k">lambda</span> i, t: <span class="t-f">print</span>(<span class="t-s">f"\r{i}/{t}"</span>, end=<span class="t-s">""</span>))            <span class="t-c"># CLI</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que o assunto deixa de saber.</strong> Quem consome. A dependência passa a apontar de fora para dentro: barra, log e terminal conhecem o exportador, e ele não conhece nenhum dos três. Sem ouvintes, a lista está vazia e o custo é zero. Repare que o aviso leva só números simples (<code>feito</code> e <code>total</code>), e não o próprio exportador, para ninguém poder mexer nele por dentro.</p>
+          <div class="callout" data-kind="warn"><p>O aviso é síncrono: um ouvinte lento atrasa a exportação inteira, a cada linha. Se o ouvinte precisa fazer algo caro (gravar uma métrica pela rede), aviste a cada N linhas, ou entregue o trabalho a uma fila.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos cinco:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Registrar auditoria de toda mudança de status</td><td>1 — mais uma reação ao mesmo fato</td></tr>
+                <tr><td>Invalidar um cache quando o dado de origem muda</td><td>1 — a reação é um efeito colateral independente</td></tr>
+                <tr><td>Total e subtotal recalculados quando um item muda</td><td>2 — o valor derivado acompanha o modelo</td></tr>
+                <tr><td><code>addEventListener</code> no DOM</td><td>2 e 3 — é o Observer pronto; lembre do <code>removeEventListener</code>, que é o caso 3</td></tr>
+                <tr><td>Cancelar a assinatura no <em>cleanup</em> de um componente</td><td>3 — quem assina guarda a saída</td></tr>
+                <tr><td>Ganchos <code>before_save</code> de um ORM, ou <em>middlewares</em></td><td>4 — o dono do ciclo de vida oferece pontos nomeados</td></tr>
+                <tr><td>Barra de progresso de upload ou de download</td><td>5 — o código reutilizável avisa, o consumidor pluga</td></tr>
+                <tr><td>Eventos de domínio entre módulos de um monólito</td><td>1 e 4 — veja os <a href="explicacao.html#sinais-de-abuso">sinais de abuso</a> antes de generalizar</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Observer, mas não é: avisar outro <em>serviço</em>, em outra máquina, de que um pedido foi pago. O assunto e quem escuta já não vivem na mesma memória, e o aviso precisa sobreviver a uma queda e ser tentado de novo. Isso é fila ou broker, com entrega persistente; o Observer em memória perderia o aviso junto com o processo. Veja também <a href="explicacao.html#quando-nao-usar">Quando não usar</a> e <a href="explicacao.html#parecidos">Parecidos</a>.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

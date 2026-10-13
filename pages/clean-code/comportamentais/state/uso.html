@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | State · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/state/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / State</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o State resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o estado absorve.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o State. O ciclo de vida de um pedido, o caso mais comum, já é o exemplo da <a href="explicacao.html#o-problema">Explicação</a>, e outros fluxos de aprovação se resolvem com o mesmo raciocínio. Sobraram três motivos aqui. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o estado absorve</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#ferramenta-ativa">O mesmo gesto, uma ferramenta diferente por vez</a></td><td>O que fazer com cada gesto, e os dados do gesto em andamento</td></tr>
+                <tr><td>2</td><td><a href="#disjuntor">Flags que descrevem a fase juntas</a></td><td>Em que modo de falha o sistema está, e o que ele guarda para decidir</td></tr>
+                <tr><td>3</td><td><a href="#reserva-com-prazo">Algo que precisa acontecer ao entrar e ao sair</a></td><td>O que fazer em toda entrada e saída, por qualquer caminho</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="ferramenta-ativa">1. O mesmo gesto, uma ferramenta diferente por vez</h2>
+          <p><strong>Situação.</strong> Um editor de imagens no navegador. O canvas recebe três eventos do mouse: pressionar, mover e soltar. O que eles fazem depende da ferramenta ativa: o pincel risca, a seleção desenha um retângulo, e a pessoa troca de ferramenta quando quiser.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada handler testa a ferramenta, e as variáveis soltas vazam</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">let</span> ferramenta: <span class="t-s">"pincel"</span> | <span class="t-s">"borracha"</span> | <span class="t-s">"selecao"</span> = <span class="t-s">"pincel"</span>;
+<span class="t-k">let</span> desenhando = <span class="t-k">false</span>;
+<span class="t-k">let</span> inicio: { x: <span class="t-f">number</span>; y: <span class="t-f">number</span> } | <span class="t-k">null</span> = <span class="t-k">null</span>;
+
+canvas.<span class="t-f">addEventListener</span>(<span class="t-s">"mousedown"</span>, (e) =&gt; {
+  <span class="t-k">if</span> (ferramenta === <span class="t-s">"pincel"</span>)        { desenhando = <span class="t-k">true</span>; <span class="t-f">tracar</span>(e.offsetX, e.offsetY, cor); }
+  <span class="t-k">else</span> <span class="t-k">if</span> (ferramenta === <span class="t-s">"borracha"</span>) { desenhando = <span class="t-k">true</span>; <span class="t-f">apagar</span>(e.offsetX, e.offsetY); }
+  <span class="t-k">else</span> <span class="t-k">if</span> (ferramenta === <span class="t-s">"selecao"</span>)  { inicio = { x: e.offsetX, y: e.offsetY }; }
+});
+
+canvas.<span class="t-f">addEventListener</span>(<span class="t-s">"mousemove"</span>, (e) =&gt; {
+  <span class="t-k">if</span> (ferramenta === <span class="t-s">"pincel"</span> &amp;&amp; desenhando)        <span class="t-f">tracar</span>(e.offsetX, e.offsetY, cor);
+  <span class="t-k">else</span> <span class="t-k">if</span> (ferramenta === <span class="t-s">"borracha"</span> &amp;&amp; desenhando) <span class="t-f">apagar</span>(e.offsetX, e.offsetY);
+  <span class="t-k">else</span> <span class="t-k">if</span> (ferramenta === <span class="t-s">"selecao"</span> &amp;&amp; inicio)      <span class="t-f">retanguloDeSelecao</span>(inicio, e);
+});
+
+canvas.<span class="t-f">addEventListener</span>(<span class="t-s">"mouseup"</span>, (e) =&gt; {
+  desenhando = <span class="t-k">false</span>;
+  <span class="t-k">if</span> (ferramenta === <span class="t-s">"selecao"</span> &amp;&amp; inicio) { <span class="t-f">confirmarSelecao</span>(inicio, e); inicio = <span class="t-k">null</span>; }
+});</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada ferramenta nova obriga a abrir os três handlers. As variáveis <code>desenhando</code> e <code>inicio</code> são de uma ferramenta, mas vivem no escopo de todas: troque da seleção para o pincel no meio de um arrasto e o estado de uma passa para a outra. E o que o pincel faz está espalhado em três lugares.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — cada ferramenta é um objeto, com o próprio estado</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">interface</span> <span class="t-f">Ferramenta</span> {
+  <span class="t-f">aoPressionar</span>(x: <span class="t-f">number</span>, y: <span class="t-f">number</span>): <span class="t-f">void</span>;
+  <span class="t-f">aoMover</span>(x: <span class="t-f">number</span>, y: <span class="t-f">number</span>): <span class="t-f">void</span>;
+  <span class="t-f">aoSoltar</span>(x: <span class="t-f">number</span>, y: <span class="t-f">number</span>): <span class="t-f">void</span>;
+}
+
+<span class="t-k">class</span> <span class="t-f">Pincel</span> <span class="t-k">implements</span> <span class="t-f">Ferramenta</span> {
+  <span class="t-k">private</span> desenhando = <span class="t-k">false</span>;
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> cor: <span class="t-f">string</span>) {}
+
+  <span class="t-f">aoPressionar</span>(x: <span class="t-f">number</span>, y: <span class="t-f">number</span>) { <span class="t-k">this</span>.desenhando = <span class="t-k">true</span>; <span class="t-f">tracar</span>(x, y, <span class="t-k">this</span>.cor); }
+  <span class="t-f">aoMover</span>(x: <span class="t-f">number</span>, y: <span class="t-f">number</span>)     { <span class="t-k">if</span> (<span class="t-k">this</span>.desenhando) <span class="t-f">tracar</span>(x, y, <span class="t-k">this</span>.cor); }
+  <span class="t-f">aoSoltar</span>()                      { <span class="t-k">this</span>.desenhando = <span class="t-k">false</span>; }
+}
+
+<span class="t-k">class</span> <span class="t-f">Selecao</span> <span class="t-k">implements</span> <span class="t-f">Ferramenta</span> {
+  <span class="t-k">private</span> inicio?: { x: <span class="t-f">number</span>; y: <span class="t-f">number</span> };
+
+  <span class="t-f">aoPressionar</span>(x: <span class="t-f">number</span>, y: <span class="t-f">number</span>) { <span class="t-k">this</span>.inicio = { x, y }; }
+  <span class="t-f">aoMover</span>(x: <span class="t-f">number</span>, y: <span class="t-f">number</span>)     { <span class="t-k">if</span> (<span class="t-k">this</span>.inicio) <span class="t-f">retanguloDeSelecao</span>(<span class="t-k">this</span>.inicio, { x, y }); }
+  <span class="t-f">aoSoltar</span>(x: <span class="t-f">number</span>, y: <span class="t-f">number</span>) {
+    <span class="t-k">if</span> (<span class="t-k">this</span>.inicio) <span class="t-f">confirmarSelecao</span>(<span class="t-k">this</span>.inicio, { x, y });
+    <span class="t-k">this</span>.inicio = <span class="t-k">undefined</span>;
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">Editor</span> {
+  <span class="t-k">private</span> ferramenta: <span class="t-f">Ferramenta</span> = <span class="t-k">new</span> <span class="t-f">Pincel</span>(<span class="t-s">"#000"</span>);
+
+  <span class="t-f">trocar</span>(nova: <span class="t-f">Ferramenta</span>) { <span class="t-k">this</span>.ferramenta = nova; }   <span class="t-c">// o arrasto da anterior morre com ela</span>
+
+  <span class="t-f">ligar</span>(canvas: <span class="t-f">HTMLCanvasElement</span>) {
+    canvas.<span class="t-f">addEventListener</span>(<span class="t-s">"mousedown"</span>, (e) =&gt; <span class="t-k">this</span>.ferramenta.<span class="t-f">aoPressionar</span>(e.offsetX, e.offsetY));
+    canvas.<span class="t-f">addEventListener</span>(<span class="t-s">"mousemove"</span>, (e) =&gt; <span class="t-k">this</span>.ferramenta.<span class="t-f">aoMover</span>(e.offsetX, e.offsetY));
+    canvas.<span class="t-f">addEventListener</span>(<span class="t-s">"mouseup"</span>,   (e) =&gt; <span class="t-k">this</span>.ferramenta.<span class="t-f">aoSoltar</span>(e.offsetX, e.offsetY));
+  }
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o estado absorve.</strong> O que fazer com cada gesto <em>e</em> os dados do gesto em andamento. O <code>desenhando</code> pertence ao pincel e o <code>inicio</code> pertence à seleção; trocar de ferramenta descarta o objeto e o que ele guardava. O <code>Editor</code> fica com três linhas de delegação, e uma ferramenta nova é uma classe nova.</p>
+          <div class="callout" data-kind="note"><p>Este é o caso mais próximo do Strategy: quem troca de ferramenta é a pessoa, de fora. O que o mantém como State é que cada ferramenta guarda dados de um gesto em andamento, e esses dados nascem e morrem com ela. Se as ferramentas não guardassem nada, seria Strategy.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="disjuntor">2. Flags que descrevem a fase juntas</h2>
+          <p><strong>Situação.</strong> O serviço de cotação de frete cai de vez em quando, e cada queda deixa o checkout esperando um timeout. A defesa é um disjuntor: depois de cinco falhas seguidas ele <em>abre</em> e passa a falhar rápido, sem chamar o serviço, por 30 segundos. Depois deixa passar uma tentativa de teste: se der certo, volta ao normal; se falhar, abre de novo.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — três campos que juntos dizem "em que fase estou"</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ClienteFrete</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self.falhas = <span class="t-n">0</span>
+        self.aberto = <span class="t-k">False</span>
+        self.meio_aberto = <span class="t-k">False</span>
+        self.aberto_desde = <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">cotar</span>(self, pedido):
+        <span class="t-k">if</span> self.aberto:
+            <span class="t-k">if</span> time.<span class="t-f">monotonic</span>() - self.aberto_desde &gt; <span class="t-n">30</span>:
+                self.aberto = <span class="t-k">False</span>
+                self.meio_aberto = <span class="t-k">True</span>
+            <span class="t-k">else</span>:
+                <span class="t-k">raise</span> <span class="t-f">ServicoIndisponivel</span>()
+        <span class="t-k">try</span>:
+            resp = frete_api.<span class="t-f">cotar</span>(pedido)
+        <span class="t-k">except</span> <span class="t-f">Exception</span>:
+            self.falhas += <span class="t-n">1</span>
+            <span class="t-k">if</span> self.meio_aberto <span class="t-k">or</span> self.falhas &gt;= <span class="t-n">5</span>:
+                self.aberto, self.meio_aberto = <span class="t-k">True</span>, <span class="t-k">False</span>
+                self.aberto_desde = time.<span class="t-f">monotonic</span>()
+            <span class="t-k">raise</span>
+        self.falhas = <span class="t-n">0</span>
+        self.meio_aberto = <span class="t-k">False</span>
+        <span class="t-k">return</span> resp</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A fase é <em>inferida</em> de três campos, e nada impede que <code>aberto</code> e <code>meio_aberto</code> sejam verdadeiros juntos. Cada regra nova (um limite de tempo, um contador de sucessos) é mais um <code>if</code> nesse método de vinte linhas, e testá-lo exige montar combinações de campos. E <code>aberto_desde</code> sobra preenchido quando o disjuntor não está aberto.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — três fases, cada uma com os dados que são dela</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Disjuntor</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, chamada, limite=<span class="t-n">5</span>, espera=<span class="t-n">30</span>):
+        self.chamada, self.limite, self.espera = chamada, limite, espera
+        self._estado = <span class="t-f">Fechado</span>()
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self, *args):
+        <span class="t-k">return</span> self._estado.<span class="t-f">executar</span>(self, *args)
+
+    <span class="t-k">def</span> <span class="t-f">ir_para</span>(self, estado):
+        self._estado = estado
+
+<span class="t-k">class</span> <span class="t-f">Fechado</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._falhas = <span class="t-n">0</span>                         <span class="t-c"># só existe aqui</span>
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self, d, *args):
+        <span class="t-k">try</span>:
+            resp = d.<span class="t-f">chamada</span>(*args)
+        <span class="t-k">except</span> <span class="t-f">Exception</span>:
+            self._falhas += <span class="t-n">1</span>
+            <span class="t-k">if</span> self._falhas &gt;= d.limite:
+                d.<span class="t-f">ir_para</span>(<span class="t-f">Aberto</span>())
+            <span class="t-k">raise</span>
+        self._falhas = <span class="t-n">0</span>
+        <span class="t-k">return</span> resp
+
+<span class="t-k">class</span> <span class="t-f">Aberto</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._desde = time.<span class="t-f">monotonic</span>()           <span class="t-c"># só existe aqui</span>
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self, d, *args):
+        <span class="t-k">if</span> time.<span class="t-f">monotonic</span>() - self._desde &lt; d.espera:
+            <span class="t-k">raise</span> <span class="t-f">ServicoIndisponivel</span>()          <span class="t-c"># falha rápido, sem chamar</span>
+        d.<span class="t-f">ir_para</span>(<span class="t-f">MeioAberto</span>())
+        <span class="t-k">return</span> d.<span class="t-f">executar</span>(*args)
+
+<span class="t-k">class</span> <span class="t-f">MeioAberto</span>:
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self, d, *args):
+        <span class="t-k">try</span>:
+            resp = d.<span class="t-f">chamada</span>(*args)
+        <span class="t-k">except</span> <span class="t-f">Exception</span>:
+            d.<span class="t-f">ir_para</span>(<span class="t-f">Aberto</span>())
+            <span class="t-k">raise</span>
+        d.<span class="t-f">ir_para</span>(<span class="t-f">Fechado</span>())
+        <span class="t-k">return</span> resp
+
+cotar = <span class="t-f">Disjuntor</span>(frete_api.cotar).executar</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o estado absorve.</strong> A fase e os dados que só fazem sentido nela. As falhas pertencem a <code>Fechado</code>, e o instante de abertura pertence a <code>Aberto</code>; cada um nasce zerado quando a fase começa, sem ninguém "limpar flags". A combinação "aberto e meio-aberto ao mesmo tempo" deixa de ser representável. As transições são disparadas pelo <em>resultado</em> das chamadas, e cada fase tem pouco mais de dez linhas.</p>
+          <div class="callout" data-kind="warn"><p>Com várias threads, as transições competem: duas falhas simultâneas podem abrir o disjuntor duas vezes, ou deixar passar duas tentativas no meio-aberto. Este exemplo não protege isso. Em produção, use uma biblioteca de circuit breaker madura em vez de uma versão escrita à mão.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="reserva-com-prazo">3. Algo que precisa acontecer ao entrar e ao sair</h2>
+          <p><strong>Situação.</strong> A venda de ingressos reserva o lugar por 15 minutos. Ao reservar, um timer é armado; se a pessoa não pagar, o lugar volta para a venda. Se pagar, ou se cancelar, o timer precisa ser desarmado, senão ele devolve à venda um lugar que já foi pago ou já foi vendido a outra pessoa.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o timer cancelado em cada caminho de saída, à mão</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Ingresso</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self.status = <span class="t-s">"disponivel"</span>
+        self._timer = <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">reservar</span>(self):
+        self.status = <span class="t-s">"reservado"</span>
+        self._timer = threading.<span class="t-f">Timer</span>(<span class="t-n">15</span> * <span class="t-n">60</span>, self.expirar)
+        self._timer.<span class="t-f">start</span>()
+
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self):
+        self.status = <span class="t-s">"pago"</span>
+        self._timer.<span class="t-f">cancel</span>()
+
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self):
+        self.status = <span class="t-s">"disponivel"</span>          <span class="t-c"># esqueceu o timer: ele vai expirar o lugar de outra pessoa</span>
+
+    <span class="t-k">def</span> <span class="t-f">expirar</span>(self):
+        self.status = <span class="t-s">"disponivel"</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A limpeza do timer está em cada caminho de saída de "reservado", e um dos caminhos a esqueceu. O erro só aparece de madrugada, quando um lugar vendido a outra pessoa é devolvido à venda por um timer velho. E o próximo caminho de saída, como "reserva removida pelo administrador", é mais um lugar onde lembrar.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — entrar e sair são ganchos do estado</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Ingresso</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._estado = <span class="t-f">Disponivel</span>()
+
+    <span class="t-k">def</span> <span class="t-f">ir_para</span>(self, novo):
+        self._estado.<span class="t-f">sair</span>(self)         <span class="t-c"># toda saída passa por aqui</span>
+        self._estado = novo
+        novo.<span class="t-f">entrar</span>(self)                <span class="t-c"># toda entrada, também</span>
+
+    <span class="t-k">def</span> <span class="t-f">reservar</span>(self): self._estado.<span class="t-f">reservar</span>(self)
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self):    self._estado.<span class="t-f">pagar</span>(self)
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self): self._estado.<span class="t-f">cancelar</span>(self)
+    <span class="t-k">def</span> <span class="t-f">expirar</span>(self):  self._estado.<span class="t-f">expirar</span>(self)
+
+<span class="t-k">class</span> <span class="t-f">Estado</span>:
+    <span class="t-k">def</span> <span class="t-f">entrar</span>(self, ingresso): ...
+    <span class="t-k">def</span> <span class="t-f">sair</span>(self, ingresso): ...
+    <span class="t-k">def</span> <span class="t-f">reservar</span>(self, ingresso): <span class="t-k">raise</span> <span class="t-f">TransicaoInvalida</span>(<span class="t-f">type</span>(self).__name__)
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self, ingresso):    <span class="t-k">raise</span> <span class="t-f">TransicaoInvalida</span>(<span class="t-f">type</span>(self).__name__)
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self, ingresso): <span class="t-k">raise</span> <span class="t-f">TransicaoInvalida</span>(<span class="t-f">type</span>(self).__name__)
+    <span class="t-k">def</span> <span class="t-f">expirar</span>(self, ingresso):  <span class="t-k">raise</span> <span class="t-f">TransicaoInvalida</span>(<span class="t-f">type</span>(self).__name__)
+
+<span class="t-k">class</span> <span class="t-f">Disponivel</span>(Estado):
+    <span class="t-k">def</span> <span class="t-f">reservar</span>(self, i): i.<span class="t-f">ir_para</span>(<span class="t-f">Reservado</span>())
+
+<span class="t-k">class</span> <span class="t-f">Reservado</span>(Estado):
+    <span class="t-k">def</span> <span class="t-f">entrar</span>(self, i):
+        self._timer = threading.<span class="t-f">Timer</span>(<span class="t-n">15</span> * <span class="t-n">60</span>, i.expirar)
+        self._timer.<span class="t-f">start</span>()
+
+    <span class="t-k">def</span> <span class="t-f">sair</span>(self, i):
+        self._timer.<span class="t-f">cancel</span>()             <span class="t-c"># qualquer saída desarma o timer</span>
+
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self, i):    i.<span class="t-f">ir_para</span>(<span class="t-f">Pago</span>())
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self, i): i.<span class="t-f">ir_para</span>(<span class="t-f">Disponivel</span>())
+    <span class="t-k">def</span> <span class="t-f">expirar</span>(self, i):  i.<span class="t-f">ir_para</span>(<span class="t-f">Disponivel</span>())
+
+<span class="t-k">class</span> <span class="t-f">Pago</span>(Estado): ...</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o estado absorve.</strong> O que precisa acontecer ao entrar e ao sair, por qualquer caminho. O timer é armado em <code>entrar</code> e desarmado em <code>sair</code>, uma vez, dentro do estado a que pertence. Um caminho de saída novo, como "removida pelo administrador", passa por <code>ir_para</code> e herda a limpeza sem ninguém lembrar.</p>
+          <div class="callout" data-kind="warn"><p><code>sair</code> e <code>entrar</code> rodam no meio da transição. Se um deles falhar, o contexto fica entre dois estados. Defina a ordem e o que acontece em caso de erro, e mantenha esses ganchos curtos e idempotentes.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três (ou na Explicação):</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Ciclo de vida de pedido, documento, assinatura ou chamado</td><td>O exemplo da <a href="explicacao.html#o-problema">Explicação</a></td></tr>
+                <tr><td>Catraca, máquina de venda, semáforo</td><td>A Explicação — as mesmas transições entre fases, com outros nomes</td></tr>
+                <tr><td>Personagem de jogo (parado, andando, pulando)</td><td>1 — o mesmo gesto tem efeitos diferentes por modo</td></tr>
+                <tr><td>Conexão com reconexão e espera crescente</td><td>2 — fases que dependem do resultado das tentativas</td></tr>
+                <tr><td>Sessão de usuário (anônima, logada, expirada)</td><td>3 — limpar o token e armar o prazo ao entrar e sair</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece State, mas não é: uma coluna <code>status</code> no banco, com uma tabela que diz quais transições são válidas. Se as fases não têm comportamento próprio, só permissão, a tabela é mais curta que as classes — veja a seção <a href="explicacao.html#quando-nao-usar">Quando não usar</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

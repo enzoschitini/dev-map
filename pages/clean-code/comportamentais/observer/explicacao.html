@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Observer · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/observer/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Observer</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como avisar várias partes do sistema de que algo aconteceu, sem que quem avisa precise saber quem são elas, nem quantas.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Quando o pedido é pago, três coisas precisam acontecer: o cliente recebe o recibo, o estoque dá baixa e a nota fiscal é emitida. O lugar mais óbvio para fazer isso é o próprio método que marca o pedido como pago.</p>
+          <p>A saída preguiçosa é chamar cada uma das três de dentro dele:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — o pedido conhece todo mundo que reage a ele</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Pedido</span>:
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self, transacao):
+        self.status = <span class="t-s">"pago"</span>
+        self.transacao = transacao
+
+        <span class="t-c"># tudo o que depende de "pago" mora aqui dentro</span>
+        <span class="t-f">EmailDeRecibo</span>().<span class="t-f">enviar</span>(self)
+        <span class="t-f">Estoque</span>().<span class="t-f">baixar</span>(self.itens)
+        <span class="t-f">NotaFiscal</span>().<span class="t-f">emitir</span>(self)
+        <span class="t-c"># e os pontos de fidelidade que o marketing pediu?</span></code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram daqui a pouco. Cada reação nova é uma edição em <code>Pedido</code>, a classe que menos devia mudar por causa de e-mail ou de nota fiscal. O <code>pagar</code> não se testa sem as três dependências. E, se o e-mail falha, o pedido já está marcado como pago, mas ficou sem baixa de estoque e sem nota: a exceção interrompeu o que vinha depois. É o Single Responsibility e o Open/Closed quebrados no mesmo método.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Faça o pedido guardar uma lista de interessados e <strong>avisar</strong> cada um quando algo acontece. Ele não sabe o que cada interessado faz com o aviso, nem quantos são. São quatro papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Assunto</td><td>Quem tem o fato e a lista de interessados; avisa quando ele acontece</td><td><code>Pedido</code></td></tr>
+                <tr><td>Observador</td><td>A interface mínima que o assunto exige de quem escuta</td><td><code>OuvintePedido</code></td></tr>
+                <tr><td>Observador concreto</td><td>Uma reação ao fato, com as dependências dela</td><td><code>EnviarRecibo</code>, <code>BaixarEstoque</code></td></tr>
+                <tr><td>Montagem</td><td>O único lugar que inscreve os observadores no assunto</td><td>O código que cria o pedido</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é o <strong>sentido da frase</strong>. O assunto diz "isto aconteceu", e não "faça aquilo". Quem decide o que fazer com o aviso é o observador, e quem decide <em>quais</em> observadores existem é a montagem. O pedido termina o que tinha a fazer mesmo que ninguém esteja ouvindo.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+
+<span class="t-c"># 1. o observador: tudo o que o pedido sabe sobre quem escuta</span>
+<span class="t-k">class</span> <span class="t-f">OuvintePedido</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">pedido_pago</span>(self, pedido: <span class="t-f">"Pedido"</span>) -&gt; <span class="t-k">None</span>: ...
+
+<span class="t-c"># 2. o assunto: guarda a lista e avisa; não sabe o que cada um faz</span>
+<span class="t-k">class</span> <span class="t-f">Pedido</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self.status = <span class="t-s">"aberto"</span>
+        self._ouvintes: <span class="t-f">list</span>[<span class="t-f">OuvintePedido</span>] = []
+
+    <span class="t-k">def</span> <span class="t-f">inscrever</span>(self, ouvinte: <span class="t-f">OuvintePedido</span>):
+        self._ouvintes.<span class="t-f">append</span>(ouvinte)
+
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self, transacao):
+        self.status = <span class="t-s">"pago"</span>
+        self.transacao = transacao
+        <span class="t-k">for</span> ouvinte <span class="t-k">in</span> self._ouvintes:
+            ouvinte.<span class="t-f">pedido_pago</span>(self)
+
+<span class="t-c"># 3. os observadores concretos: uma reação cada, com as dependências dela</span>
+<span class="t-k">class</span> <span class="t-f">EnviarRecibo</span>(OuvintePedido):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, email):
+        self._email = email
+
+    <span class="t-k">def</span> <span class="t-f">pedido_pago</span>(self, pedido):
+        self._email.<span class="t-f">enviar</span>(pedido.cliente.email, <span class="t-s">f"Recibo do pedido {pedido.id}"</span>)
+
+<span class="t-k">class</span> <span class="t-f">BaixarEstoque</span>(OuvintePedido):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, estoque):
+        self._estoque = estoque
+
+    <span class="t-k">def</span> <span class="t-f">pedido_pago</span>(self, pedido):
+        self._estoque.<span class="t-f">baixar</span>(pedido.itens)
+
+<span class="t-c"># 4. a montagem: o único lugar que liga os dois lados</span>
+pedido = <span class="t-f">Pedido</span>()
+pedido.<span class="t-f">inscrever</span>(<span class="t-f">EnviarRecibo</span>(email))
+pedido.<span class="t-f">inscrever</span>(<span class="t-f">BaixarEstoque</span>(estoque))
+pedido.<span class="t-f">pagar</span>(<span class="t-s">"tx_123"</span>)</code></pre>
+              <pre><code><span class="t-c">// 1. o observador: tudo o que o pedido sabe sobre quem escuta</span>
+<span class="t-k">interface</span> <span class="t-f">OuvintePedido</span> {
+  <span class="t-f">pedidoPago</span>(pedido: <span class="t-f">Pedido</span>): <span class="t-f">void</span>;
+}
+
+<span class="t-c">// 2. o assunto: guarda a lista e avisa; não sabe o que cada um faz</span>
+<span class="t-k">class</span> <span class="t-f">Pedido</span> {
+  status = <span class="t-s">"aberto"</span>;
+  <span class="t-k">private</span> ouvintes: <span class="t-f">OuvintePedido</span>[] = [];
+
+  <span class="t-f">inscrever</span>(ouvinte: <span class="t-f">OuvintePedido</span>) {
+    <span class="t-k">this</span>.ouvintes.<span class="t-f">push</span>(ouvinte);
+  }
+
+  <span class="t-f">pagar</span>(transacao: <span class="t-f">string</span>) {
+    <span class="t-k">this</span>.status = <span class="t-s">"pago"</span>;
+    <span class="t-k">for</span> (<span class="t-k">const</span> ouvinte <span class="t-k">of</span> <span class="t-k">this</span>.ouvintes) ouvinte.<span class="t-f">pedidoPago</span>(<span class="t-k">this</span>);
+  }
+}
+
+<span class="t-c">// 3. os observadores concretos: uma reação cada, com as dependências dela</span>
+<span class="t-k">class</span> <span class="t-f">EnviarRecibo</span> <span class="t-k">implements</span> <span class="t-f">OuvintePedido</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> email: <span class="t-f">ServicoDeEmail</span>) {}
+
+  <span class="t-f">pedidoPago</span>(pedido: <span class="t-f">Pedido</span>) {
+    <span class="t-k">this</span>.email.<span class="t-f">enviar</span>(pedido.cliente.email, <span class="t-s">`Recibo do pedido ${pedido.id}`</span>);
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">BaixarEstoque</span> <span class="t-k">implements</span> <span class="t-f">OuvintePedido</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> estoque: <span class="t-f">Estoque</span>) {}
+
+  <span class="t-f">pedidoPago</span>(pedido: <span class="t-f">Pedido</span>) {
+    <span class="t-k">this</span>.estoque.<span class="t-f">baixar</span>(pedido.itens);
+  }
+}
+
+<span class="t-c">// 4. a montagem: o único lugar que liga os dois lados</span>
+<span class="t-k">const</span> pedido = <span class="t-k">new</span> <span class="t-f">Pedido</span>();
+pedido.<span class="t-f">inscrever</span>(<span class="t-k">new</span> <span class="t-f">EnviarRecibo</span>(email));
+pedido.<span class="t-f">inscrever</span>(<span class="t-k">new</span> <span class="t-f">BaixarEstoque</span>(estoque));
+pedido.<span class="t-f">pagar</span>(<span class="t-s">"tx_123"</span>);</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste de <code>Pedido</code> agora é um ouvinte falso que guarda o que recebeu: <code>pagar</code>, e conferir que o ouvinte foi chamado uma vez. Cada observador se testa chamando <code>pedido_pago</code> direto, sem pedido de verdade. Uma reação nova é uma classe nova e uma linha na montagem; <code>Pedido</code> não muda.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Observer vale quando três coisas acontecem ao mesmo tempo: <strong>mais de uma parte</strong> precisa reagir ao mesmo fato; quem o produz <strong>não deveria saber</strong> quem são elas (porque a lista cresce, muda em execução ou pertence a outros); e a reação é uma <strong>consequência</strong>, não parte do trabalho: o assunto está completo mesmo que ninguém ouça.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Um fato dispara várias reações independentes</td><td>Um método que termina com quatro chamadas a módulos diferentes; um <code>import</code> para cada reação nova</td><td><a href="uso.html#varios-interessados">Uso #1</a></td></tr>
+                <tr><td>A tela precisa acompanhar o modelo</td><td><code>atualizarHeader(); atualizarMiniCarrinho();</code> depois de cada alteração, ou um <code>setInterval</code> que pergunta "mudou?"</td><td><a href="uso.html#tela-acompanha-modelo">Uso #2</a></td></tr>
+                <tr><td>Quem escuta entra e sai durante a execução</td><td>Uma lista com <code>append</code> e sem <code>remove</code>; widget fechado que continua recebendo dados</td><td><a href="uso.html#entram-e-saem">Uso #3</a></td></tr>
+                <tr><td>Código de outros precisa reagir a algo seu</td><td><code>if config.plugin_x_ativo:</code> dentro do núcleo; PR em seu repositório para cada extensão</td><td><a href="uso.html#plugins">Uso #4</a></td></tr>
+                <tr><td>Código reutilizável precisa reportar o que está fazendo</td><td>Parâmetros <code>barra=None, logger=None, modo_cli=False</code> em uma função de biblioteca; <code>print</code> no meio da regra</td><td><a href="uso.html#progresso">Uso #5</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: a linha que dispara conhece nomes que não deviam ser dela, e quem escreveu essa linha não é quem decide a lista. Se a lista é curta, fixa e sua, a chamada direta continua sendo mais honesta.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Só uma parte reage, e sempre a mesma?</strong> Receba-a no construtor e chame o método. Uma lista de um item é cerimônia.</li>
+            <li><strong>A reação é parte da operação?</strong> Se sem ela o pedido não está realmente pago (a baixa de estoque na mesma transação, por exemplo), não é um aviso: é um passo. Chame direto, onde a transação enxerga.</li>
+            <li><strong>Quem dispara precisa da resposta?</strong> Aprovar, vetar, devolver um valor. O Observer não espera retorno; use uma chamada direta ou uma <a href="../chain-of-responsibility/explicacao.html">Chain of Responsibility</a>.</li>
+            <li><strong>A lista cresce, muda em execução ou é de outros?</strong> Se sim, é Observer. Se é uma lista que você controla e vai mudar uma vez por ano, ainda dá para esperar.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Observer tem um custo que só aparece na leitura: o fluxo deixa de estar escrito em um lugar. Olhando <code>pagar</code>, não dá mais para responder "o que acontece quando o pedido é pago?". É preciso procurar quem se inscreveu, e a ordem, os erros e as cascatas passam a ser coisas que você tem de lembrar.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Um único interessado, fixo</td><td>A lista de um item só esconde a chamada; o fluxo fica mais difícil de seguir sem nenhum ganho</td><td>Injete o colaborador e chame o método. Extraia a lista quando o segundo aparecer</td></tr>
+                <tr><td>A reação precisa dar certo junto com a operação</td><td>O aviso não tem transação nem volta: se a reação falha, a operação já foi feita</td><td>Chame dentro da mesma transação, ou faça um caso de uso que orquestra os passos</td></tr>
+                <tr><td>Quem dispara precisa da resposta</td><td>O Observer avisa e segue em frente; retorno e veto não fazem parte dele</td><td>Chamada direta, ou Chain of Responsibility se for um "quem aprova?"</td></tr>
+                <tr><td>A ordem entre as reações é uma regra de negócio</td><td>A ordem de inscrição passa a ser a regra, e ninguém vê isso lendo o código</td><td>Escreva a sequência em um lugar só, em ordem, com nome</td></tr>
+                <tr><td>Os interessados estão em outros processos ou máquinas</td><td>O Observer vive na memória; se o processo cai, o aviso se perde</td><td>Fila ou broker (Pub/Sub), com entrega persistente e nova tentativa</td></tr>
+                <tr><td>Só quer ser chamado uma vez, quando algo termina</td><td>Assinar e cancelar é mais cerimônia do que o caso pede</td><td>Callback ou <code>Promise</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Observer saiu do lugar</h3>
+          <ul>
+            <li><strong>Tudo é um evento.</strong> Quando cada chamada vira um aviso, ninguém consegue seguir o que acontece ao clicar em pagar. Evento é para o que acontece <em>depois</em>, não para esconder uma chamada comum.</li>
+            <li><strong>A ordem importa em silêncio.</strong> O observador B só funciona se o A rodou antes, e a única garantia é a ordem em que foram inscritos.</li>
+            <li><strong>Um aviso dispara outro, que dispara outro.</strong> Cascatas e ciclos: o observador altera o assunto, que avisa de novo, e o sistema entra em um laço que só aparece em produção.</li>
+            <li><strong>Ninguém cancela.</strong> Observadores que continuam na lista depois de terem saído de cena recebem avisos, mexem em telas que não existem e seguram memória.</li>
+            <li><strong>Uma falha derruba os outros.</strong> Se o laço de aviso não isola o erro, o terceiro observador nunca roda porque o segundo levantou uma exceção.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: um observador que muda o assunto que acabou de o avisar, ou que depende de outro ter rodado antes. Resposta e ordem são sinal de que aquilo era uma chamada direta com nome de evento. Escreva-a como chamada.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com a chamada direta. O segundo interessado, ou o primeiro que mora fora do seu módulo, é o momento de extrair a lista: a refatoração é pequena, porque as chamadas já estão juntas em um lugar.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Mediator</td><td>Põe um intermediário para decidir quem fala com quem, e pode ter regras próprias. No Observer não há coordenador: o assunto avisa e cada um decide por conta</td></tr>
+                <tr><td><a href="../chain-of-responsibility/explicacao.html">Chain of Responsibility</a></td><td>O pedido passa de um em um até alguém tratar; o Observer entrega o aviso a <em>todos</em>, e ninguém "toma" o evento</td></tr>
+                <tr><td><a href="../command/explicacao.html">Command</a></td><td>Pede que algo aconteça, a um destino, com os dados; o Observer informa que algo aconteceu, a quantos estiverem ouvindo</td></tr>
+                <tr><td>Publish/Subscribe (broker)</td><td>A mesma ideia, com um canal no meio e, em geral, entre processos, com entrega persistente. O Observer é em memória, e o assunto guarda a lista</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o objeto diz "isto aconteceu" e não se importa com quem escuta, é Observer. Se diz "faça isto" a um destino, é Command.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

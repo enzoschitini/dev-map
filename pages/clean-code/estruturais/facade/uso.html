@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Facade · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/facade/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Facade</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o Facade resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que a fachada esconde em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Facade. O fluxo de vários passos repetido por vários chamadores (o checkout) já está inteiro na <a href="explicacao.html#implementacao">explicação</a>, e qualquer outro orquestrador de serviços é o mesmo raciocínio. Sobraram três motivos que ela não cobre. Os casos que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que a fachada esconde</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#ffmpeg-e-ffprobe">Uma ferramenta de linha de comando cheia de opções</a></td><td>As flags e os erros de um programa externo</td></tr>
+                <tr><td>2</td><td><a href="#fronteira-de-modulo">Um módulo cujos internos vazaram pelo projeto</a></td><td>Dezenas de classes internas, atrás de quatro funções</td></tr>
+                <tr><td>3</td><td><a href="#ambiente-de-teste">Subir e derrubar vários componentes em ordem</a></td><td>A ordem de subida e a de descida</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="note"><p>As chamadas ao <code>ffmpeg</code> e ao <code>ffprobe</code> usam flags reais, mas foram reduzidas ao necessário. Os módulos <code>pagamentos</code> e <code>infra_de_teste</code> são fictícios.</p></div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="ffmpeg-e-ffprobe">1. Uma ferramenta de linha de comando cheia de opções</h2>
+          <p><strong>Situação.</strong> A plataforma de cursos gera uma miniatura e lê a duração de cada vídeo enviado. Isso é feito chamando o <code>ffmpeg</code> e o <code>ffprobe</code>, que têm centenas de opções. O time usa duas operações. Cada tela que precisa delas escreveu a própria chamada.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — as flags copiadas, cada cópia um pouco diferente</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># upload.py</span>
+subprocess.<span class="t-f">run</span>(
+    [<span class="t-s">"ffmpeg"</span>, <span class="t-s">"-i"</span>, caminho, <span class="t-s">"-ss"</span>, <span class="t-s">"5"</span>, <span class="t-s">"-frames:v"</span>, <span class="t-s">"1"</span>, destino],
+)   <span class="t-c"># -ss depois do -i decodifica até o segundo 5; sem -y, falha se a miniatura existe</span>
+
+<span class="t-c"># reprocessar.py</span>
+r = subprocess.<span class="t-f">run</span>(
+    [<span class="t-s">"ffprobe"</span>, <span class="t-s">"-v"</span>, <span class="t-s">"quiet"</span>, <span class="t-s">"-show_entries"</span>, <span class="t-s">"format=duration"</span>,
+     <span class="t-s">"-of"</span>, <span class="t-s">"csv=p=0"</span>, caminho],
+    capture_output=<span class="t-k">True</span>, text=<span class="t-k">True</span>,
+)
+duracao = <span class="t-f">float</span>(r.stdout)   <span class="t-c"># vídeo corrompido: stdout vazio, ValueError longe da causa</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Sem <code>check=True</code>, o <code>ffmpeg</code> falha e o código segue em frente com uma miniatura que não existe. Quando falha com erro, o <code>stderr</code>, que diz o motivo, é jogado fora. Cada tela decidiu sozinha o tamanho da miniatura, e a posição do <code>-ss</code> muda a velocidade em dezenas de vezes. Quem precisa de uma terceira operação copia a mais próxima.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — duas operações com nome, e as flags em um lugar</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Video</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, caminho: Path):
+        self._caminho = caminho
+
+    <span class="t-k">def</span> <span class="t-f">duracao</span>(self) -&gt; <span class="t-f">float</span>:
+        saida = self.<span class="t-f">_executar</span>(
+            <span class="t-s">"ffprobe"</span>, <span class="t-s">"-v"</span>, <span class="t-s">"error"</span>, <span class="t-s">"-show_entries"</span>, <span class="t-s">"format=duration"</span>,
+            <span class="t-s">"-of"</span>, <span class="t-s">"default=noprint_wrappers=1:nokey=1"</span>, <span class="t-f">str</span>(self._caminho),
+        )
+        <span class="t-k">return</span> <span class="t-f">float</span>(saida)
+
+    <span class="t-k">def</span> <span class="t-f">miniatura</span>(self, segundo: <span class="t-f">float</span>, destino: Path, largura: <span class="t-f">int</span> = <span class="t-n">320</span>) -&gt; Path:
+        self.<span class="t-f">_executar</span>(
+            <span class="t-s">"ffmpeg"</span>, <span class="t-s">"-y"</span>, <span class="t-s">"-ss"</span>, <span class="t-f">str</span>(segundo), <span class="t-s">"-i"</span>, <span class="t-f">str</span>(self._caminho),
+            <span class="t-s">"-frames:v"</span>, <span class="t-s">"1"</span>, <span class="t-s">"-vf"</span>, <span class="t-s">f"scale={largura}:-1"</span>, <span class="t-f">str</span>(destino),
+        )
+        <span class="t-k">return</span> destino
+
+    <span class="t-k">def</span> <span class="t-f">_executar</span>(self, *comando: <span class="t-f">str</span>) -&gt; <span class="t-f">str</span>:
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> subprocess.<span class="t-f">run</span>(comando, check=<span class="t-k">True</span>, capture_output=<span class="t-k">True</span>, text=<span class="t-k">True</span>).stdout
+        <span class="t-k">except</span> <span class="t-f">FileNotFoundError</span> <span class="t-k">as</span> e:
+            <span class="t-k">raise</span> <span class="t-f">FerramentaAusente</span>(comando[<span class="t-n">0</span>]) <span class="t-k">from</span> e
+        <span class="t-k">except</span> subprocess.CalledProcessError <span class="t-k">as</span> e:
+            ultima = (e.stderr.<span class="t-f">strip</span>().<span class="t-f">splitlines</span>() <span class="t-k">or</span> [<span class="t-s">"sem detalhes"</span>])[-<span class="t-n">1</span>]
+            <span class="t-k">raise</span> <span class="t-f">VideoInvalido</span>(self._caminho, ultima) <span class="t-k">from</span> e
+
+<span class="t-c"># o chamador</span>
+video = <span class="t-f">Video</span>(caminho)
+video.<span class="t-f">miniatura</span>(<span class="t-n">5</span>, destino)
+duracao = video.<span class="t-f">duracao</span>()</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a fachada esconde.</strong> O vocabulário de uma ferramenta de 30 anos: os nomes das flags, a ordem delas e o que cada código de saída quer dizer. O chamador ganha duas operações com nome e dois erros do <em>domínio</em> (<code>FerramentaAusente</code>, <code>VideoInvalido</code>) no lugar de um <code>CalledProcessError</code> genérico. O que este exemplo ensina e o do checkout não: a fachada aqui <strong>reduz superfície</strong>. Ela não organiza passos; escolhe, entre centenas de opções, as duas que o time usa.</p>
+          <div class="callout" data-kind="warn"><p>Resista a expor todas as flags "por via das dúvidas". Quando alguém precisar de um novo recorte ou de um formato diferente, acrescente o parâmetro que ele precisa. Uma fachada que aceita <code>**opcoes</code> e as passa adiante voltou a ser a própria ferramenta, com um nome a mais.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="fronteira-de-modulo">2. Um módulo cujos internos vazaram pelo projeto</h2>
+          <p><strong>Situação.</strong> O módulo de pagamentos tem um gateway, regras antifraude, conciliação e modelos próprios, em dezenas de arquivos. Outros times importam o que precisam, de onde estiver. A empresa decidiu trocar de gateway, e o time de pagamentos descobre que não consegue mexer por dentro sem quebrar o resto.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — os outros módulos importam os internos</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># pedidos/servico.py</span>
+<span class="t-k">from</span> pagamentos.gateway.stripe_adapter <span class="t-k">import</span> GatewayStripe
+<span class="t-k">from</span> pagamentos.antifraude.regras <span class="t-k">import</span> pontuar, LIMITE
+
+<span class="t-k">def</span> <span class="t-f">pagar</span>(pedido):
+    <span class="t-k">if</span> <span class="t-f">pontuar</span>(pedido.id, pedido.total) &gt; LIMITE:
+        <span class="t-k">raise</span> <span class="t-f">PedidoSuspeito</span>(pedido.id)
+    <span class="t-k">return</span> <span class="t-f">GatewayStripe</span>(CHAVE).<span class="t-f">cobrar</span>(pedido.total, pedido.token)
+
+<span class="t-c"># faturas/estorno.py</span>
+<span class="t-k">from</span> pagamentos.gateway.stripe_adapter <span class="t-k">import</span> GatewayStripe   <span class="t-c"># sem antifraude: ninguém lembrou</span>
+
+<span class="t-c"># relatorios/conciliacao.py: mais um import de pagamentos.gateway.*</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Trocar de gateway é editar imports em seis módulos de times diferentes, e o time de pagamentos precisa de um acordo com cada um. A regra de antifraude, que devia valer sempre, está só em quem lembrou de chamá-la. Quanto mais gente importa os internos, mais cara fica qualquer mudança neles.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o módulo tem uma porta, e o resto fica atrás dela</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># pagamentos/__init__.py — a única coisa que os outros módulos importam</span>
+<span class="t-k">from</span> decimal <span class="t-k">import</span> Decimal
+<span class="t-k">from</span> ._modelos <span class="t-k">import</span> Resultado
+<span class="t-k">from</span> ._servico <span class="t-k">import</span> ServicoDePagamento
+
+_servico = ServicoDePagamento.<span class="t-f">padrao</span>()
+
+<span class="t-k">def</span> <span class="t-f">cobrar</span>(pedido_id: <span class="t-f">str</span>, valor: Decimal, token: <span class="t-f">str</span>) -&gt; Resultado:
+    <span class="t-k">return</span> _servico.<span class="t-f">cobrar</span>(pedido_id, valor, token)   <span class="t-c"># antifraude + gateway, juntos</span>
+
+<span class="t-k">def</span> <span class="t-f">estornar</span>(cobranca_id: <span class="t-f">str</span>) -&gt; <span class="t-k">None</span>:
+    _servico.<span class="t-f">estornar</span>(cobranca_id)
+
+__all__ = [<span class="t-s">"cobrar"</span>, <span class="t-s">"estornar"</span>, <span class="t-s">"Resultado"</span>]
+
+<span class="t-c"># pedidos/servico.py</span>
+<span class="t-k">import</span> pagamentos
+
+<span class="t-k">def</span> <span class="t-f">pagar</span>(pedido):
+    resultado = pagamentos.<span class="t-f">cobrar</span>(pedido.id, pedido.total, pedido.token)
+    <span class="t-k">if</span> resultado.suspeito:
+        <span class="t-k">raise</span> <span class="t-f">PedidoSuspeito</span>(pedido.id)
+    <span class="t-k">return</span> resultado</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a fachada esconde.</strong> Os internos do módulo inteiro, atrás de duas funções e um tipo. Aqui ela é uma <strong>fronteira</strong>, não uma conveniência: a regra passa a ser "só se importa o que está em <code>pagamentos/__init__.py</code>", e pode ser verificada por uma ferramenta de imports (o <code>import-linter</code> faz isso em Python), em vez de depender de revisão. Trocar de gateway é uma mudança em <code>_servico.py</code>, e nenhum outro time é consultado. A antifraude passa a rodar sempre, porque está no único caminho.</p>
+          <div class="callout" data-kind="warn"><p>A fachada de módulo não pode devolver objetos internos. Se <code>cobrar()</code> devolver um <code>stripe.Charge</code>, quem usa passa a depender do gateway pelo tipo do retorno, e a fronteira é só aparente. Por isso <code>Resultado</code> é um tipo do próprio módulo, pequeno e estável.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="ambiente-de-teste">3. Subir e derrubar vários componentes em ordem</h2>
+          <p><strong>Situação.</strong> Os testes de integração precisam de um Postgres, de um Redis, de um servidor SMTP falso e da aplicação, nessa ordem, porque a aplicação precisa dos três. Cada arquivo de teste sobe tudo na mão, e a CI roda alguns em paralelo.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — subir em ordem, derrubar de memória</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">test_confirmacao_envia_email</span>():
+    db = <span class="t-f">subir_postgres</span>()
+    <span class="t-f">aplicar_migracoes</span>(db.url)
+    redis = <span class="t-f">subir_redis</span>()
+    smtp = <span class="t-f">subir_smtp_falso</span>(porta=<span class="t-n">2525</span>)    <span class="t-c"># fixa: dois testes em paralelo colidem</span>
+    app = <span class="t-f">criar_app</span>(db.url, redis.url, smtp.porta)
+    <span class="t-k">try</span>:
+        app.<span class="t-f">post</span>(<span class="t-s">"/checkout"</span>, json=CARRINHO)
+        <span class="t-k">assert</span> smtp.mensagens[-<span class="t-n">1</span>].assunto == <span class="t-s">"Pedido confirmado"</span>
+    <span class="t-k">finally</span>:
+        app.<span class="t-f">parar</span>()
+        smtp.<span class="t-f">parar</span>()
+        db.<span class="t-f">parar</span>()          <span class="t-c"># e o redis?</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O <code>finally</code> esqueceu o Redis, que fica rodando depois de cada teste. Se <code>subir_smtp_falso</code> falhar, o Postgres que já subiu nunca é derrubado, porque a exceção acontece antes do <code>try</code>. E os vinte testes de integração têm o mesmo bloco de nove linhas, que muda quando entra um componente novo.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — um ambiente que sobe e desce sozinho</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> contextlib <span class="t-k">import</span> ExitStack, contextmanager
+
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">Ambiente</span>:
+    app: <span class="t-f">object</span>
+    db: <span class="t-f">object</span>
+    redis: <span class="t-f">object</span>
+    smtp: <span class="t-f">object</span>
+
+<span class="t-f">@contextmanager</span>
+<span class="t-k">def</span> <span class="t-f">ambiente_de_teste</span>():
+    <span class="t-k">with</span> <span class="t-f">ExitStack</span>() <span class="t-k">as</span> pilha:
+        db = pilha.<span class="t-f">enter_context</span>(<span class="t-f">postgres_temporario</span>())
+        <span class="t-f">aplicar_migracoes</span>(db.url)
+        redis = pilha.<span class="t-f">enter_context</span>(<span class="t-f">redis_temporario</span>())
+        smtp = pilha.<span class="t-f">enter_context</span>(<span class="t-f">smtp_falso</span>())          <span class="t-c"># porta livre, escolhida na hora</span>
+        app = pilha.<span class="t-f">enter_context</span>(<span class="t-f">app_em_teste</span>(db.url, redis.url, smtp.porta))
+        <span class="t-k">yield</span> <span class="t-f">Ambiente</span>(app=app, db=db, redis=redis, smtp=smtp)
+
+<span class="t-k">def</span> <span class="t-f">test_confirmacao_envia_email</span>():
+    <span class="t-k">with</span> <span class="t-f">ambiente_de_teste</span>() <span class="t-k">as</span> env:
+        env.app.<span class="t-f">post</span>(<span class="t-s">"/checkout"</span>, json=CARRINHO)
+        <span class="t-k">assert</span> env.smtp.mensagens[-<span class="t-n">1</span>].assunto == <span class="t-s">"Pedido confirmado"</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que a fachada esconde.</strong> A ordem de subida e, principalmente, a ordem <strong>inversa</strong> de descida, que o <code>ExitStack</code> faz sozinho. Ao contrário dos outros exemplos, aqui a fachada coordena um <em>ciclo de vida</em>, e não uma chamada: o que importa é o que acontece com os componentes que já subiram quando um deles falha no meio. Se o app não sobe, o Redis, o SMTP e o Postgres são derrubados, nessa ordem. O teste só vê um <code>Ambiente</code> com o que ele quer tocar.</p>
+          <div class="callout" data-kind="tip"><p>No <code>pytest</code>, a mesma função vira uma <em>fixture</em> com <code>yield</code> e escopo de sessão ou de módulo, para pagar o custo de subir o Postgres uma vez e não a cada teste. A fachada continua a mesma; só muda quem a chama.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três (ou na explicação):</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Fluxo de pedido, de matrícula ou de cadastro que chama vários serviços</td><td>Explicação — o exemplo do checkout</td></tr>
+                <tr><td>Cliente simplificado para o S3 ou para uma fila, com três operações</td><td>1 — reduzir a superfície de uma SDK grande</td></tr>
+                <tr><td>Cliente de uma API REST complexa, com autenticação e paginação</td><td>1 — reduzir a superfície</td></tr>
+                <tr><td>O <code>api.py</code> ou a camada de serviço de cada módulo de um monólito</td><td>2 — fachada como fronteira de módulo</td></tr>
+                <tr><td>Script de <em>seed</em>, de <em>deploy</em> ou de inicialização local</td><td>3 — ordem de subida e de descida</td></tr>
+                <tr><td>Um <code>docker compose up</code> que o time criou para o desenvolvimento</td><td>3 — é a mesma fachada, em outra ferramenta</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E dois casos que parecem Facade, mas não são. Uma classe que tem um método para cada método da SDK, só com outros nomes, não simplifica nada: é um repasse. E uma classe que converte a interface de <em>uma</em> peça na que o código já esperava é um Adapter. Veja a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

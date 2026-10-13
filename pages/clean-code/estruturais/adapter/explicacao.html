@@ -13,9 +13,9 @@
     document.documentElement.dataset.theme = t;
   })();
 </script>
-<link rel="stylesheet" href="../../../assets/css/design-system.css">
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
 </head>
-<body data-root="../../../" data-tab="clean-code" data-page="adapter/explicacao">
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/adapter/explicacao">
 <a class="skip" href="#main">Ir para o conteúdo</a>
 
 <header class="header" id="header" data-shell="header"></header>
@@ -129,20 +129,60 @@
           <div class="callout" data-kind="tip"><p>O teste do cliente agora é uma classe de cinco linhas que implementa <code>Notificador</code> e guarda o que recebeu. Nenhuma rede, nenhum mock de biblioteca.</p></div>
 
           <h2 id="quando-usar">Quando usar</h2>
-          <ul>
-            <li>Você precisa de algo que <strong>já existe</strong>, mas a interface não bate com a sua.</li>
-            <li>O código é de terceiros ou é legado, e <strong>mudar a fonte não é opção</strong>.</li>
-            <li>Você quer poder trocar o fornecedor depois sem tocar nas regras de negócio.</li>
-            <li>Os testes estão difíceis porque a dependência externa está grudada na lógica.</li>
-          </ul>
+          <p>O Adapter vale quando três coisas acontecem ao mesmo tempo: <strong>já existe</strong> algo que faz o que você precisa, a interface dele <strong>não é</strong> a que o seu código quer, e mudar esse algo <strong>não é opção</strong> — porque é de terceiros, é legado ou é de outro time.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Dependência externa no meio da regra de negócio</td><td><code>import</code> de SDK em arquivo de domínio; o nome do fornecedor aparece dentro da regra</td><td><a href="uso.html#varios-provedores">Uso #1</a></td></tr>
+                <tr><td>Dois fornecedores para a mesma operação, ou um segundo à vista</td><td><code>if gateway == "stripe"</code> … <code>elif</code> …</td><td><a href="uso.html#varios-provedores">Uso #1</a></td></tr>
+                <tr><td>Legado ou código de outro time que você não pode alterar</td><td>A mesma conversão de parâmetros e de retorno copiada em vários chamadores</td><td><a href="uso.html#codigo-legado">Uso #2</a></td></tr>
+                <tr><td>Dados de fora com os nomes e formatos de fora</td><td>Campos do JSON externo (<code>logradouro</code>, <code>localidade</code>) em telas e regras</td><td><a href="uso.html#payload-externo">Uso #3</a></td></tr>
+                <tr><td>Teste difícil por causa da infraestrutura</td><td>Para rodar o teste é preciso credencial, rede ou um serviço falso</td><td><a href="uso.html#dependencia-de-infra">Uso #4</a></td></tr>
+                <tr><td>Exceções de terceiros capturadas na regra</td><td><code>except ClientError</code>, códigos de erro do fornecedor comparados como string</td><td><a href="uso.html#dependencia-de-infra">Uso #4</a></td></tr>
+                <tr><td>Estilo de chamada diferente do resto do código</td><td>Callback no meio de <code>async/await</code>; laço de paginação repetido</td><td><a href="uso.html#callback-promise">Uso #5</a>, <a href="uso.html#paginacao">#6</a></td></tr>
+                <tr><td>Um framework pede uma interface específica</td><td>Você quer "plugar" algo seu no logging, no storage, no ORM</td><td><a href="uso.html#framework">Uso #7</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>Repare no que quase todos os sinais têm em comum: o nome de algo de fora aparece onde não deveria. O adaptador é o lugar para onde esse nome se muda — e de onde ele não sai mais.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Já existe algo pronto que resolve?</strong> Se não, não há o que adaptar: escreva a classe direto, com a interface que você quer.</li>
+            <li><strong>A interface dele é diferente da que o seu código precisa?</strong> Se é praticamente a mesma, use direto.</li>
+            <li><strong>Você pode mudar a interface na origem?</strong> Se o código é seu e está ao alcance, mude lá. É mais simples que traduzir para sempre.</li>
+            <li><strong>A diferença vai aparecer em mais de um lugar, ou atrapalha testar?</strong> Se sim, é Adapter. Se é uma chamada isolada, em um lugar só, ainda dá para esperar.</li>
+          </ol>
 
           <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Adapter tem um custo fixo, cobrado todo dia: um arquivo a mais, uma interface a mais e um salto a mais na leitura — o "ir para a definição" cai na interface, não no código que roda. Ele só se paga quando o que protege vale mais que isso.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Você controla os dois lados</td><td>O adaptador conserta uma diferença que você mesmo pode eliminar</td><td>Mude a interface na origem</td></tr>
+                <tr><td>Um fornecedor só, chamado em um lugar só</td><td>Não há diferença espalhada para conter; a camada só acrescenta leitura</td><td>Chame direto. Extraia o adaptador quando surgir o segundo uso ou o segundo fornecedor</td></tr>
+                <tr><td>Script, protótipo ou código descartável</td><td>O código vai embora antes de o custo se pagar</td><td>Chame direto</td></tr>
+                <tr><td>A interface alvo seria idêntica à da SDK</td><td>Nada é traduzido; o adaptador vira um repasse</td><td>Use a SDK, ou redesenhe o alvo nos termos do seu domínio</td></tr>
+                <tr><td>Você quer simplificar um subsistema grande</td><td>O objetivo é reduzir a superfície, não converter uma interface em outra</td><td>Facade</td></tr>
+                <tr><td>Você quer acrescentar cache, retry ou log mantendo a interface</td><td>A interface antes e depois é a mesma</td><td>Decorator ou Proxy</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o adaptador saiu do lugar</h3>
           <ul>
-            <li><strong>Quando você controla os dois lados.</strong> Se dá para mudar a interface na origem, mude — um adaptador a menos.</li>
-            <li><strong>Quando há um fornecedor só e nunca haverá outro.</strong> A camada extra cobra preço de leitura todo dia e só paga no dia da troca.</li>
-            <li><strong>Quando o adaptador começa a decidir coisas.</strong> Adaptador que valida, repete tentativas ou escolhe caminho virou outra coisa; isso é um Facade ou um serviço de verdade.</li>
+            <li><strong>Ele toma decisões.</strong> Adaptador que valida regra de negócio, repete tentativas ou escolhe caminho deixou de traduzir. Isso é um serviço; dê a ele outro nome e outro lugar.</li>
+            <li><strong>Os tipos do fornecedor vazam pelo retorno.</strong> Se <code>cobrar()</code> devolve um <code>stripe.PaymentIntent</code>, a interface parece sua, mas o cliente continua dependendo da SDK.</li>
+            <li><strong>O cliente pergunta quem está do outro lado.</strong> Um <code>isinstance(gateway, GatewayStripe)</code> na regra mostra que a abstração não está segurando a diferença.</li>
+            <li><strong>Adaptador sobre adaptador.</strong> Duas camadas traduzindo a mesma coisa: uma delas sobra.</li>
+            <li><strong>Um adaptador para cada dependência, "por precaução".</strong> "Vai que um dia trocamos o banco" é abstração especulativa: o custo é cobrado hoje e o dia da troca talvez nunca chegue.</li>
           </ul>
-          <div class="callout" data-kind="danger"><p>Sinal de que o padrão saiu do lugar: a interface alvo cresceu até ficar igual à da SDK, campo por campo. Aí o adaptador não protege de nada — só adiciona um arquivo entre você e o erro.</p></div>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: a interface alvo cresceu até ficar igual à da SDK, campo por campo. Aí o adaptador não protege de nada — só adiciona um arquivo entre você e o erro.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece sem. Extrair um adaptador de uma chamada direta é uma refatoração pequena, principalmente se a chamada está em um lugar só. O que sai caro é deixar a SDK se espalhar por vinte arquivos antes de decidir.</p></div>
 
           <h2 id="parecidos">Parecidos</h2>
           <div class="table-wrap">
@@ -170,8 +210,8 @@
 <div class="scrim"></div>
 <dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
 
-<script src="../../../assets/js/site.js"></script>
-<script src="../../../assets/js/shell.js"></script>
-<script src="../../../assets/js/ds.js"></script>
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
 </body>
 </html>

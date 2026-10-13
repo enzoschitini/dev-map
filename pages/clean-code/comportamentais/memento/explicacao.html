@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Memento · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/memento/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Memento</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como guardar o estado de um objeto para voltar a ele depois, sem deixar quem guarda saber o que tem dentro nem mexer nisso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Você tem um orçamento com itens, desconto, cupom e frete. A pessoa mexe, não gosta do resultado e quer voltar ao que estava dois passos atrás. Para isso, alguém precisa lembrar <strong>como o orçamento era</strong>.</p>
+          <p>A saída preguiçosa é a tela copiar os campos que ela conhece, antes de cada alteração, e devolvê-los na hora de desfazer:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — a tela copia e devolve campo por campo</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">EditorDeOrcamento</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, orcamento):
+        self.orcamento = orcamento
+        self._pilha = []
+
+    <span class="t-k">def</span> <span class="t-f">alterar</span>(self, **campos):
+        <span class="t-c"># copia "o que parece importar" antes de mexer</span>
+        self._pilha.<span class="t-f">append</span>({
+            <span class="t-s">"itens"</span>: <span class="t-f">list</span>(self.orcamento.itens),
+            <span class="t-s">"desconto"</span>: self.orcamento.desconto,
+            <span class="t-s">"frete"</span>: self.orcamento.frete,
+        })
+        <span class="t-k">for</span> nome, valor <span class="t-k">in</span> campos.<span class="t-f">items</span>():
+            <span class="t-f">setattr</span>(self.orcamento, nome, valor)
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        antes = self._pilha.<span class="t-f">pop</span>()
+        self.orcamento.itens = antes[<span class="t-s">"itens"</span>]
+        self.orcamento.desconto = antes[<span class="t-s">"desconto"</span>]
+        self.orcamento.frete = antes[<span class="t-s">"frete"</span>]
+        <span class="t-c"># e o cupom? e o total, que foi recalculado no meio?</span></code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram daqui a pouco. Quando o <code>Orcamento</code> ganha um campo (o cupom, por exemplo), a tela não sabe, e o "desfazer" devolve um orçamento pela metade. Toda mudança interna do orçamento passa a exigir mexer na tela, porque o estado deixou de ser privado. E <code>list(itens)</code> é uma cópia rasa: a lista volta, mas os itens são os mesmos objetos, já alterados.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Quem sabe o que compõe o estado é o próprio objeto, então é ele que tira a foto e é ele que a usa. Quem guarda a foto só a segura. São três papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Originador</td><td>O objeto cujo estado se guarda; só ele cria e lê a foto</td><td><code>Orcamento</code></td></tr>
+                <tr><td>Memento</td><td>A foto: um valor fechado, que não se edita depois de tirado</td><td><code>_Foto</code></td></tr>
+                <tr><td>Zelador</td><td>Guarda as fotos e decide quando voltar; nunca abre uma</td><td><code>Historico</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é a fronteira: a foto atravessa o zelador sem ser aberta. Quem a produz e quem a consome é a mesma classe, e é por isso que o orçamento pode ganhar um campo sem que a tela, o histórico ou o teste percebam.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> collections <span class="t-k">import</span> deque
+<span class="t-k">from</span> dataclasses <span class="t-k">import</span> dataclass
+<span class="t-k">from</span> decimal <span class="t-k">import</span> Decimal
+
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">Item</span>:
+    produto: <span class="t-f">str</span>
+    quantidade: <span class="t-f">int</span>
+    preco: <span class="t-f">Decimal</span>
+
+<span class="t-c"># 1. o memento: uma foto fechada; frozen, ninguém edita depois de tirada</span>
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">_Foto</span>:
+    itens: <span class="t-f">tuple</span>[Item, ...]
+    desconto: <span class="t-f">Decimal</span>
+    cupom: <span class="t-f">str</span> | <span class="t-k">None</span>
+    frete: <span class="t-f">Decimal</span>
+
+<span class="t-c"># 2. o originador: só ele sabe tirar a foto, e só ele sabe usá-la</span>
+<span class="t-k">class</span> <span class="t-f">Orcamento</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._itens: <span class="t-f">list</span>[Item] = []
+        self._desconto = <span class="t-f">Decimal</span>(<span class="t-s">"0"</span>)
+        self._cupom: <span class="t-f">str</span> | <span class="t-k">None</span> = <span class="t-k">None</span>
+        self._frete = <span class="t-f">Decimal</span>(<span class="t-s">"0"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">salvar</span>(self) -&gt; _Foto:
+        <span class="t-k">return</span> <span class="t-f">_Foto</span>(<span class="t-f">tuple</span>(self._itens), self._desconto, self._cupom, self._frete)
+
+    <span class="t-k">def</span> <span class="t-f">restaurar</span>(self, foto: _Foto) -&gt; <span class="t-k">None</span>:
+        self._itens = <span class="t-f">list</span>(foto.itens)
+        self._desconto = foto.desconto
+        self._cupom = foto.cupom
+        self._frete = foto.frete
+
+<span class="t-c"># 3. o zelador: guarda as fotos e decide quando voltar; nunca abre uma</span>
+<span class="t-k">class</span> <span class="t-f">Historico</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, orcamento: Orcamento, limite: <span class="t-f">int</span> = <span class="t-n">50</span>):
+        self._orcamento = orcamento
+        self._passado: <span class="t-f">deque</span> = <span class="t-f">deque</span>(maxlen=limite)
+        self._futuro: <span class="t-f">list</span> = []
+
+    <span class="t-k">def</span> <span class="t-f">antes_de_alterar</span>(self):
+        self._passado.<span class="t-f">append</span>(self._orcamento.<span class="t-f">salvar</span>())
+        self._futuro.<span class="t-f">clear</span>()
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        <span class="t-k">if</span> self._passado:
+            self._futuro.<span class="t-f">append</span>(self._orcamento.<span class="t-f">salvar</span>())
+            self._orcamento.<span class="t-f">restaurar</span>(self._passado.<span class="t-f">pop</span>())
+
+    <span class="t-k">def</span> <span class="t-f">refazer</span>(self):
+        <span class="t-k">if</span> self._futuro:
+            self._passado.<span class="t-f">append</span>(self._orcamento.<span class="t-f">salvar</span>())
+            self._orcamento.<span class="t-f">restaurar</span>(self._futuro.<span class="t-f">pop</span>())</code></pre>
+              <pre><code><span class="t-k">interface</span> <span class="t-f">Item</span> {
+  <span class="t-k">readonly</span> produto: <span class="t-f">string</span>;
+  <span class="t-k">readonly</span> quantidade: <span class="t-f">number</span>;
+  <span class="t-k">readonly</span> preco: <span class="t-f">number</span>;
+}
+
+<span class="t-c">// 1. o memento: quem guarda a foto só enxerga o rótulo</span>
+<span class="t-k">export</span> <span class="t-k">interface</span> <span class="t-f">Instantaneo</span> {
+  <span class="t-k">readonly</span> rotulo: <span class="t-f">string</span>;
+}
+
+<span class="t-k">class</span> <span class="t-f">Foto</span> <span class="t-k">implements</span> <span class="t-f">Instantaneo</span> {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">readonly</span> rotulo: <span class="t-f">string</span>,
+    <span class="t-k">readonly</span> itens: <span class="t-k">readonly</span> <span class="t-f">Item</span>[],
+    <span class="t-k">readonly</span> desconto: <span class="t-f">number</span>,
+    <span class="t-k">readonly</span> cupom: <span class="t-f">string</span> | <span class="t-k">null</span>,
+    <span class="t-k">readonly</span> frete: <span class="t-f">number</span>,
+  ) {}
+}
+
+<span class="t-c">// 2. o originador: só ele sabe tirar a foto, e só ele sabe usá-la</span>
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">Orcamento</span> {
+  <span class="t-k">private</span> itens: <span class="t-k">readonly</span> <span class="t-f">Item</span>[] = [];
+  <span class="t-k">private</span> desconto = <span class="t-n">0</span>;
+  <span class="t-k">private</span> cupom: <span class="t-f">string</span> | <span class="t-k">null</span> = <span class="t-k">null</span>;
+  <span class="t-k">private</span> frete = <span class="t-n">0</span>;
+
+  <span class="t-f">salvar</span>(rotulo: <span class="t-f">string</span>): <span class="t-f">Instantaneo</span> {
+    <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">Foto</span>(rotulo, <span class="t-k">this</span>.itens, <span class="t-k">this</span>.desconto, <span class="t-k">this</span>.cupom, <span class="t-k">this</span>.frete);
+  }
+
+  <span class="t-f">restaurar</span>(instantaneo: <span class="t-f">Instantaneo</span>): <span class="t-f">void</span> {
+    <span class="t-k">const</span> foto = instantaneo <span class="t-k">as</span> <span class="t-f">Foto</span>;
+    <span class="t-k">this</span>.itens = foto.itens;
+    <span class="t-k">this</span>.desconto = foto.desconto;
+    <span class="t-k">this</span>.cupom = foto.cupom;
+    <span class="t-k">this</span>.frete = foto.frete;
+  }
+}
+
+<span class="t-c">// 3. o zelador: guarda as fotos e decide quando voltar; nunca abre uma</span>
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">Historico</span> {
+  <span class="t-k">private</span> passado: <span class="t-f">Instantaneo</span>[] = [];
+  <span class="t-k">private</span> futuro: <span class="t-f">Instantaneo</span>[] = [];
+
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> orcamento: <span class="t-f">Orcamento</span>, <span class="t-k">private</span> limite = <span class="t-n">50</span>) {}
+
+  <span class="t-f">antesDeAlterar</span>(rotulo: <span class="t-f">string</span>) {
+    <span class="t-k">this</span>.passado.<span class="t-f">push</span>(<span class="t-k">this</span>.orcamento.<span class="t-f">salvar</span>(rotulo));
+    <span class="t-k">if</span> (<span class="t-k">this</span>.passado.length &gt; <span class="t-k">this</span>.limite) <span class="t-k">this</span>.passado.<span class="t-f">shift</span>();
+    <span class="t-k">this</span>.futuro = [];
+  }
+
+  <span class="t-f">desfazer</span>() {
+    <span class="t-k">const</span> foto = <span class="t-k">this</span>.passado.<span class="t-f">pop</span>();
+    <span class="t-k">if</span> (!foto) <span class="t-k">return</span>;
+    <span class="t-k">this</span>.futuro.<span class="t-f">push</span>(<span class="t-k">this</span>.orcamento.<span class="t-f">salvar</span>(foto.rotulo));
+    <span class="t-k">this</span>.orcamento.<span class="t-f">restaurar</span>(foto);
+  }
+
+  <span class="t-f">refazer</span>() {
+    <span class="t-k">const</span> foto = <span class="t-k">this</span>.futuro.<span class="t-f">pop</span>();
+    <span class="t-k">if</span> (!foto) <span class="t-k">return</span>;
+    <span class="t-k">this</span>.passado.<span class="t-f">push</span>(<span class="t-k">this</span>.orcamento.<span class="t-f">salvar</span>(foto.rotulo));
+    <span class="t-k">this</span>.orcamento.<span class="t-f">restaurar</span>(foto);
+  }
+}</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste do histórico não precisa conhecer um campo sequer: <code>antes = orcamento.salvar()</code>, uma alteração qualquer, <code>orcamento.restaurar(antes)</code> e a comparação do que o orçamento mostra por fora. Se alguém esquecer um campo em <code>salvar</code>, é <strong>este</strong> teste, em um lugar só, que acusa.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Memento vale quando três coisas acontecem ao mesmo tempo: alguém precisa <strong>voltar</strong> a um estado em que o objeto já esteve; o estado é <strong>interno</strong> do objeto, então quem guarda não deveria conhecê-lo; e guardar a foto inteira é <strong>mais simples</strong> do que escrever o inverso de cada operação.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Desfazer e refazer em um objeto com muito estado</td><td>Um <code>_anterior = {…}</code> na tela, copiando campo a campo; um <code>desfazer</code> que reatribui cada campo; um campo novo que ninguém lembrou de copiar</td><td><a href="uso.html#historico-do-editor">Uso #1</a></td></tr>
+                <tr><td>Calcular "e se…" sem alterar de verdade</td><td>Um <code>simular_x()</code> que repete as regras de <code>aplicar_x()</code>; <code>deepcopy(obj)</code> espalhado antes de "tentar"</td><td><a href="uso.html#simular-e-decidir">Uso #2</a></td></tr>
+                <tr><td>Retomar depois de fechar a tela ou o programa</td><td>Uma série de <code>localStorage.setItem</code> com um campo por chave; <code>json.dumps(obj.__dict__)</code> com os campos listados à mão</td><td><a href="uso.html#rascunho-que-sobrevive">Uso #3</a></td></tr>
+                <tr><td>Tentar um caminho e voltar se não der</td><td><code>pos_salva = self.pos</code> … <code>self.pos = pos_salva</code>, repetido em cada alternativa, e cada vez com um campo a mais</td><td><a href="uso.html#tentar-e-voltar">Uso #4</a></td></tr>
+                <tr><td>Código de fora que restaura mexendo no que é privado</td><td><code>obj._campo = valor</code> fora da classe; <code>setattr</code> em laço sobre o <code>__dict__</code></td><td><a href="uso.html#historico-do-editor">Uso #1</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: alguém de fora do objeto está copiando ou devolvendo os campos dele. O Memento muda essa tarefa para dentro do objeto, e deixa para fora só o ato de guardar e de pedir de volta.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Alguém vai mesmo voltar a esse estado?</strong> Se o que se quer é saber o que aconteceu (auditoria, quem mudou o quê), registre o evento, não o estado.</li>
+            <li><strong>O estado é um valor pequeno e imutável?</strong> Se o objeto inteiro é uma tupla, um número ou um <code>dataclass(frozen=True)</code>, a referência antiga já é a foto. Guarde-a.</li>
+            <li><strong>O inverso de cada operação é curto e simples de escrever?</strong> Se são três ações e cada uma tem uma volta óbvia, um Command com <code>desfazer</code> custa menos que manter fotos.</li>
+            <li><strong>Quem guarda precisaria conhecer ou editar os campos?</strong> Se sim, é Memento: a foto sai do objeto fechada e volta fechada.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Memento tem um custo fixo e um custo que cresce. O fixo: <code>salvar</code> e <code>restaurar</code> precisam acompanhar o objeto, e um campo esquecido não dá erro, só não volta. O que cresce: cada foto ocupa memória, e o histórico pode crescer sem ninguém ver.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>O estado é um valor imutável e pequeno</td><td>A variável antiga já é a foto; a classe a mais só repassa</td><td>Guarde a referência, em uma lista</td></tr>
+                <tr><td>Desfazer precisa reverter efeitos de fora (e-mail enviado, cobrança, estoque reservado)</td><td>A foto restaura a memória; o mundo continua do jeito que ficou</td><td>Command com uma ação de compensação, ou uma transação do banco</td></tr>
+                <tr><td>O objeto é enorme e muda um pedacinho por vez</td><td>Uma cópia inteira por passo estoura a memória</td><td>Command guardando só a diferença; ou fotos de tempos em tempos</td></tr>
+                <tr><td>Você quer saber quem mudou o quê e quando</td><td>Uma foto não conta a história, só o resultado</td><td>Um log de eventos (Event Sourcing)</td></tr>
+                <tr><td>A persistência já é um banco com transações</td><td>O rollback já existe, e é mais correto que o seu</td><td>Use a transação</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Memento saiu do lugar</h3>
+          <ul>
+            <li><strong>A foto tem getters públicos e o zelador os usa.</strong> Se o <code>Historico</code> lê <code>foto.desconto</code> para decidir algo, a foto virou um DTO e o encapsulamento que justificava o pattern foi embora.</li>
+            <li><strong>A foto é mutável, ou a cópia é rasa.</strong> Itens compartilhados entre a foto e o objeto vivo mudam por baixo. O "desfazer" devolve a lista que já foi alterada.</li>
+            <li><strong>O histórico não tem limite.</strong> Uma foto por tecla digitada, guardada para sempre, é um vazamento de memória com nome de funcionalidade.</li>
+            <li><strong>A foto guarda o que dá para recalcular.</strong> Totais, caches e índices pertencem ao <code>restaurar</code>, que os recalcula. Guardá-los na foto é deixá-los envelhecer.</li>
+            <li><strong>Restaura sem avisar quem depende do objeto.</strong> Se a tela, um listener ou um cache ficaram olhando para o estado velho, o objeto volta e eles não.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: a cópia rasa. A foto guarda a <em>mesma</em> lista que o objeto vivo continua usando, então o "desfazer" restaura um estado que já foi mexido. Em um teste com um item só, parece funcionar.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com um valor imutável e uma lista dele. O Memento aparece quando o estado tem campos privados que não deveriam sair de lá. Nesse ponto a refatoração é pequena: o que você já copiava vira <code>salvar</code> e <code>restaurar</code>.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../command/explicacao.html">Command</a></td><td>Guarda a <em>operação</em> e como revertê-la; o Memento guarda o <em>estado</em> e volta a ele. Aparecem juntos quando o comando guarda uma foto para saber como desfazer</td></tr>
+                <tr><td>Prototype</td><td>Copia um objeto para criar <em>outro</em>, independente; o Memento copia para devolver o <em>mesmo</em> objeto a um estado antigo</td></tr>
+                <tr><td>State</td><td>Troca o comportamento de acordo com o estado atual; o Memento não decide nada, só guarda e devolve</td></tr>
+                <tr><td>Event Sourcing</td><td>Guarda a sequência de mudanças e reconstrói o estado a partir delas; o Memento guarda o resultado e esquece o caminho</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o objeto que volta é o mesmo que saiu, e quem guardou nunca olhou dentro, é Memento.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Adapter · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/adapter/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Adapter</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Sete situações em que o Adapter resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o adaptador está absorvendo.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que sete</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Adapter. Quando dois casos se resolvem com o mesmo raciocínio — trocar a SDK de SMS e trocar a SDK de e-mail, por exemplo — só um fica. Seguindo essa regra, sobraram sete motivos. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o adaptador traduz</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#varios-provedores">Vários provedores para a mesma operação</a></td><td>Assinatura, unidades e retorno de cada SDK</td></tr>
+                <tr><td>2</td><td><a href="#codigo-legado">Código legado que ninguém pode mexer</a></td><td>Uma assinatura antiga em uma nova</td></tr>
+                <tr><td>3</td><td><a href="#payload-externo">Payload de API vazando para o domínio</a></td><td>O vocabulário de fora no vocabulário de dentro</td></tr>
+                <tr><td>4</td><td><a href="#dependencia-de-infra">Infraestrutura que trava dev e teste</a></td><td>Operações <em>e</em> erros</td></tr>
+                <tr><td>5</td><td><a href="#callback-promise">API de callback em código async</a></td><td>O modelo de execução</td></tr>
+                <tr><td>6</td><td><a href="#paginacao">API paginada consumida como lista</a></td><td>Um protocolo da linguagem</td></tr>
+                <tr><td>7</td><td><a href="#framework">O framework espera uma interface dele</a></td><td>O seu código para a interface de fora</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="note"><p>As chamadas de SDK estão simplificadas para caber na página. O formato é o real; parâmetros opcionais e configuração foram omitidos.</p></div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="varios-provedores">1. Vários provedores para a mesma operação</h2>
+          <p><strong>Situação.</strong> A loja cobra cartão pelo Stripe. O comercial fechou contrato com o Mercado Pago, e parte das vendas passa a ir para lá. As duas SDKs fazem a mesma coisa — cobrar — de jeitos diferentes: o Stripe recebe o valor em <em>centavos</em> e responde <code>"succeeded"</code>; o Mercado Pago recebe em <em>reais</em> e responde <code>"approved"</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o checkout conhece as duas SDKs</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Checkout</span>:
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self, pedido, gateway):
+        <span class="t-k">if</span> gateway == <span class="t-s">"stripe"</span>:
+            r = stripe.<span class="t-f">PaymentIntent</span>.<span class="t-f">create</span>(
+                amount=<span class="t-f">int</span>(pedido.total * <span class="t-n">100</span>),  <span class="t-c"># centavos</span>
+                currency=<span class="t-s">"brl"</span>,
+                payment_method=pedido.token,
+                confirm=<span class="t-k">True</span>,
+            )
+            aprovado = r.status == <span class="t-s">"succeeded"</span>
+            transacao = r.id
+        <span class="t-k">elif</span> gateway == <span class="t-s">"mercadopago"</span>:
+            r = mp.<span class="t-f">payment</span>().<span class="t-f">create</span>({
+                <span class="t-s">"transaction_amount"</span>: <span class="t-f">float</span>(pedido.total),  <span class="t-c"># reais</span>
+                <span class="t-s">"token"</span>: pedido.token,
+                <span class="t-s">"payer"</span>: {<span class="t-s">"email"</span>: pedido.email},
+            })[<span class="t-s">"response"</span>]
+            aprovado = r[<span class="t-s">"status"</span>] == <span class="t-s">"approved"</span>
+            transacao = <span class="t-f">str</span>(r[<span class="t-s">"id"</span>])
+
+        <span class="t-k">if</span> <span class="t-k">not</span> aprovado:
+            <span class="t-k">raise</span> <span class="t-f">PagamentoRecusado</span>(pedido.id)
+        pedido.<span class="t-f">marcar_pago</span>(transacao)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Um terceiro gateway é mais um <code>elif</code> dentro da regra de negócio. Um erro de unidade (cobrar 100 vezes o valor) mora no mesmo método que decide se o pedido foi pago. E testar o checkout exige as duas SDKs.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — um adaptador por provedor</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># o alvo: o que o checkout precisa, nos termos dele</span>
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">Cobranca</span>:
+    aprovada: <span class="t-f">bool</span>
+    transacao: <span class="t-f">str</span>
+
+<span class="t-k">class</span> <span class="t-f">Gateway</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">cobrar</span>(self, valor: <span class="t-f">Decimal</span>, token: <span class="t-f">str</span>, email: <span class="t-f">str</span>) -&gt; <span class="t-f">Cobranca</span>: ...
+
+<span class="t-c"># os adaptadores: cada um conhece só a sua SDK</span>
+<span class="t-k">class</span> <span class="t-f">GatewayStripe</span>(Gateway):
+    <span class="t-k">def</span> <span class="t-f">cobrar</span>(self, valor, token, email):
+        r = stripe.<span class="t-f">PaymentIntent</span>.<span class="t-f">create</span>(
+            amount=<span class="t-f">int</span>(valor * <span class="t-n">100</span>), currency=<span class="t-s">"brl"</span>,
+            payment_method=token, confirm=<span class="t-k">True</span>, receipt_email=email,
+        )
+        <span class="t-k">return</span> <span class="t-f">Cobranca</span>(aprovada=r.status == <span class="t-s">"succeeded"</span>, transacao=r.id)
+
+<span class="t-k">class</span> <span class="t-f">GatewayMercadoPago</span>(Gateway):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, sdk):
+        self._sdk = sdk
+
+    <span class="t-k">def</span> <span class="t-f">cobrar</span>(self, valor, token, email):
+        r = self._sdk.<span class="t-f">payment</span>().<span class="t-f">create</span>({
+            <span class="t-s">"transaction_amount"</span>: <span class="t-f">float</span>(valor),
+            <span class="t-s">"token"</span>: token,
+            <span class="t-s">"payer"</span>: {<span class="t-s">"email"</span>: email},
+        })[<span class="t-s">"response"</span>]
+        <span class="t-k">return</span> <span class="t-f">Cobranca</span>(aprovada=r[<span class="t-s">"status"</span>] == <span class="t-s">"approved"</span>, transacao=<span class="t-f">str</span>(r[<span class="t-s">"id"</span>]))
+
+<span class="t-c"># o cliente: uma linha de pagamento, nenhum provedor</span>
+<span class="t-k">class</span> <span class="t-f">Checkout</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, gateway: Gateway):
+        self._gateway = gateway
+
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self, pedido):
+        cobranca = self._gateway.<span class="t-f">cobrar</span>(pedido.total, pedido.token, pedido.email)
+        <span class="t-k">if</span> <span class="t-k">not</span> cobranca.aprovada:
+            <span class="t-k">raise</span> <span class="t-f">PagamentoRecusado</span>(pedido.id)
+        pedido.<span class="t-f">marcar_pago</span>(cobranca.transacao)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o adaptador absorve.</strong> Centavos contra reais, <code>"succeeded"</code> contra <code>"approved"</code>, objeto contra dicionário, id numérico contra texto. Nada disso chega ao <code>Checkout</code>. O retorno também é seu: <code>Cobranca</code> tem os dois campos que a regra usa, e não o objeto inteiro da SDK. Um terceiro provedor vira uma classe nova, e o checkout não é tocado.</p>
+          <div class="callout" data-kind="warn"><p>Resista a pôr em <code>Cobranca</code> todo campo que alguma SDK devolve "porque pode ser útil". O alvo cresce até virar a soma das duas APIs, e aí o checkout volta a depender delas.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="codigo-legado">2. Código legado que ninguém pode mexer</h2>
+          <p><strong>Situação.</strong> O cálculo de frete é um módulo de 2014, usado por outros três sistemas da empresa. Ninguém tem coragem — nem permissão — de mudar a assinatura. Ele recebe CEPs só com dígitos, peso em <em>gramas</em>, o serviço como número mágico (<code>1</code> = PAC, <code>2</code> = SEDEX) e devolve uma string: <code>"R$ 1.023,90|5"</code>, valor e prazo separados por barra.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada chamador faz o próprio parse</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">resumo_do_carrinho</span>(carrinho, cep_destino):
+    bruto = legado.<span class="t-f">calc_frete</span>(
+        <span class="t-s">"01310100"</span>,
+        cep_destino.<span class="t-f">replace</span>(<span class="t-s">"-"</span>, <span class="t-s">""</span>),
+        <span class="t-f">int</span>(carrinho.peso_kg * <span class="t-n">1000</span>),
+        <span class="t-n">2</span>,  <span class="t-c"># SEDEX... ou era PAC?</span>
+    )
+    valor, prazo = bruto.<span class="t-f">split</span>(<span class="t-s">"|"</span>)
+    valor = <span class="t-f">Decimal</span>(valor.<span class="t-f">replace</span>(<span class="t-s">"R$ "</span>, <span class="t-s">""</span>).<span class="t-f">replace</span>(<span class="t-s">"."</span>, <span class="t-s">""</span>).<span class="t-f">replace</span>(<span class="t-s">","</span>, <span class="t-s">"."</span>))
+    <span class="t-k">return</span> carrinho.subtotal + valor, <span class="t-f">int</span>(prazo)
+
+<span class="t-c"># e o mesmo parse aparece de novo na página do produto, na API</span>
+<span class="t-c"># de cotação e no job de reprecificação — cada um um pouco diferente.</span>
+<span class="t-c"># um deles esqueceu o .replace(".", "") e quebra em fretes acima de R$ 999.</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O formato esquisito do legado se espalhou. Cada cópia do parse é um lugar onde um bug pode estar, e é justamente o tipo de bug que só aparece com um valor específico.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o legado fica intacto, atrás de uma interface nova</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Servico</span>(Enum):
+    PAC = <span class="t-n">1</span>
+    SEDEX = <span class="t-n">2</span>
+
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">Cotacao</span>:
+    valor: <span class="t-f">Decimal</span>
+    prazo_dias: <span class="t-f">int</span>
+
+<span class="t-k">class</span> <span class="t-f">CotadorDeFrete</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">cotar</span>(self, origem: <span class="t-f">str</span>, destino: <span class="t-f">str</span>, peso_kg: <span class="t-f">float</span>, servico: Servico) -&gt; <span class="t-f">Cotacao</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">CotadorLegado</span>:
+    <span class="t-s">"""Único lugar do sistema que conhece o formato 'R$ 1.023,90|5'."""</span>
+
+    <span class="t-k">def</span> <span class="t-f">cotar</span>(self, origem, destino, peso_kg, servico):
+        bruto = legado.<span class="t-f">calc_frete</span>(
+            <span class="t-f">_so_digitos</span>(origem),
+            <span class="t-f">_so_digitos</span>(destino),
+            <span class="t-f">round</span>(peso_kg * <span class="t-n">1000</span>),
+            servico.value,
+        )
+        valor, prazo = bruto.<span class="t-f">split</span>(<span class="t-s">"|"</span>)
+        <span class="t-k">return</span> <span class="t-f">Cotacao</span>(<span class="t-f">_moeda_para_decimal</span>(valor), <span class="t-f">int</span>(prazo))
+
+<span class="t-c"># o chamador fala a língua nova</span>
+<span class="t-k">def</span> <span class="t-f">resumo_do_carrinho</span>(carrinho, cep_destino, cotador: CotadorDeFrete):
+    c = cotador.<span class="t-f">cotar</span>(LOJA.cep, cep_destino, carrinho.peso_kg, Servico.SEDEX)
+    <span class="t-k">return</span> carrinho.subtotal + c.valor, c.prazo_dias</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o adaptador absorve.</strong> Gramas, número mágico, CEP sem hífen e a string com barra. O módulo de 2014 não muda uma linha, os outros três sistemas continuam funcionando, e o parse existe uma vez só — com um teste só.</p>
+          <p>O ganho maior é o do dia seguinte: quando o frete for reescrito, nasce um <code>CotadorNovo</code> que implementa o mesmo <code>CotadorDeFrete</code>. Dá para migrar tela por tela, ou rodar os dois lado a lado e comparar os resultados antes de desligar o antigo.</p>
+          <div class="callout" data-kind="tip"><p>O <code>Protocol</code> do Python dispensa herança: qualquer classe com um método <code>cotar</code> com essa assinatura serve. É útil quando o adaptador mora em outro pacote e você não quer que ele importe a interface.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="payload-externo">3. Payload de API vazando para o domínio</h2>
+          <p><strong>Situação.</strong> O formulário de endereço preenche a rua a partir do CEP, usando o ViaCEP. O JSON dele usa os nomes dele — <code>logradouro</code>, <code>localidade</code>, <code>uf</code> — e, quando o CEP não existe, responde <code>200</code> com <code>{ erro: true }</code> em vez de um 404.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o JSON do ViaCEP em três arquivos</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c">// checkout.tsx</span>
+<span class="t-k">const</span> dados = <span class="t-k">await</span> (<span class="t-k">await</span> <span class="t-f">fetch</span>(<span class="t-s">`https://viacep.com.br/ws/${cep}/json/`</span>)).<span class="t-f">json</span>();
+<span class="t-k">if</span> (dados.erro) <span class="t-k">return</span> <span class="t-f">mostrarErro</span>(<span class="t-s">"CEP não encontrado"</span>);
+<span class="t-f">setForm</span>({ ...form, rua: dados.logradouro, cidade: dados.localidade, uf: dados.uf });
+
+<span class="t-c">// frete.ts</span>
+<span class="t-k">const</span> dados = <span class="t-k">await</span> (<span class="t-k">await</span> <span class="t-f">fetch</span>(<span class="t-s">`https://viacep.com.br/ws/${cep}/json/`</span>)).<span class="t-f">json</span>();
+<span class="t-k">const</span> regiao = <span class="t-f">regiaoDoEstado</span>(dados.uf);
+
+<span class="t-c">// cadastro.tsx — este esqueceu do erro; com CEP inválido grava rua undefined</span>
+<span class="t-k">const</span> { logradouro, bairro } = <span class="t-k">await</span> (<span class="t-k">await</span> <span class="t-f">fetch</span>(<span class="t-s">`https://viacep.com.br/ws/${cep}/json/`</span>)).<span class="t-f">json</span>();</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O vocabulário do ViaCEP virou o vocabulário do sistema. O jeito de detectar "não encontrado" está repetido — e esquecido em um lugar. Se o ViaCEP sair do ar e a decisão for usar a BrasilAPI, que chama os mesmos campos de <code>street</code>, <code>city</code> e <code>state</code>, a troca é uma caça ao tesouro.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o domínio escolhe os próprios nomes</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c">// o alvo: o endereço como o seu sistema o entende</span>
+<span class="t-k">export</span> <span class="t-k">interface</span> <span class="t-f">Endereco</span> {
+  cep: <span class="t-f">string</span>; rua: <span class="t-f">string</span>; bairro: <span class="t-f">string</span>; cidade: <span class="t-f">string</span>; uf: <span class="t-f">string</span>;
+}
+
+<span class="t-k">export</span> <span class="t-k">interface</span> <span class="t-f">BuscaCep</span> {
+  <span class="t-c">/** null quando o CEP não existe — um único significado para "não achei" */</span>
+  <span class="t-f">buscar</span>(cep: <span class="t-f">string</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">Endereco</span> | <span class="t-k">null</span>&gt;;
+}
+
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">ViaCep</span> <span class="t-k">implements</span> <span class="t-f">BuscaCep</span> {
+  <span class="t-k">async</span> <span class="t-f">buscar</span>(cep: <span class="t-f">string</span>) {
+    <span class="t-k">const</span> d = <span class="t-k">await</span> (<span class="t-k">await</span> <span class="t-f">fetch</span>(<span class="t-s">`https://viacep.com.br/ws/${cep}/json/`</span>)).<span class="t-f">json</span>();
+    <span class="t-k">if</span> (d.erro) <span class="t-k">return</span> <span class="t-k">null</span>;
+    <span class="t-k">return</span> { cep: d.cep, rua: d.logradouro, bairro: d.bairro, cidade: d.localidade, uf: d.uf };
+  }
+}
+
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">BrasilApiCep</span> <span class="t-k">implements</span> <span class="t-f">BuscaCep</span> {
+  <span class="t-k">async</span> <span class="t-f">buscar</span>(cep: <span class="t-f">string</span>) {
+    <span class="t-k">const</span> r = <span class="t-k">await</span> <span class="t-f">fetch</span>(<span class="t-s">`https://brasilapi.com.br/api/cep/v1/${cep}`</span>);
+    <span class="t-k">if</span> (r.status === <span class="t-n">404</span>) <span class="t-k">return</span> <span class="t-k">null</span>;
+    <span class="t-k">const</span> d = <span class="t-k">await</span> r.<span class="t-f">json</span>();
+    <span class="t-k">return</span> { cep: d.cep, rua: d.street, bairro: d.neighborhood, cidade: d.city, uf: d.state };
+  }
+}
+
+<span class="t-c">// checkout.tsx — não sabe de onde o endereço veio</span>
+<span class="t-k">const</span> endereco = <span class="t-k">await</span> buscaCep.<span class="t-f">buscar</span>(cep);
+<span class="t-k">if</span> (!endereco) <span class="t-k">return</span> <span class="t-f">mostrarErro</span>(<span class="t-s">"CEP não encontrado"</span>);
+<span class="t-f">setForm</span>({ ...form, ...endereco });</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o adaptador absorve.</strong> Nomes de campo e o jeito de cada API dizer "não existe" — um pelo corpo, o outro pelo status. A palavra <code>logradouro</code> agora aparece em um arquivo só. Essa é a ideia por trás da <em>camada anticorrupção</em> do Domain-Driven Design: um Adapter na fronteira, para que o modelo de fora não contamine o de dentro.</p>
+
+          <!-- 4 ─────────────────────────────────────────────── -->
+          <h2 id="dependencia-de-infra">4. Infraestrutura que trava dev e teste</h2>
+          <p><strong>Situação.</strong> Relatórios mensais em PDF são guardados no S3 como cache: se já existe, devolve; se não, gera e grava. Para rodar o projeto na máquina, cada pessoa precisa de credenciais da AWS. Nos testes, alguém sobe um S3 falso. E a regra de negócio captura a exceção do <code>boto3</code> pelo código de erro.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — a regra sabe o que é um ClientError</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> boto3
+<span class="t-k">from</span> botocore.exceptions <span class="t-k">import</span> ClientError
+
+<span class="t-k">class</span> <span class="t-f">Relatorios</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._s3 = boto3.<span class="t-f">client</span>(<span class="t-s">"s3"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">mensal</span>(self, mes):
+        chave = <span class="t-s">f"relatorios/{mes}.pdf"</span>
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> self._s3.<span class="t-f">get_object</span>(Bucket=<span class="t-s">"empresa-docs"</span>, Key=chave)[<span class="t-s">"Body"</span>].<span class="t-f">read</span>()
+        <span class="t-k">except</span> ClientError <span class="t-k">as</span> e:
+            <span class="t-k">if</span> e.response[<span class="t-s">"Error"</span>][<span class="t-s">"Code"</span>] != <span class="t-s">"NoSuchKey"</span>:
+                <span class="t-k">raise</span>
+        pdf = <span class="t-f">montar_pdf</span>(mes)
+        self._s3.<span class="t-f">put_object</span>(Bucket=<span class="t-s">"empresa-docs"</span>, Key=chave, Body=pdf)
+        <span class="t-k">return</span> pdf</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O cliente do S3 é criado dentro da classe, então não há como trocar. E <code>"NoSuchKey"</code> é um detalhe da AWS dentro de uma regra que só quer saber "o arquivo existe?".</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — um adaptador para a nuvem, outro para o disco</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ArquivoNaoEncontrado</span>(Exception): ...
+
+<span class="t-k">class</span> <span class="t-f">Armazenamento</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">ler</span>(self, caminho: <span class="t-f">str</span>) -&gt; <span class="t-f">bytes</span>: ...
+    <span class="t-k">def</span> <span class="t-f">gravar</span>(self, caminho: <span class="t-f">str</span>, dados: <span class="t-f">bytes</span>) -&gt; <span class="t-k">None</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">ArmazenamentoS3</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, cliente, bucket):
+        self._s3, self._bucket = cliente, bucket
+
+    <span class="t-k">def</span> <span class="t-f">ler</span>(self, caminho):
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> self._s3.<span class="t-f">get_object</span>(Bucket=self._bucket, Key=caminho)[<span class="t-s">"Body"</span>].<span class="t-f">read</span>()
+        <span class="t-k">except</span> ClientError <span class="t-k">as</span> e:
+            <span class="t-k">if</span> e.response[<span class="t-s">"Error"</span>][<span class="t-s">"Code"</span>] == <span class="t-s">"NoSuchKey"</span>:
+                <span class="t-k">raise</span> <span class="t-f">ArquivoNaoEncontrado</span>(caminho) <span class="t-k">from</span> e
+            <span class="t-k">raise</span>
+
+    <span class="t-k">def</span> <span class="t-f">gravar</span>(self, caminho, dados):
+        self._s3.<span class="t-f">put_object</span>(Bucket=self._bucket, Key=caminho, Body=dados)
+
+<span class="t-k">class</span> <span class="t-f">ArmazenamentoLocal</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, raiz: Path):
+        self._raiz = raiz
+
+    <span class="t-k">def</span> <span class="t-f">ler</span>(self, caminho):
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> (self._raiz / caminho).<span class="t-f">read_bytes</span>()
+        <span class="t-k">except</span> FileNotFoundError <span class="t-k">as</span> e:
+            <span class="t-k">raise</span> <span class="t-f">ArquivoNaoEncontrado</span>(caminho) <span class="t-k">from</span> e
+
+    <span class="t-k">def</span> <span class="t-f">gravar</span>(self, caminho, dados):
+        destino = self._raiz / caminho
+        destino.parent.<span class="t-f">mkdir</span>(parents=<span class="t-k">True</span>, exist_ok=<span class="t-k">True</span>)
+        destino.<span class="t-f">write_bytes</span>(dados)
+
+<span class="t-k">class</span> <span class="t-f">Relatorios</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, armazenamento: Armazenamento):
+        self._arquivos = armazenamento
+
+    <span class="t-k">def</span> <span class="t-f">mensal</span>(self, mes):
+        caminho = <span class="t-s">f"relatorios/{mes}.pdf"</span>
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> self._arquivos.<span class="t-f">ler</span>(caminho)
+        <span class="t-k">except</span> ArquivoNaoEncontrado:
+            pdf = <span class="t-f">montar_pdf</span>(mes)
+            self._arquivos.<span class="t-f">gravar</span>(caminho, pdf)
+            <span class="t-k">return</span> pdf</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o adaptador absorve.</strong> As chamadas, sim — mas principalmente os <strong>erros</strong>. Exceção faz parte da interface: se <code>ClientError</code> e <code>FileNotFoundError</code> passassem direto, a regra teria que conhecer as duas. Os dois adaptadores traduzem para <code>ArquivoNaoEncontrado</code>, que é do seu domínio.</p>
+          <p>Em produção, <code>ArmazenamentoS3(boto3.client("s3"), "empresa-docs")</code>. Na máquina, <code>ArmazenamentoLocal(Path("./.dados"))</code>. No teste, o mesmo local apontando para o <code>tmp_path</code> do pytest. A escolha acontece em um lugar só, na montagem da aplicação, e não dentro de <code>Relatorios</code>.</p>
+
+          <!-- 5 ─────────────────────────────────────────────── -->
+          <h2 id="callback-promise">5. API de callback em código async</h2>
+          <p><strong>Situação.</strong> A tela de lojas próximas precisa da posição do usuário. O resto do front é <code>async/await</code>, mas <code>navigator.geolocation.getCurrentPosition</code> é dos tempos dos callbacks: recebe uma função de sucesso e outra de erro.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — duas trilhas de erro e um finally que não existe</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">function</span> <span class="t-f">mostrarLojasProximas</span>() {
+  <span class="t-f">carregando</span>(<span class="t-k">true</span>);
+  navigator.geolocation.<span class="t-f">getCurrentPosition</span>(
+    (pos) =&gt; {
+      <span class="t-f">fetch</span>(<span class="t-s">`/api/lojas?lat=${pos.coords.latitude}&amp;lng=${pos.coords.longitude}`</span>)
+        .<span class="t-f">then</span>((r) =&gt; r.<span class="t-f">json</span>())
+        .<span class="t-f">then</span>((lojas) =&gt; { <span class="t-f">render</span>(lojas); <span class="t-f">carregando</span>(<span class="t-k">false</span>); })
+        .<span class="t-f">catch</span>((e) =&gt; { <span class="t-f">mostrarErro</span>(e); <span class="t-f">carregando</span>(<span class="t-k">false</span>); });
+    },
+    (e) =&gt; { <span class="t-f">mostrarErro</span>(e); <span class="t-f">carregando</span>(<span class="t-k">false</span>); },
+    { timeout: <span class="t-n">5000</span> },
+  );
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> <code>carregando(false)</code> aparece três vezes, porque não dá para usar <code>try/finally</code> através de um callback. O erro de permissão e o erro de rede seguem caminhos diferentes. E testar a tela exige simular o objeto <code>navigator</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a mesma API, agora com cara de Promise</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">export</span> <span class="t-k">interface</span> <span class="t-f">Coordenadas</span> { lat: <span class="t-f">number</span>; lng: <span class="t-f">number</span> }
+
+<span class="t-k">export</span> <span class="t-k">interface</span> <span class="t-f">Localizador</span> {
+  <span class="t-f">posicaoAtual</span>(): <span class="t-f">Promise</span>&lt;<span class="t-f">Coordenadas</span>&gt;;
+}
+
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">LocalizadorDoNavegador</span> <span class="t-k">implements</span> <span class="t-f">Localizador</span> {
+  <span class="t-f">posicaoAtual</span>() {
+    <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">Promise</span>&lt;<span class="t-f">Coordenadas</span>&gt;((resolve, reject) =&gt; {
+      navigator.geolocation.<span class="t-f">getCurrentPosition</span>(
+        (pos) =&gt; <span class="t-f">resolve</span>({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (erro) =&gt; <span class="t-f">reject</span>(<span class="t-k">new</span> <span class="t-f">SemLocalizacao</span>(erro.message)),
+        { timeout: <span class="t-n">5000</span> },
+      );
+    });
+  }
+}
+
+<span class="t-k">async</span> <span class="t-k">function</span> <span class="t-f">mostrarLojasProximas</span>(localizador: <span class="t-f">Localizador</span>) {
+  <span class="t-f">carregando</span>(<span class="t-k">true</span>);
+  <span class="t-k">try</span> {
+    <span class="t-k">const</span> { lat, lng } = <span class="t-k">await</span> localizador.<span class="t-f">posicaoAtual</span>();
+    <span class="t-k">const</span> lojas = <span class="t-k">await</span> (<span class="t-k">await</span> <span class="t-f">fetch</span>(<span class="t-s">`/api/lojas?lat=${lat}&amp;lng=${lng}`</span>)).<span class="t-f">json</span>();
+    <span class="t-f">render</span>(lojas);
+  } <span class="t-k">catch</span> (e) {
+    <span class="t-f">mostrarErro</span>(e);
+  } <span class="t-k">finally</span> {
+    <span class="t-f">carregando</span>(<span class="t-k">false</span>);
+  }
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o adaptador absorve.</strong> Aqui não são nomes nem formatos: é o <strong>modelo de execução</strong>. Callback vira Promise, dois caminhos de erro viram um <code>reject</code>, e o formato <code>GeolocationPosition</code> vira um <code>{ lat, lng }</code> simples. No teste, um <code>Localizador</code> falso é um objeto com um método que retorna <code>Promise.resolve({ lat: -23.5, lng: -46.6 })</code>.</p>
+          <div class="callout" data-kind="tip"><p>O Node já traz um adaptador genérico desse tipo: <code>util.promisify</code> transforma qualquer função no estilo <code>(err, valor) =&gt; …</code> em uma que retorna Promise. Quando o callback não segue esse formato — como o da geolocalização —, você escreve o seu.</p></div>
+
+          <!-- 6 ─────────────────────────────────────────────── -->
+          <h2 id="paginacao">6. API paginada consumida como lista</h2>
+          <p><strong>Situação.</strong> Os clientes moram em um CRM externo, cuja API devolve 100 por vez: <code>{"data": [...], "next_cursor": "..."}</code>. Toda função que precisa "de todos os clientes" reescreve o mesmo laço de paginação.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o laço de cursor copiado em cada função</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">exportar_csv</span>(crm, arquivo):
+    cursor = <span class="t-k">None</span>
+    <span class="t-k">while</span> <span class="t-k">True</span>:
+        resp = crm.<span class="t-f">get</span>(<span class="t-s">"/contacts"</span>, params={<span class="t-s">"limit"</span>: <span class="t-n">100</span>, <span class="t-s">"cursor"</span>: cursor})
+        <span class="t-k">for</span> c <span class="t-k">in</span> resp[<span class="t-s">"data"</span>]:
+            arquivo.<span class="t-f">write</span>(<span class="t-s">f'{c["id"]},{c["email"]}\n'</span>)
+        cursor = resp.<span class="t-f">get</span>(<span class="t-s">"next_cursor"</span>)
+        <span class="t-k">if</span> <span class="t-k">not</span> cursor:
+            <span class="t-k">break</span>
+
+<span class="t-k">def</span> <span class="t-f">contar_inativos</span>(crm):
+    total, cursor = <span class="t-n">0</span>, <span class="t-k">None</span>
+    <span class="t-k">while</span> <span class="t-k">True</span>:
+        resp = crm.<span class="t-f">get</span>(<span class="t-s">"/contacts"</span>, params={<span class="t-s">"limit"</span>: <span class="t-n">100</span>, <span class="t-s">"cursor"</span>: cursor})
+        total += <span class="t-f">sum</span>(<span class="t-n">1</span> <span class="t-k">for</span> c <span class="t-k">in</span> resp[<span class="t-s">"data"</span>] <span class="t-k">if</span> <span class="t-k">not</span> c[<span class="t-s">"active"</span>])
+        cursor = resp.<span class="t-f">get</span>(<span class="t-s">"next_cursor"</span>)
+        <span class="t-k">if</span> <span class="t-k">not</span> cursor:
+            <span class="t-k">break</span>
+    <span class="t-k">return</span> total</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Metade de cada função é mecânica de paginação, e a regra de verdade — uma linha — fica soterrada. As funções só aceitam o cliente do CRM, então testar exige simular páginas e cursores.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a API paginada se comporta como um iterável</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ContatosDoCrm</span>:
+    <span class="t-s">"""Adapta a paginação por cursor ao protocolo de iteração do Python."""</span>
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, crm, por_pagina=<span class="t-n">100</span>):
+        self._crm, self._por_pagina = crm, por_pagina
+
+    <span class="t-k">def</span> <span class="t-f">__iter__</span>(self) -&gt; <span class="t-f">Iterator</span>[Contato]:
+        cursor = <span class="t-k">None</span>
+        <span class="t-k">while</span> <span class="t-k">True</span>:
+            resp = self._crm.<span class="t-f">get</span>(<span class="t-s">"/contacts"</span>, params={<span class="t-s">"limit"</span>: self._por_pagina, <span class="t-s">"cursor"</span>: cursor})
+            <span class="t-k">for</span> c <span class="t-k">in</span> resp[<span class="t-s">"data"</span>]:
+                <span class="t-k">yield</span> <span class="t-f">Contato</span>(id=c[<span class="t-s">"id"</span>], email=c[<span class="t-s">"email"</span>], ativo=c[<span class="t-s">"active"</span>])
+            cursor = resp.<span class="t-f">get</span>(<span class="t-s">"next_cursor"</span>)
+            <span class="t-k">if</span> <span class="t-k">not</span> cursor:
+                <span class="t-k">return</span>
+
+<span class="t-c"># os consumidores aceitam qualquer iterável de Contato</span>
+<span class="t-k">def</span> <span class="t-f">exportar_csv</span>(contatos: Iterable[Contato], arquivo):
+    <span class="t-k">for</span> c <span class="t-k">in</span> contatos:
+        arquivo.<span class="t-f">write</span>(<span class="t-s">f"{c.id},{c.email}\n"</span>)
+
+<span class="t-k">def</span> <span class="t-f">contar_inativos</span>(contatos: Iterable[Contato]):
+    <span class="t-k">return</span> <span class="t-f">sum</span>(<span class="t-n">1</span> <span class="t-k">for</span> c <span class="t-k">in</span> contatos <span class="t-k">if</span> <span class="t-k">not</span> c.ativo)
+
+<span class="t-c"># uso</span>
+<span class="t-f">contar_inativos</span>(<span class="t-f">ContatosDoCrm</span>(crm))</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o adaptador absorve.</strong> O alvo aqui não é uma interface que você escreveu: é o <strong>protocolo de iteração da própria linguagem</strong>. Por isso o ganho vai além do esperado: o <code>for</code>, o <code>sum</code>, o <code>itertools</code> — tudo passa a funcionar com o CRM. E como o gerador é preguiçoso, <code>islice(ContatosDoCrm(crm), 10)</code> busca só a primeira página e para.</p>
+          <p>O teste de <code>contar_inativos</code> recebe uma lista comum: <code>[Contato(1, "a@x", False), Contato(2, "b@x", True)]</code>. Nenhuma página falsa.</p>
+          <div class="callout" data-kind="tip"><p>A biblioteca padrão tem outros adaptadores para protocolos da linguagem. <code>contextlib.closing</code>, por exemplo, faz qualquer objeto com <code>.close()</code> funcionar em um <code>with</code>.</p></div>
+
+          <!-- 7 ─────────────────────────────────────────────── -->
+          <h2 id="framework">7. O framework espera uma interface dele</h2>
+          <p><strong>Situação.</strong> O time já tem um <code>AlertaSlack</code>, com um método <code>alertar(canal, texto)</code>. A decisão é que todo erro de produção chegue no canal <code>#ops</code>. Até aqui, os outros exemplos adaptavam o código de fora para a sua interface. Este vai na <strong>direção contrária</strong>: o <code>logging</code> do Python tem a interface dele, e o seu código é que precisa caber nela.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — alerta manual ao lado de cada log</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">try</span>:
+    <span class="t-f">processar_lote</span>(lote)
+<span class="t-k">except</span> Exception:
+    logger.<span class="t-f">exception</span>(<span class="t-s">"falha no lote %s"</span>, lote.id)
+    alerta.<span class="t-f">alertar</span>(<span class="t-s">"#ops"</span>, <span class="t-s">f"falha no lote {lote.id}"</span>)  <span class="t-c"># e nos outros 40 except?</span>
+
+<span class="t-c"># e os erros que as bibliotecas registram sozinhas</span>
+<span class="t-c"># (banco, cliente HTTP, fila) nunca chegam ao Slack</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O alerta depende de alguém lembrar de escrevê-lo, a mensagem é escrita duas vezes, e tudo o que é registrado fora do seu código fica invisível.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o AlertaSlack vestido de logging.Handler</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">HandlerSlack</span>(logging.Handler):
+    <span class="t-s">"""Adapta o AlertaSlack à interface que o logging espera."""</span>
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, alerta: AlertaSlack, canal: <span class="t-f">str</span>):
+        <span class="t-f">super</span>().<span class="t-f">__init__</span>(level=logging.ERROR)
+        self._alerta, self._canal = alerta, canal
+
+    <span class="t-k">def</span> <span class="t-f">emit</span>(self, record):
+        <span class="t-k">try</span>:
+            self._alerta.<span class="t-f">alertar</span>(self._canal, self.<span class="t-f">format</span>(record))
+        <span class="t-k">except</span> Exception:
+            self.<span class="t-f">handleError</span>(record)  <span class="t-c"># o log nunca derruba a aplicação</span>
+
+<span class="t-c"># uma vez, na inicialização</span>
+logging.<span class="t-f">getLogger</span>().<span class="t-f">addHandler</span>(<span class="t-f">HandlerSlack</span>(alerta, <span class="t-s">"#ops"</span>))
+
+<span class="t-c"># no código, só log</span>
+<span class="t-k">try</span>:
+    <span class="t-f">processar_lote</span>(lote)
+<span class="t-k">except</span> Exception:
+    logger.<span class="t-f">exception</span>(<span class="t-s">"falha no lote %s"</span>, lote.id)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o adaptador absorve.</strong> Os papéis se invertem: o <strong>alvo</strong> é <code>logging.Handler</code>, que não é seu; o <strong>adaptado</strong> é o <code>AlertaSlack</code>, que é. O cliente passa a ser o framework inteiro — e por isso os erros das bibliotecas também chegam ao Slack, sem nenhuma linha a mais.</p>
+          <p>O mesmo formato aparece sempre que um framework oferece um ponto de extensão: um backend de storage do Django, um transporte customizado do <code>httpx</code>, um <code>Comparator</code> em Java. Você implementa a interface deles, e por dentro chama o que já tem.</p>
+          <div class="callout" data-kind="warn"><p>Adaptador para um framework precisa respeitar o contrato inteiro dele, não só a assinatura. O <code>logging</code> exige que <code>emit</code> não propague exceções — se o Slack cair, a aplicação não pode cair junto. Por isso o <code>handleError</code>.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos sete:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Trocar a SDK de e-mail, de SMS ou de push</td><td>1 — vários provedores, mesma operação</td></tr>
+                <tr><td>Migrar da v1 para a v2 de uma API sem parar o sistema</td><td>2 — os dois lados atrás da mesma interface durante a troca</td></tr>
+                <tr><td>Envolver um componente de UI de terceiros (datepicker, gráfico) no seu design system</td><td>3 — os nomes e formatos de fora traduzidos na fronteira</td></tr>
+                <tr><td>Converter unidades ou fusos de um sensor ou serviço externo</td><td>3 — é tradução de dados</td></tr>
+                <tr><td>Fazer um objeto com <code>.close()</code> funcionar em um <code>with</code></td><td>6 — adaptar a um protocolo da linguagem</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Adapter, mas não é: esconder uma SDK enorme atrás de dois métodos simples. Se o objetivo é <em>reduzir</em> a superfície de um subsistema, e não converter uma interface em outra que já existia, o nome certo é Facade — veja a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

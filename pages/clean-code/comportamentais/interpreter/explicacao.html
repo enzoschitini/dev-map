@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Interpreter · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/interpreter/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Interpreter</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como representar regras que mudam com frequência, ou que vêm de fora do código, como uma estrutura que se avalia sozinha, em vez de escrever uma função nova a cada variação.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>O marketing muda a regra de frete grátis toda semana. Em março era "pedidos a partir de R$ 200, para clientes VIP ou com o cupom FRETE". Em abril, "a partir de R$ 150, para SP e RJ". Para o Dia das Mães, outra combinação.</p>
+          <p>A saída preguiçosa é uma função por campanha, escolhida por um nome:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — cada campanha vira um trecho de código</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">frete_gratis</span>(pedido, campanha):
+    <span class="t-k">if</span> campanha == <span class="t-s">"marco"</span>:
+        <span class="t-k">return</span> pedido[<span class="t-s">"total"</span>] &gt;= <span class="t-n">200</span> <span class="t-k">and</span> (pedido[<span class="t-s">"vip"</span>] <span class="t-k">or</span> pedido[<span class="t-s">"cupom"</span>] == <span class="t-s">"FRETE"</span>)
+    <span class="t-k">if</span> campanha == <span class="t-s">"abril"</span>:
+        <span class="t-k">return</span> pedido[<span class="t-s">"total"</span>] &gt;= <span class="t-n">150</span> <span class="t-k">and</span> pedido[<span class="t-s">"uf"</span>] <span class="t-k">in</span> (<span class="t-s">"SP"</span>, <span class="t-s">"RJ"</span>)
+    <span class="t-k">if</span> campanha == <span class="t-s">"dia-das-maes"</span>:
+        <span class="t-k">return</span> (pedido[<span class="t-s">"total"</span>] &gt;= <span class="t-n">100</span> <span class="t-k">and</span> pedido[<span class="t-s">"categoria"</span>] == <span class="t-s">"presentes"</span>) <span class="t-k">or</span> pedido[<span class="t-s">"vip"</span>]
+    <span class="t-k">return</span> <span class="t-k">False</span></code></pre>
+            </div>
+          </div>
+          <p>Cada campanha nova é um pull request e um deploy, para mudar uma regra que não tem nada de técnico. O marketing não consegue conferir o que está valendo sem pedir a um programador que leia o código. E a regra não pode morar junto da campanha, no banco, porque ela é código: ninguém salva um <code>if</code> em uma tabela.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Descreva as regras possíveis como uma pequena linguagem: poucas peças que se combinam. Cada peça vira uma classe que sabe se avaliar. Uma regra concreta passa a ser uma <strong>árvore</strong> dessas peças, e avaliá-la é pedir à raiz que se avalie. Em palavras, a gramática do exemplo é:</p>
+          <p><code>condição := comparação | E(condição, …) | OU(condição, …) | NÃO(condição)</code></p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Expressão</td><td>A interface: toda peça sabe se avaliar</td><td><code>Condicao</code></td></tr>
+                <tr><td>Terminal</td><td>Uma peça que não contém outras: o fim de cada ramo</td><td><code>Comparacao</code></td></tr>
+                <tr><td>Não terminal</td><td>Uma peça feita de outras peças</td><td><code>E</code>, <code>Ou</code>, <code>Nao</code></td></tr>
+                <tr><td>Contexto</td><td>Os dados contra os quais a regra é avaliada</td><td>O pedido</td></tr>
+                <tr><td>Cliente</td><td>Monta (ou recebe) a árvore e a avalia</td><td>A tela de checkout</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é que o <strong>"o quê"</strong> deixou de ser código. A regra de março e a de abril usam as mesmas classes e só diferem na forma da árvore. Uma regra nova não exige uma classe nova: só uma árvore nova, e árvore pode vir de um formulário, de um arquivo ou do banco.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> operator
+<span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+
+<span class="t-c"># 1. a expressão: toda regra, simples ou composta, sabe se avaliar</span>
+<span class="t-k">class</span> <span class="t-f">Condicao</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">avaliar</span>(self, pedido: <span class="t-f">dict</span>) -&gt; <span class="t-f">bool</span>: ...
+
+<span class="t-c"># 2. o terminal: a menor regra, que olha um campo do pedido</span>
+<span class="t-k">class</span> <span class="t-f">Comparacao</span>(Condicao):
+    _OPERADORES = {
+        <span class="t-s">"&gt;="</span>: operator.ge,
+        <span class="t-s">"&lt;="</span>: operator.le,
+        <span class="t-s">"=="</span>: operator.eq,
+        <span class="t-s">"in"</span>: <span class="t-k">lambda</span> atual, valor: atual <span class="t-k">in</span> valor,
+    }
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, campo, op, valor):
+        self._campo, self._op, self._valor = campo, op, valor
+
+    <span class="t-k">def</span> <span class="t-f">avaliar</span>(self, pedido):
+        <span class="t-k">return</span> self._OPERADORES[self._op](pedido[self._campo], self._valor)
+
+<span class="t-c"># 3. os não terminais: combinam outras condições</span>
+<span class="t-k">class</span> <span class="t-f">E</span>(Condicao):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, *partes):
+        self._partes = partes
+
+    <span class="t-k">def</span> <span class="t-f">avaliar</span>(self, pedido):
+        <span class="t-k">return</span> <span class="t-f">all</span>(p.<span class="t-f">avaliar</span>(pedido) <span class="t-k">for</span> p <span class="t-k">in</span> self._partes)
+
+<span class="t-k">class</span> <span class="t-f">Ou</span>(Condicao):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, *partes):
+        self._partes = partes
+
+    <span class="t-k">def</span> <span class="t-f">avaliar</span>(self, pedido):
+        <span class="t-k">return</span> <span class="t-f">any</span>(p.<span class="t-f">avaliar</span>(pedido) <span class="t-k">for</span> p <span class="t-k">in</span> self._partes)
+
+<span class="t-k">class</span> <span class="t-f">Nao</span>(Condicao):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, parte):
+        self._parte = parte
+
+    <span class="t-k">def</span> <span class="t-f">avaliar</span>(self, pedido):
+        <span class="t-k">return</span> <span class="t-k">not</span> self._parte.<span class="t-f">avaliar</span>(pedido)
+
+<span class="t-c"># 4. o cliente: a regra de março, montada como árvore</span>
+marco = <span class="t-f">E</span>(
+    <span class="t-f">Comparacao</span>(<span class="t-s">"total"</span>, <span class="t-s">"&gt;="</span>, <span class="t-n">200</span>),
+    <span class="t-f">Ou</span>(<span class="t-f">Comparacao</span>(<span class="t-s">"vip"</span>, <span class="t-s">"=="</span>, <span class="t-k">True</span>), <span class="t-f">Comparacao</span>(<span class="t-s">"cupom"</span>, <span class="t-s">"=="</span>, <span class="t-s">"FRETE"</span>)),
+)
+
+marco.<span class="t-f">avaliar</span>({<span class="t-s">"total"</span>: <span class="t-n">250</span>, <span class="t-s">"vip"</span>: <span class="t-k">False</span>, <span class="t-s">"cupom"</span>: <span class="t-s">"FRETE"</span>})   <span class="t-c"># True</span></code></pre>
+              <pre><code><span class="t-k">type</span> <span class="t-f">Pedido</span> = <span class="t-f">Record</span>&lt;<span class="t-f">string</span>, <span class="t-f">unknown</span>&gt;;
+
+<span class="t-c">// 1. a expressão: toda regra, simples ou composta, sabe se avaliar</span>
+<span class="t-k">interface</span> <span class="t-f">Condicao</span> {
+  <span class="t-f">avaliar</span>(pedido: <span class="t-f">Pedido</span>): <span class="t-f">boolean</span>;
+}
+
+<span class="t-c">// 2. o terminal: a menor regra, que olha um campo do pedido</span>
+<span class="t-k">class</span> <span class="t-f">Comparacao</span> <span class="t-k">implements</span> <span class="t-f">Condicao</span> {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">private</span> campo: <span class="t-f">string</span>,
+    <span class="t-k">private</span> op: <span class="t-s">"&gt;="</span> | <span class="t-s">"&lt;="</span> | <span class="t-s">"=="</span> | <span class="t-s">"in"</span>,
+    <span class="t-k">private</span> valor: <span class="t-f">unknown</span>,
+  ) {}
+
+  <span class="t-f">avaliar</span>(pedido: <span class="t-f">Pedido</span>) {
+    <span class="t-k">const</span> atual = pedido[<span class="t-k">this</span>.campo];
+    <span class="t-k">switch</span> (<span class="t-k">this</span>.op) {
+      <span class="t-k">case</span> <span class="t-s">"&gt;="</span>: <span class="t-k">return</span> (atual <span class="t-k">as</span> <span class="t-f">number</span>) &gt;= (<span class="t-k">this</span>.valor <span class="t-k">as</span> <span class="t-f">number</span>);
+      <span class="t-k">case</span> <span class="t-s">"&lt;="</span>: <span class="t-k">return</span> (atual <span class="t-k">as</span> <span class="t-f">number</span>) &lt;= (<span class="t-k">this</span>.valor <span class="t-k">as</span> <span class="t-f">number</span>);
+      <span class="t-k">case</span> <span class="t-s">"=="</span>: <span class="t-k">return</span> atual === <span class="t-k">this</span>.valor;
+      <span class="t-k">case</span> <span class="t-s">"in"</span>: <span class="t-k">return</span> (<span class="t-k">this</span>.valor <span class="t-k">as</span> <span class="t-f">unknown</span>[]).<span class="t-f">includes</span>(atual);
+    }
+  }
+}
+
+<span class="t-c">// 3. os não terminais: combinam outras condições</span>
+<span class="t-k">class</span> <span class="t-f">E</span> <span class="t-k">implements</span> <span class="t-f">Condicao</span> {
+  <span class="t-k">private</span> partes: <span class="t-f">Condicao</span>[];
+  <span class="t-k">constructor</span>(...partes: <span class="t-f">Condicao</span>[]) { <span class="t-k">this</span>.partes = partes; }
+  <span class="t-f">avaliar</span>(p: <span class="t-f">Pedido</span>) { <span class="t-k">return</span> <span class="t-k">this</span>.partes.<span class="t-f">every</span>((c) =&gt; c.<span class="t-f">avaliar</span>(p)); }
+}
+
+<span class="t-k">class</span> <span class="t-f">Ou</span> <span class="t-k">implements</span> <span class="t-f">Condicao</span> {
+  <span class="t-k">private</span> partes: <span class="t-f">Condicao</span>[];
+  <span class="t-k">constructor</span>(...partes: <span class="t-f">Condicao</span>[]) { <span class="t-k">this</span>.partes = partes; }
+  <span class="t-f">avaliar</span>(p: <span class="t-f">Pedido</span>) { <span class="t-k">return</span> <span class="t-k">this</span>.partes.<span class="t-f">some</span>((c) =&gt; c.<span class="t-f">avaliar</span>(p)); }
+}
+
+<span class="t-k">class</span> <span class="t-f">Nao</span> <span class="t-k">implements</span> <span class="t-f">Condicao</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> parte: <span class="t-f">Condicao</span>) {}
+  <span class="t-f">avaliar</span>(p: <span class="t-f">Pedido</span>) { <span class="t-k">return</span> !<span class="t-k">this</span>.parte.<span class="t-f">avaliar</span>(p); }
+}
+
+<span class="t-c">// 4. o cliente: a regra de março, montada como árvore</span>
+<span class="t-k">const</span> marco = <span class="t-k">new</span> <span class="t-f">E</span>(
+  <span class="t-k">new</span> <span class="t-f">Comparacao</span>(<span class="t-s">"total"</span>, <span class="t-s">"&gt;="</span>, <span class="t-n">200</span>),
+  <span class="t-k">new</span> <span class="t-f">Ou</span>(<span class="t-k">new</span> <span class="t-f">Comparacao</span>(<span class="t-s">"vip"</span>, <span class="t-s">"=="</span>, <span class="t-k">true</span>), <span class="t-k">new</span> <span class="t-f">Comparacao</span>(<span class="t-s">"cupom"</span>, <span class="t-s">"=="</span>, <span class="t-s">"FRETE"</span>)),
+);
+
+marco.<span class="t-f">avaliar</span>({ total: <span class="t-n">250</span>, vip: <span class="t-k">false</span>, cupom: <span class="t-s">"FRETE"</span> });   <span class="t-c">// true</span></code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>Cada peça se testa sozinha, com um pedido de uma linha. E as regras passam a ser dados: duas campanhas diferentes são duas árvores, comparáveis, guardáveis e testáveis com os mesmos pedidos, sem tocar nas classes.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Interpreter vale quando três coisas acontecem ao mesmo tempo: as regras formam uma <strong>família pequena</strong> de peças que se combinam e se aninham; as combinações <strong>vêm de fora do código</strong> (de uma pessoa, de uma configuração, do banco) ou mudam mais rápido que os deploys; e a mesma regra precisa ser <strong>avaliada, ou lida de outro jeito, muitas vezes</strong>.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Cada variação da regra é uma função nova</td><td><code>if campanha == "marco"</code> … <code>if campanha == "abril"</code> …, e o pull request é só para mudar um número</td><td><a href="uso.html#regra-configuravel">Uso #1</a></td></tr>
+                <tr><td>A regra é guardada como texto e avaliada na execução</td><td><code>eval(regra)</code>, ou uma cadeia de <code>if</code> sobre um dicionário aninhado, lendo uma coluna de configuração</td><td><a href="uso.html#regra-configuravel">Uso #1</a></td></tr>
+                <tr><td>O usuário digita um filtro ou uma fórmula</td><td><code>texto.split(" E ")</code> e <code>split("=")</code>; parênteses e <code>OU</code> "ainda não suportados"</td><td><a href="uso.html#filtro-digitado">Uso #2</a></td></tr>
+                <tr><td>A mesma regra existe em duas implementações</td><td>Uma função que filtra em memória e outra que monta um <code>WHERE</code>, escritas por pessoas diferentes</td><td><a href="uso.html#varias-leituras">Uso #3</a></td></tr>
+                <tr><td>A regra precisa ser mostrada em palavras</td><td>Uma função que monta o texto "Frete grátis para…" paralela à função que decide</td><td><a href="uso.html#varias-leituras">Uso #3</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: a regra é um <em>dado</em> disfarçado de código. Quando o "o quê" precisa mudar sem mexer no "como", o "o quê" é que deveria ser uma estrutura, e o código só sabe percorrê-la.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>A regra muda mais rápido que o deploy, ou quem a muda não programa?</strong> Se só programadores mudam e o deploy é aceitável, escreva uma função.</li>
+            <li><strong>Você consegue listar todas as formas que a regra pode tomar?</strong> Se são poucas e fixas, um <code>enum</code> com um <code>if</code> resolve.</li>
+            <li><strong>As peças se aninham (um E dentro de um OU dentro de um NÃO)?</strong> Se é só uma lista de condições juntas por E, uma lista de funções com <code>all()</code> basta.</li>
+            <li><strong>A linguagem cabe em meia dúzia de construções?</strong> Se já pede variáveis, laços ou funções, você está construindo uma linguagem de programação. Use uma que já existe.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Interpreter é o pattern mais raro do catálogo, e por um bom motivo. O custo é uma classe por construção da gramática, mais a parte que o padrão não cobre e que costuma ser a mais cara: o <strong>parser</strong>, quando a regra chega como texto. Somam-se a isso a documentação da linguagem, as mensagens de erro e o versionamento das regras antigas. Você passa a manter uma pequena linguagem, e linguagens crescem.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Poucas regras fixas, que só programadores mudam</td><td>O deploy já é o mecanismo de mudança, e a árvore só acrescentaria classes</td><td>Escreva as funções</td></tr>
+                <tr><td>A linguagem pede variáveis, laços ou funções</td><td>Você está desenhando uma linguagem de programação, com todos os problemas de uma</td><td>Use uma existente: SQL, CEL, JSONLogic, ou embuta uma linguagem de script</td></tr>
+                <tr><td>Deixar o usuário escrever "um pouco de Python" ou JavaScript</td><td><code>eval</code> executa o que o usuário digitar, no seu servidor</td><td>Uma gramática fechada (o que o pattern dá) ou um interpretador isolado em sandbox</td></tr>
+                <tr><td>Só uma lista de condições combinadas por E</td><td>Não há aninhamento, então não há árvore</td><td>Uma lista de predicados e <code>all(...)</code></td></tr>
+                <tr><td>Escolher um jeito de fazer uma coisa</td><td>O que varia é o algoritmo, e não uma sentença para avaliar</td><td>Strategy</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Interpreter saiu do lugar</h3>
+          <ul>
+            <li><strong>A gramática cresce toda semana.</strong> Uma construção nova a cada pedido do marketing é o começo de uma linguagem mal projetada, sem ninguém responsável por ela.</li>
+            <li><strong>O <code>eval</code> voltou pela porta dos fundos.</strong> Uma classe chamada <code>Expressao</code> que, por dentro, só chama <code>eval</code> sobre o texto não é o pattern: é a falha de segurança com outro nome.</li>
+            <li><strong>Só programadores escrevem as regras.</strong> Se o objetivo era tirar o programador do caminho e ele continua necessário, a linguagem não cumpriu o que prometeu.</li>
+            <li><strong>O erro aparece na hora de avaliar.</strong> A regra é validada quando alguém a usa em um pedido real, e não quando é salva.</li>
+            <li><strong>As regras não têm versão nem teste.</strong> Ninguém sabe o que a regra valia ontem, nem se a mudança de hoje quebrou os casos de sempre.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: avaliar o texto da regra com <code>eval</code>, "porque é mais rápido que montar a árvore". Quem pode salvar a regra passa a poder executar qualquer código no servidor.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com funções. A árvore se justifica quando a primeira regra vinda de fora do código chega, porque nesse ponto ela já é um dado. Antes disso, é uma gramática para um problema que talvez nunca apareça.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Composite</td><td>É a estrutura: folhas e grupos tratados do mesmo jeito. A árvore do Interpreter é um Composite, mas com uma gramática por trás e um significado: cada nó responde "qual é o seu valor?"</td></tr>
+                <tr><td>Visitor</td><td>Tira a operação de dentro dos nós, para somar novas leituras da árvore sem mexer nas classes. É a saída quando o Interpreter acumula muitas operações por nó</td></tr>
+                <tr><td>Strategy</td><td>Escolhe um algoritmo e o executa; o Interpreter avalia uma sentença montada com peças que se combinam</td></tr>
+                <tr><td><a href="../command/explicacao.html">Command</a></td><td>Representa uma ação a executar, que pode ser desfeita ou enfileirada; o Interpreter avalia uma expressão e devolve um valor</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se você tem uma árvore de objetos em que cada nó sabe responder "qual é o seu valor?", é Interpreter. Se só importa agrupar e tratar igual, é Composite.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

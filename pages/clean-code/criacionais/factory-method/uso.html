@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Factory Method · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="criacionais/factory-method/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Factory Method</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Quatro situações em que o Factory Method resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o método fábrica adia para a subclasse em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que quatro</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para criar o objeto em uma subclasse. Quando dois casos se resolvem com o mesmo raciocínio — um relatório que escolhe o gráfico e um job que escolhe o parser, por exemplo —, só um fica. O Factory Method tem poucos motivos próprios, porque muitas situações em que ele parece servir se resolvem melhor com uma função ou com injeção. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o Factory Method adia</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#fluxo-fixo">O fluxo é o mesmo, só muda o objeto criado</a></td><td>A escolha do parser, para cada job</td></tr>
+                <tr><td>2</td><td><a href="#ponto-de-extensao">Uma biblioteca que não conhece as suas classes</a></td><td>A escolha do destino, para quem usa a biblioteca</td></tr>
+                <tr><td>3</td><td><a href="#tipo-em-um-lugar">A mesma escolha de tipo em vários métodos</a></td><td>O tipo do documento, em um ponto só</td></tr>
+                <tr><td>4</td><td><a href="#costura-de-teste">Uma costura para o teste, sem reescrever o código</a></td><td>A escolha do cliente, para o teste</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="note"><p>O exemplo 4 usa <code>requests</code> e <code>datetime</code> com o formato real. Os demais usam módulos fictícios (<code>conciliacao</code>, <code>ClienteDeCupons</code>) no lugar de código interno.</p></div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="fluxo-fixo">1. O fluxo é o mesmo, só muda o objeto criado</h2>
+          <p><strong>Situação.</strong> Todo dia, um job importa o extrato de cada banco: ler o arquivo, conciliar cada lançamento na conta do banco e registrar quantos entraram. Os passos são os mesmos. O Itaú entrega CNAB 240; o Nubank, CSV. Cada banco tem o seu job agendado, que já sabe qual é.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — um importador que conhece todos os bancos</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ImportadorDeExtrato</span>:
+    <span class="t-k">def</span> <span class="t-f">importar</span>(self, banco, caminho):
+        <span class="t-k">if</span> banco == <span class="t-s">"itau"</span>:
+            parser = <span class="t-f">ParserCnab240</span>()
+            conta = <span class="t-s">"ITAU-001"</span>
+        <span class="t-k">elif</span> banco == <span class="t-s">"nubank"</span>:
+            parser = <span class="t-f">ParserCsvNubank</span>()
+            conta = <span class="t-s">"NU-777"</span>
+        <span class="t-k">else</span>:
+            <span class="t-k">raise</span> <span class="t-f">ValueError</span>(banco)
+
+        lancamentos = parser.<span class="t-f">ler</span>(caminho)
+        <span class="t-k">for</span> l <span class="t-k">in</span> lancamentos:
+            conciliacao.<span class="t-f">registrar</span>(conta, l)
+        log.<span class="t-f">info</span>(<span class="t-s">"%s: %d lançamentos"</span>, banco, <span class="t-f">len</span>(lancamentos))</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada banco novo reabre o método que também concilia e registra em log, e uma troca no CNAB do Itaú passa por um arquivo que o Nubank também usa. Testar a conciliação exige escolher um banco só para chegar nela. E o <code>if</code> de parser e conta tem tendência a crescer com as exceções de cada banco.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o fluxo na base, o parser em cada subclasse</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ImportadorDeExtrato</span>(ABC):
+    conta: <span class="t-f">str</span>
+
+    <span class="t-k">def</span> <span class="t-f">importar</span>(self, caminho):
+        parser = self.<span class="t-f">criar_parser</span>()
+        lancamentos = parser.<span class="t-f">ler</span>(caminho)
+        <span class="t-k">for</span> l <span class="t-k">in</span> lancamentos:
+            conciliacao.<span class="t-f">registrar</span>(self.conta, l)
+        log.<span class="t-f">info</span>(<span class="t-s">"%s: %d lançamentos"</span>, self.conta, <span class="t-f">len</span>(lancamentos))
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">criar_parser</span>(self) -&gt; Parser: ...
+
+<span class="t-k">class</span> <span class="t-f">ImportadorItau</span>(ImportadorDeExtrato):
+    conta = <span class="t-s">"ITAU-001"</span>
+
+    <span class="t-k">def</span> <span class="t-f">criar_parser</span>(self):
+        <span class="t-k">return</span> <span class="t-f">ParserCnab240</span>()
+
+<span class="t-k">class</span> <span class="t-f">ImportadorNubank</span>(ImportadorDeExtrato):
+    conta = <span class="t-s">"NU-777"</span>
+
+    <span class="t-k">def</span> <span class="t-f">criar_parser</span>(self):
+        <span class="t-k">return</span> <span class="t-f">ParserCsvNubank</span>()
+
+<span class="t-c"># cada job já sabe qual banco é</span>
+<span class="t-k">def</span> <span class="t-f">job_itau</span>():
+    <span class="t-f">ImportadorItau</span>().<span class="t-f">importar</span>(<span class="t-s">"/dados/itau/hoje.rem"</span>)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Factory Method adia.</strong> A escolha do parser, para a subclasse. O fluxo — ler, conciliar, registrar — fica em um lugar só e não muda quando um banco entra. Um banco novo é uma classe nova com duas linhas, sem tocar em nenhuma outra.</p>
+          <div class="callout" data-kind="note"><p>Se o nome do banco chegar de fora (uma fila, um campo no banco), alguém ainda precisa de <code>{"itau": ImportadorItau, "nubank": ImportadorNubank}[nome]</code> para escolher a subclasse. O <code>if</code> não some: ele sai do fluxo e vira uma tabela de uma linha por banco.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="ponto-de-extensao">2. Uma biblioteca que não conhece as suas classes</h2>
+          <p><strong>Situação.</strong> A plataforma mantém uma biblioteca interna de tarefas agendadas: ela monta o arquivo, tenta enviar três vezes e emite uma métrica. Cada time dono de uma tarefa usa a biblioteca no próprio repositório, e cada um precisa mandar o arquivo para um lugar diferente.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — a biblioteca importa todos os destinos</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c">// dentro da biblioteca @acme/tarefas</span>
+<span class="t-k">import</span> { <span class="t-f">DestinoS3</span> } <span class="t-k">from</span> <span class="t-s">"./destinos/s3"</span>;
+<span class="t-k">import</span> { <span class="t-f">DestinoSftp</span> } <span class="t-k">from</span> <span class="t-s">"./destinos/sftp"</span>;
+
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">Tarefa</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> tipoDeDestino: <span class="t-s">"s3"</span> | <span class="t-s">"sftp"</span>) {}
+
+  <span class="t-k">async</span> <span class="t-f">executar</span>(dados: <span class="t-f">Buffer</span>) {
+    <span class="t-k">const</span> destino = <span class="t-k">this</span>.tipoDeDestino === <span class="t-s">"s3"</span> ? <span class="t-k">new</span> <span class="t-f">DestinoS3</span>() : <span class="t-k">new</span> <span class="t-f">DestinoSftp</span>();
+    <span class="t-k">for</span> (<span class="t-k">let</span> i = <span class="t-n">0</span>; i &lt; <span class="t-n">3</span>; i++) {
+      <span class="t-k">try</span> { <span class="t-k">await</span> destino.<span class="t-f">enviar</span>(dados); <span class="t-k">return</span>; } <span class="t-k">catch</span> {}
+    }
+    <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">Error</span>(<span class="t-s">"falha ao enviar"</span>);
+  }
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O time de dados precisa de Google Cloud Storage. Para isso, ele abre um PR na biblioteca, espera uma versão nova e atualiza os doze serviços que a usam. A biblioteca acumula destinos e dependências (o SDK do GCS, o do Azure) que quase ninguém usa, e a união <code>"s3" | "sftp"</code> cresce a cada pedido.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a biblioteca pede o destino, e quem usa o fornece</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c">// dentro da biblioteca @acme/tarefas</span>
+<span class="t-k">export</span> <span class="t-k">interface</span> <span class="t-f">Destino</span> {
+  <span class="t-f">enviar</span>(dados: <span class="t-f">Buffer</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">void</span>&gt;;
+}
+
+<span class="t-k">export</span> <span class="t-k">abstract</span> <span class="t-k">class</span> <span class="t-f">Tarefa</span> {
+  <span class="t-k">protected</span> <span class="t-k">abstract</span> <span class="t-f">criarDestino</span>(): <span class="t-f">Destino</span>;
+
+  <span class="t-k">async</span> <span class="t-f">executar</span>(dados: <span class="t-f">Buffer</span>) {
+    <span class="t-k">const</span> destino = <span class="t-k">this</span>.<span class="t-f">criarDestino</span>();
+    <span class="t-k">for</span> (<span class="t-k">let</span> i = <span class="t-n">0</span>; i &lt; <span class="t-n">3</span>; i++) {
+      <span class="t-k">try</span> { <span class="t-k">await</span> destino.<span class="t-f">enviar</span>(dados); <span class="t-k">return</span>; } <span class="t-k">catch</span> {}
+    }
+    <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">Error</span>(<span class="t-s">"falha ao enviar"</span>);
+  }
+}
+
+<span class="t-c">// no repositório do time de dados — a biblioteca nem foi tocada</span>
+<span class="t-k">class</span> <span class="t-f">TarefaParaGcs</span> <span class="t-k">extends</span> <span class="t-f">Tarefa</span> {
+  <span class="t-k">protected</span> <span class="t-f">criarDestino</span>() {
+    <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">DestinoGcs</span>(<span class="t-s">"bucket-de-dados"</span>);
+  }
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Factory Method adia.</strong> A escolha do destino, <strong>para fora da biblioteca</strong>. Aqui a razão não é só "evitar o <code>if</code>": o autor da biblioteca nem pode escrever o <code>new</code>, porque a classe que precisa ser criada ainda não existe e vai ser escrita por outro time. O retry e a métrica continuam em um lugar só.</p>
+          <div class="callout" data-kind="tip"><p>A biblioteca pode trazer uma implementação padrão em <code>criarDestino()</code> (por exemplo, o S3) em vez de deixá-lo abstrato. Quem não precisa de nada especial não sobrescreve nada.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="tipo-em-um-lugar">3. A mesma escolha de tipo em vários métodos</h2>
+          <p><strong>Situação.</strong> Um editor tem operações que produzem um documento: <code>novo()</code>, <code>abrir()</code> e <code>duplicar()</code>. Hoje o editor suporta texto e planilha, e o time quer incluir apresentação.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — a escolha do tipo, copiada em cada operação</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Editor</span>:
+    <span class="t-k">def</span> <span class="t-f">novo</span>(self, tipo):
+        <span class="t-k">if</span> tipo == <span class="t-s">"texto"</span>:
+            <span class="t-k">return</span> <span class="t-f">DocumentoTexto</span>()
+        <span class="t-k">elif</span> tipo == <span class="t-s">"planilha"</span>:
+            <span class="t-k">return</span> <span class="t-f">DocumentoPlanilha</span>()
+
+    <span class="t-k">def</span> <span class="t-f">abrir</span>(self, caminho, tipo):
+        <span class="t-k">if</span> tipo == <span class="t-s">"texto"</span>:
+            doc = <span class="t-f">DocumentoTexto</span>()
+        <span class="t-k">elif</span> tipo == <span class="t-s">"planilha"</span>:
+            doc = <span class="t-f">DocumentoPlanilha</span>()
+        doc.<span class="t-f">carregar</span>(caminho)
+        <span class="t-k">return</span> doc
+
+    <span class="t-k">def</span> <span class="t-f">duplicar</span>(self, doc):
+        <span class="t-k">if</span> <span class="t-f">isinstance</span>(doc, DocumentoTexto):
+            <span class="t-k">return</span> <span class="t-f">DocumentoTexto</span>(doc.conteudo)
+        <span class="t-k">elif</span> <span class="t-f">isinstance</span>(doc, DocumentoPlanilha):
+            <span class="t-k">return</span> <span class="t-f">DocumentoPlanilha</span>(doc.conteudo)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> "Apresentação" exige achar e editar três métodos, e o <code>duplicar()</code> que ficar para trás devolve <code>None</code> sem avisar. A cadeia aparece em toda operação nova (<code>importar</code>, <code>converter</code>), sempre com o mesmo desenho.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o tipo é decidido uma vez, e todas as operações o usam</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Editor</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">criar_documento</span>(self) -&gt; Documento: ...   <span class="t-c"># o único ponto de decisão</span>
+
+    <span class="t-k">def</span> <span class="t-f">novo</span>(self):
+        <span class="t-k">return</span> self.<span class="t-f">criar_documento</span>()
+
+    <span class="t-k">def</span> <span class="t-f">abrir</span>(self, caminho):
+        doc = self.<span class="t-f">criar_documento</span>()
+        doc.<span class="t-f">carregar</span>(caminho)
+        <span class="t-k">return</span> doc
+
+    <span class="t-k">def</span> <span class="t-f">duplicar</span>(self, doc):
+        copia = self.<span class="t-f">criar_documento</span>()
+        copia.conteudo = doc.conteudo
+        <span class="t-k">return</span> copia
+
+<span class="t-k">class</span> <span class="t-f">EditorDeTexto</span>(Editor):
+    <span class="t-k">def</span> <span class="t-f">criar_documento</span>(self):
+        <span class="t-k">return</span> <span class="t-f">DocumentoTexto</span>()
+
+<span class="t-k">class</span> <span class="t-f">EditorDePlanilha</span>(Editor):
+    <span class="t-k">def</span> <span class="t-f">criar_documento</span>(self):
+        <span class="t-k">return</span> <span class="t-f">DocumentoPlanilha</span>()</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Factory Method adia.</strong> O tipo do documento, e o adia <strong>uma vez só</strong>. A diferença para o exemplo 1 é a quantidade: ali, a variação aparece em um ponto do fluxo; aqui, várias operações independentes precisam concordar sobre o tipo. Com o método fábrica, elas concordam porque usam o mesmo método. "Apresentação" é uma classe nova, e nenhum método existente é aberto.</p>
+
+          <!-- 4 ─────────────────────────────────────────────── -->
+          <h2 id="costura-de-teste">4. Uma costura para o teste, sem reescrever o código</h2>
+          <p><strong>Situação.</strong> O <code>ServicoDeCupom</code> consulta uma API para validar o código do cupom. Ele vem de um código legado, é instanciado por um framework de injeção que só sabe chamar <code>ServicoDeCupom()</code>, e o construtor não pode ganhar parâmetros agora.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — a chamada de rede mora no meio do método</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ServicoDeCupom</span>:
+    <span class="t-k">def</span> <span class="t-f">aplicar</span>(self, pedido, codigo):
+        resp = requests.<span class="t-f">get</span>(<span class="t-s">f"https://cupons.exemplo.com/{codigo}"</span>, timeout=<span class="t-n">3</span>)
+        cupom = resp.<span class="t-f">json</span>()
+        <span class="t-k">if</span> datetime.<span class="t-f">now</span>() &gt; datetime.<span class="t-f">fromisoformat</span>(cupom[<span class="t-s">"expira_em"</span>]):
+            <span class="t-k">raise</span> <span class="t-f">CupomExpirado</span>(codigo)
+        pedido.desconto = cupom[<span class="t-s">"percentual"</span>]
+
+<span class="t-c"># o teste precisa trocar o requests do módulo inteiro</span>
+<span class="t-f">@patch</span>(<span class="t-s">"servico_de_cupom.requests.get"</span>)
+<span class="t-k">def</span> <span class="t-f">test_cupom_valido</span>(get):
+    get.return_value.json.return_value = {<span class="t-s">"expira_em"</span>: <span class="t-s">"2099-01-01"</span>, <span class="t-s">"percentual"</span>: <span class="t-n">10</span>}
+    ...</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O <code>@patch</code> aponta para um caminho de módulo: se alguém trocar <code>requests</code> por <code>httpx</code> ou mover a importação, o teste quebra sem que o comportamento tenha mudado. E o teste conhece o formato da resposta HTTP, não a regra do cupom.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a criação do cliente vira um método que o teste sobrescreve</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ServicoDeCupom</span>:
+    <span class="t-k">def</span> <span class="t-f">criar_cliente</span>(self):
+        <span class="t-k">return</span> <span class="t-f">ClienteDeCupons</span>(<span class="t-s">"https://cupons.exemplo.com"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">aplicar</span>(self, pedido, codigo):
+        cupom = self.<span class="t-f">criar_cliente</span>().<span class="t-f">buscar</span>(codigo)
+        <span class="t-k">if</span> datetime.<span class="t-f">now</span>() &gt; datetime.<span class="t-f">fromisoformat</span>(cupom.expira_em):
+            <span class="t-k">raise</span> <span class="t-f">CupomExpirado</span>(codigo)
+        pedido.desconto = cupom.percentual
+
+<span class="t-c"># no teste: uma subclasse de três linhas, sem patch</span>
+<span class="t-k">class</span> <span class="t-f">ServicoDeCupomDeTeste</span>(ServicoDeCupom):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, cupons):
+        self._cupons = cupons
+
+    <span class="t-k">def</span> <span class="t-f">criar_cliente</span>(self):
+        <span class="t-k">return</span> <span class="t-f">ClienteFalso</span>(self._cupons)
+
+<span class="t-k">def</span> <span class="t-f">test_cupom_valido</span>():
+    servico = <span class="t-f">ServicoDeCupomDeTeste</span>({<span class="t-s">"BEMVINDO"</span>: <span class="t-f">Cupom</span>(<span class="t-s">"2099-01-01"</span>, <span class="t-n">10</span>)})
+    pedido = <span class="t-f">Pedido</span>()
+    servico.<span class="t-f">aplicar</span>(pedido, <span class="t-s">"BEMVINDO"</span>)
+    <span class="t-k">assert</span> pedido.desconto == <span class="t-n">10</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Factory Method adia.</strong> A escolha do cliente, <strong>para o teste</strong>. O construtor continua o mesmo, o framework continua chamando <code>ServicoDeCupom()</code>, e o teste fala em cupom, não em HTTP. A parte do <code>datetime</code> ainda usa o relógio real; funciona porque o teste usa uma data longe no futuro, mas é a próxima costura natural (<code>agora()</code>).</p>
+          <div class="callout" data-kind="warn"><p>Isso é uma <strong>costura</strong>: um jeito de abrir uma porta onde você não pode mudar o construtor. Se pode, receba o cliente por parâmetro: <code>ServicoDeCupom(cliente)</code> é mais simples e não exige uma subclasse só para o teste.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos quatro ou porque a resposta certa é outro padrão:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Criar inimigos diferentes em cada fase de um jogo</td><td>1 — fluxo fixo, objeto variável</td></tr>
+                <tr><td><code>get_form_class</code> e <code>get_queryset</code> de views do Django, <code>createDocument</code> de frameworks</td><td>2 — ponto de extensão de quem usa</td></tr>
+                <tr><td>Criar o cliente HTTP, o relógio ou o gerador de IDs para trocá-los em teste</td><td>4 — costura de teste</td></tr>
+                <tr><td>Escolher o leitor pela extensão do arquivo (<code>.csv</code>, <code>.xlsx</code>)</td><td>Fábrica simples: um mapa de extensão para classe. Veja "Quando não usar"</td></tr>
+                <tr><td>Criar botão e janela com o visual do sistema operacional</td><td>Abstract Factory: dois produtos que precisam combinar</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Factory Method, mas usa só o nome: os <strong>construtores nomeados</strong> como <code>Dinheiro.de_centavos(1050)</code> ou <code>Data.hoje()</code>, em Python normalmente um <code>@classmethod</code>. Em Java e Python eles são chamados de "factory methods", mas não há criador, subclasse ou decisão adiada: é só um construtor com nome. São úteis, mas é outra coisa — veja a diferença na seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Bridge · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/bridge/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Bridge</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como deixar duas coisas que variam por motivos diferentes crescerem separadas, em vez de multiplicar uma subclasse para cada combinação.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>O sistema gera o relatório de vendas do mês em CSV. Funciona, então alguém pede o mesmo relatório em HTML, para mandar por e-mail. Você cria uma subclasse. Na semana seguinte entra o relatório de estoque, que também precisa dos dois formatos. Mais duas subclasses.</p>
+          <p>Cada pedido novo parece pequeno, e a herança resolve cada um com uma classe:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — uma subclasse para cada combinação</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">RelatorioDeVendasCsv</span>:
+    <span class="t-k">def</span> <span class="t-f">gerar</span>(self, pedidos):
+        saida = io.<span class="t-f">StringIO</span>()
+        escritor = csv.<span class="t-f">writer</span>(saida)
+        escritor.<span class="t-f">writerow</span>([<span class="t-s">"pedido"</span>, <span class="t-s">"cliente"</span>, <span class="t-s">"total"</span>])
+        <span class="t-k">for</span> p <span class="t-k">in</span> pedidos:
+            escritor.<span class="t-f">writerow</span>([p.id, p.cliente, <span class="t-s">f"{p.total:.2f}"</span>])
+        <span class="t-k">return</span> saida.<span class="t-f">getvalue</span>()
+
+<span class="t-k">class</span> <span class="t-f">RelatorioDeVendasHtml</span>:
+    <span class="t-k">def</span> <span class="t-f">gerar</span>(self, pedidos):
+        linhas = <span class="t-s">""</span>.<span class="t-f">join</span>(
+            <span class="t-s">f"&lt;tr&gt;&lt;td&gt;{p.id}&lt;/td&gt;&lt;td&gt;{escape(p.cliente)}&lt;/td&gt;&lt;td&gt;{p.total:.2f}&lt;/td&gt;&lt;/tr&gt;"</span>
+            <span class="t-k">for</span> p <span class="t-k">in</span> pedidos
+        )
+        <span class="t-k">return</span> <span class="t-s">f"&lt;h1&gt;Vendas do mês&lt;/h1&gt;&lt;table&gt;{linhas}&lt;/table&gt;"</span>
+
+<span class="t-c"># RelatorioDeEstoqueCsv: o mesmo csv.writer, outras colunas</span>
+<span class="t-c"># RelatorioDeEstoqueHtml: o mesmo &lt;table&gt;, outras colunas</span>
+<span class="t-c"># e o PDF que o financeiro pediu? Mais duas classes.</span></code></pre>
+            </div>
+          </div>
+          <p>O defeito não aparece na primeira classe. Aparece na conta: com <strong>2 tipos</strong> e <strong>2 formatos</strong> são 4 classes; com 3 formatos, 6; com 5 tipos, 15. Cada tipo novo custa uma classe por formato, e cada formato novo custa uma classe por tipo. Pior: a montagem do CSV está copiada em todas, então corrigir o escape de uma vírgula é uma busca por arquivos. Cada classe tem dois motivos para mudar, o que entra no relatório e como ele é escrito, e isso é o Single Responsibility sendo violado.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Separe as duas coisas que variam em duas hierarquias e ligue-as por <strong>composição</strong>: o relatório guarda uma referência a um formato, e delega a ele a parte de escrever. Os papéis são cinco:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Abstração</td><td>O "o quê". Guarda a referência à implementação e delega a ela</td><td><code>Relatorio</code></td></tr>
+                <tr><td>Abstração refinada</td><td>Cada variação do "o quê"</td><td><code>RelatorioDeVendas</code>, <code>RelatorioDeEstoque</code></td></tr>
+                <tr><td>Implementação</td><td>A interface do "como", em operações pequenas</td><td><code>Formato</code></td></tr>
+                <tr><td>Implementação concreta</td><td>Cada variação do "como"</td><td><code>FormatoCsv</code>, <code>FormatoHtml</code></td></tr>
+                <tr><td>Cliente</td><td>Quem escolhe o par e usa a abstração</td><td>O job que envia o relatório do mês</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é que as duas interfaces <strong>não são parecidas</strong>. A abstração fala de relatórios; a implementação fala de colunas, linhas e texto. Essa referência entre elas é a "ponte". Com ela, 5 tipos e 3 formatos são 8 classes, e não 15.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> csv, io
+<span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+<span class="t-k">from</span> html <span class="t-k">import</span> escape
+
+<span class="t-c"># 1. a implementação: o "como", sem saber de vendas nem de estoque</span>
+<span class="t-k">class</span> <span class="t-f">Formato</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">montar</span>(self, titulo: <span class="t-f">str</span>, colunas: <span class="t-f">list</span>[<span class="t-f">str</span>], linhas: <span class="t-f">list</span>[<span class="t-f">list</span>[<span class="t-f">str</span>]]) -&gt; <span class="t-f">str</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">FormatoCsv</span>(Formato):
+    <span class="t-k">def</span> <span class="t-f">montar</span>(self, titulo, colunas, linhas):
+        saida = io.<span class="t-f">StringIO</span>()
+        escritor = csv.<span class="t-f">writer</span>(saida)
+        escritor.<span class="t-f">writerow</span>(colunas)
+        escritor.<span class="t-f">writerows</span>(linhas)
+        <span class="t-k">return</span> saida.<span class="t-f">getvalue</span>()
+
+<span class="t-k">class</span> <span class="t-f">FormatoHtml</span>(Formato):
+    <span class="t-k">def</span> <span class="t-f">montar</span>(self, titulo, colunas, linhas):
+        cabecalho = <span class="t-s">""</span>.<span class="t-f">join</span>(<span class="t-s">f"&lt;th&gt;{escape(c)}&lt;/th&gt;"</span> <span class="t-k">for</span> c <span class="t-k">in</span> colunas)
+        corpo = <span class="t-s">""</span>.<span class="t-f">join</span>(
+            <span class="t-s">"&lt;tr&gt;"</span> + <span class="t-s">""</span>.<span class="t-f">join</span>(<span class="t-s">f"&lt;td&gt;{escape(v)}&lt;/td&gt;"</span> <span class="t-k">for</span> v <span class="t-k">in</span> linha) + <span class="t-s">"&lt;/tr&gt;"</span>
+            <span class="t-k">for</span> linha <span class="t-k">in</span> linhas
+        )
+        <span class="t-k">return</span> <span class="t-s">f"&lt;h1&gt;{escape(titulo)}&lt;/h1&gt;&lt;table&gt;&lt;tr&gt;{cabecalho}&lt;/tr&gt;{corpo}&lt;/table&gt;"</span>
+
+<span class="t-c"># 2. a abstração: o "o quê", com a ponte na primeira linha do __init__</span>
+<span class="t-k">class</span> <span class="t-f">Relatorio</span>(ABC):
+    titulo: <span class="t-f">str</span>
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, formato: Formato):
+        self._formato = formato
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">colunas</span>(self) -&gt; <span class="t-f">list</span>[<span class="t-f">str</span>]: ...
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">linhas</span>(self) -&gt; <span class="t-f">list</span>[<span class="t-f">list</span>[<span class="t-f">str</span>]]: ...
+
+    <span class="t-k">def</span> <span class="t-f">gerar</span>(self) -&gt; <span class="t-f">str</span>:
+        <span class="t-k">return</span> self._formato.<span class="t-f">montar</span>(self.titulo, self.<span class="t-f">colunas</span>(), self.<span class="t-f">linhas</span>())
+
+<span class="t-c"># 3. abstração refinada: sabe de vendas, não sabe de CSV</span>
+<span class="t-k">class</span> <span class="t-f">RelatorioDeVendas</span>(Relatorio):
+    titulo = <span class="t-s">"Vendas do mês"</span>
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, formato: Formato, pedidos):
+        <span class="t-f">super</span>().<span class="t-f">__init__</span>(formato)
+        self._pedidos = pedidos
+
+    <span class="t-k">def</span> <span class="t-f">colunas</span>(self):
+        <span class="t-k">return</span> [<span class="t-s">"pedido"</span>, <span class="t-s">"cliente"</span>, <span class="t-s">"total"</span>]
+
+    <span class="t-k">def</span> <span class="t-f">linhas</span>(self):
+        <span class="t-k">return</span> [[<span class="t-f">str</span>(p.id), p.cliente, <span class="t-s">f"{p.total:.2f}"</span>] <span class="t-k">for</span> p <span class="t-k">in</span> self._pedidos]
+
+<span class="t-c"># 4. o cliente escolhe o par; qualquer par funciona</span>
+<span class="t-f">RelatorioDeVendas</span>(<span class="t-f">FormatoCsv</span>(), pedidos).<span class="t-f">gerar</span>()
+<span class="t-f">RelatorioDeVendas</span>(<span class="t-f">FormatoHtml</span>(), pedidos).<span class="t-f">gerar</span>()</code></pre>
+              <pre><code><span class="t-c">// 1. a implementação: o "como", sem saber de vendas nem de estoque</span>
+<span class="t-k">interface</span> <span class="t-f">Formato</span> {
+  <span class="t-f">montar</span>(titulo: <span class="t-f">string</span>, colunas: <span class="t-f">string</span>[], linhas: <span class="t-f">string</span>[][]): <span class="t-f">string</span>;
+}
+
+<span class="t-k">class</span> <span class="t-f">FormatoCsv</span> <span class="t-k">implements</span> <span class="t-f">Formato</span> {
+  <span class="t-f">montar</span>(_titulo: <span class="t-f">string</span>, colunas: <span class="t-f">string</span>[], linhas: <span class="t-f">string</span>[][]) {
+    <span class="t-k">const</span> celula = (v: <span class="t-f">string</span>) =&gt; <span class="t-s">`"${v.replace(/"/g, '""')}"`</span>;
+    <span class="t-k">return</span> [colunas, ...linhas].<span class="t-f">map</span>((l) =&gt; l.<span class="t-f">map</span>(celula).<span class="t-f">join</span>(<span class="t-s">","</span>)).<span class="t-f">join</span>(<span class="t-s">"\n"</span>);
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">FormatoHtml</span> <span class="t-k">implements</span> <span class="t-f">Formato</span> {
+  <span class="t-f">montar</span>(titulo: <span class="t-f">string</span>, colunas: <span class="t-f">string</span>[], linhas: <span class="t-f">string</span>[][]) {
+    <span class="t-k">const</span> esc = (s: <span class="t-f">string</span>) =&gt; s.<span class="t-f">replace</span>(<span class="t-s">/&amp;/g</span>, <span class="t-s">"&amp;amp;"</span>).<span class="t-f">replace</span>(<span class="t-s">/&lt;/g</span>, <span class="t-s">"&amp;lt;"</span>);
+    <span class="t-k">const</span> cab = colunas.<span class="t-f">map</span>((c) =&gt; <span class="t-s">`&lt;th&gt;${esc(c)}&lt;/th&gt;`</span>).<span class="t-f">join</span>(<span class="t-s">""</span>);
+    <span class="t-k">const</span> corpo = linhas
+      .<span class="t-f">map</span>((l) =&gt; <span class="t-s">`&lt;tr&gt;${l.map((v) =&gt; `&lt;td&gt;${esc(v)}&lt;/td&gt;`).join("")}&lt;/tr&gt;`</span>)
+      .<span class="t-f">join</span>(<span class="t-s">""</span>);
+    <span class="t-k">return</span> <span class="t-s">`&lt;h1&gt;${esc(titulo)}&lt;/h1&gt;&lt;table&gt;&lt;tr&gt;${cab}&lt;/tr&gt;${corpo}&lt;/table&gt;`</span>;
+  }
+}
+
+<span class="t-c">// 2. a abstração: o "o quê", com a ponte no construtor</span>
+<span class="t-k">abstract</span> <span class="t-k">class</span> <span class="t-f">Relatorio</span> {
+  <span class="t-k">abstract</span> <span class="t-k">readonly</span> titulo: <span class="t-f">string</span>;
+
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> formato: <span class="t-f">Formato</span>) {}
+
+  <span class="t-k">abstract</span> <span class="t-f">colunas</span>(): <span class="t-f">string</span>[];
+  <span class="t-k">abstract</span> <span class="t-f">linhas</span>(): <span class="t-f">string</span>[][];
+
+  <span class="t-f">gerar</span>(): <span class="t-f">string</span> {
+    <span class="t-k">return</span> <span class="t-k">this</span>.formato.<span class="t-f">montar</span>(<span class="t-k">this</span>.titulo, <span class="t-k">this</span>.<span class="t-f">colunas</span>(), <span class="t-k">this</span>.<span class="t-f">linhas</span>());
+  }
+}
+
+<span class="t-c">// 3. abstração refinada: sabe de vendas, não sabe de CSV</span>
+<span class="t-k">class</span> <span class="t-f">RelatorioDeVendas</span> <span class="t-k">extends</span> <span class="t-f">Relatorio</span> {
+  <span class="t-k">readonly</span> titulo = <span class="t-s">"Vendas do mês"</span>;
+
+  <span class="t-k">constructor</span>(formato: <span class="t-f">Formato</span>, <span class="t-k">private</span> pedidos: <span class="t-f">Pedido</span>[]) {
+    <span class="t-k">super</span>(formato);
+  }
+
+  <span class="t-f">colunas</span>() { <span class="t-k">return</span> [<span class="t-s">"pedido"</span>, <span class="t-s">"cliente"</span>, <span class="t-s">"total"</span>]; }
+  <span class="t-f">linhas</span>() {
+    <span class="t-k">return</span> <span class="t-k">this</span>.pedidos.<span class="t-f">map</span>((p) =&gt; [<span class="t-f">String</span>(p.id), p.cliente, p.total.<span class="t-f">toFixed</span>(<span class="t-n">2</span>)]);
+  }
+}
+
+<span class="t-c">// 4. o cliente escolhe o par; qualquer par funciona</span>
+<span class="t-k">new</span> <span class="t-f">RelatorioDeVendas</span>(<span class="t-k">new</span> <span class="t-f">FormatoCsv</span>(), pedidos).<span class="t-f">gerar</span>();
+<span class="t-k">new</span> <span class="t-f">RelatorioDeVendas</span>(<span class="t-k">new</span> <span class="t-f">FormatoHtml</span>(), pedidos).<span class="t-f">gerar</span>();</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>Dá para testar cada lado sozinho. <code>FormatoCsv</code> recebe colunas e linhas escritas na mão, sem pedido nenhum. <code>RelatorioDeVendas</code> recebe um <code>Formato</code> falso que só guarda o que recebeu. São N + M testes, e não N × M.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Bridge vale quando três coisas acontecem ao mesmo tempo: existem <strong>duas dimensões</strong> de variação, cada uma tem <strong>mais de uma variante</strong> (ou a segunda está confirmada), e a escolha em uma <strong>não depende</strong> da escolha na outra.</p>
+          <p>No código, isso costuma aparecer de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Nomes de classe que juntam duas ideias</td><td><code>RelatorioDeVendasCsv</code>, <code>CobrancaPorSms</code>: um "o quê" colado a um "como"</td><td><a href="uso.html#avisos-e-canais">Uso #1</a></td></tr>
+                <tr><td>Cada novo X exige uma subclasse por Y</td><td>Um pull request para "adicionar WhatsApp" que cria uma classe em cada tipo de aviso</td><td><a href="uso.html#avisos-e-canais">Uso #1</a></td></tr>
+                <tr><td>A mesma lógica precisa rodar sobre plataformas diferentes</td><td><code>if typeof document === "undefined"</code> ou <code>if sys.platform == …</code> dentro de uma regra</td><td><a href="uso.html#mesmo-grafico-varios-ambientes">Uso #2</a></td></tr>
+                <tr><td>Implementações escritas por outras pessoas, em número aberto</td><td>Uma classe central com <code>if banco == "postgres"</code> … <code>elif banco == "mysql"</code> em cada método</td><td><a href="uso.html#bancos-de-dados">Uso #3</a></td></tr>
+                <tr><td>A mesma lógica de alto nível copiada em cada implementação</td><td><code>PostgresRelatorio</code> e <code>MysqlRelatorio</code> com o mesmo laço, diferindo em duas linhas</td><td><a href="uso.html#bancos-de-dados">Uso #3</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>Os sinais têm uma coisa em comum: dois assuntos diferentes respondidos no mesmo lugar. "O que estou montando?" e "onde isso vai sair?" aparecem juntos no nome da classe, no <code>if</code>, na cópia. A ponte é o lugar onde as duas perguntas passam a ter respostas separadas.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Mais de uma coisa varia, de verdade?</strong> Se só uma dimensão tem variantes, é herança simples, ou Strategy se você escolhe o algoritmo em tempo de execução. Pare.</li>
+            <li><strong>As duas dimensões são independentes?</strong> Se só alguns pares fazem sentido (estoque nunca sai em PDF), não são eixos: são combinações. Modele as que existem.</li>
+            <li><strong>Você consegue descrever cada lado sem citar o outro?</strong> "O que entra no relatório" e "como ele é escrito" funcionam. Se para explicar um você precisa do outro, a ponte vai vazar.</li>
+            <li><strong>Já são mais de 2 × 2, ou o terceiro está a caminho?</strong> Se são 4 classes e vão continuar 4, a herança direta custa menos. Se o terceiro formato ou o terceiro tipo já tem data, é Bridge.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Bridge tem um custo fixo: duas hierarquias em vez de uma, uma interface a mais e uma referência entre elas. Quem lê uma chamada precisa seguir dois lugares para entender o que acontece. E a interface da implementação é a parte mais difícil de acertar: larga demais, cada implementação sofre; estreita demais, a abstração não consegue fazer o que precisa.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Só um eixo varia</td><td>Não há produto cartesiano; a ponte liga um lado a nada</td><td>Herança simples, ou Strategy para trocar o algoritmo em tempo de execução</td></tr>
+                <tr><td>Dois eixos, mas 2 × 2 e parados</td><td>Quatro classes custam menos que duas hierarquias e uma interface</td><td>Subclasses diretas. Extraia a ponte quando o terceiro valor aparecer</td></tr>
+                <tr><td>Os eixos não são independentes</td><td>A ponte promete qualquer combinação; as inválidas viram erro só em tempo de execução</td><td>Modele as combinações que existem, ou valide o par na construção</td></tr>
+                <tr><td>A implementação já existe, com a interface de outra pessoa</td><td>O problema é encaixe, não separação de eixos</td><td>Adapter</td></tr>
+                <tr><td>Você quer acrescentar cache, log ou retry</td><td>A interface antes e depois é a mesma; não há segunda dimensão</td><td>Decorator</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Bridge saiu do lugar</h3>
+          <ul>
+            <li><strong>A interface da implementação espelha a da abstração.</strong> Se <code>Formato</code> tem <code>montar_vendas</code> e <code>montar_estoque</code>, o formato conhece os tipos. Os eixos não foram separados; foram só copiados.</li>
+            <li><strong>A abstração pergunta qual é a implementação.</strong> Um <code>isinstance(self._formato, FormatoCsv)</code> dentro do relatório mostra que a interface não segura a diferença.</li>
+            <li><strong>Só existe uma implementação, "para o futuro".</strong> É a segunda hierarquia criada antes de existir a segunda variante. O custo é cobrado hoje, e o futuro pode não vir.</li>
+            <li><strong>A implementação toma decisão de negócio.</strong> Um <code>FormatoCsv</code> que arredonda o total ou esconde cliente inativo faz com que a regra seja reescrita, e possa divergir, em cada formato.</li>
+            <li><strong>A abstração tem um único filho.</strong> Uma hierarquia "refinada" com uma classe só é uma classe com uma interface sobrando.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: a interface da implementação ganha um método novo a cada tipo novo. É o produto cartesiano voltando, agora em métodos em vez de classes, e o custo para cada implementação continua sendo N × M.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, espere o segundo eixo. Com um tipo de relatório, uma subclasse por formato é razoável. Quando o segundo tipo aparecer, a extração é mecânica: as subclasses viram implementações, a classe base vira a abstração e o formato passa a entrar pelo construtor.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../adapter/explicacao.html">Adapter</a></td><td>Entra depois, para encaixar duas interfaces que já existiam; o Bridge é desenhado antes, para as duas partes crescerem separadas. A forma em código é parecida; a intenção é outra</td></tr>
+                <tr><td>Strategy</td><td>Injeta um algoritmo em uma classe, e só o lado do algoritmo varia. No Bridge a abstração também tem variantes e as duas hierarquias evoluem</td></tr>
+                <tr><td>Template Method</td><td>Varia partes de um algoritmo por herança, dentro de uma só hierarquia. O Bridge troca essa herança por composição</td></tr>
+                <tr><td>Abstract Factory</td><td>Cria famílias de objetos que combinam entre si. Pode ser quem monta a ponte, escolhendo a implementação certa para o ambiente</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se as duas interfaces nasceram juntas, para variar em separado, é Bridge; se uma delas já existia e você teve de encaixá-la, é Adapter.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

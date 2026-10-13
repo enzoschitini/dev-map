@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Builder · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="criacionais/builder/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Builder</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como montar um objeto complexo por partes, em etapas, e só entregá-lo quando estiver completo e válido — em vez de deixá-lo circulando pela metade.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>O sistema envia um e-mail de confirmação a cada pedido. Quem monta esse e-mail não é um lugar só: o destinatário vem do cadastro, a assinatura vem de um módulo de marca, o PDF da nota fiscal vem do módulo fiscal. Cada parte acrescenta o que sabe.</p>
+          <p>A saída mais curta é criar o objeto vazio e passá-lo de função em função, para cada uma preencher a sua parte:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — o objeto existe pela metade durante toda a montagem</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Email</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self.para = []
+        self.assunto = <span class="t-s">""</span>
+        self.corpo = <span class="t-s">""</span>
+        self.anexos = []
+
+<span class="t-k">def</span> <span class="t-f">email_de_confirmacao</span>(pedido):
+    email = <span class="t-f">Email</span>()
+    email.para = [pedido.cliente.email]
+    <span class="t-f">adicionar_assinatura</span>(email)              <span class="t-c"># corpo = "\n--\nLoja X"</span>
+    email.corpo = <span class="t-s">f"Seu pedido {pedido.id} foi confirmado."</span>   <span class="t-c"># apagou a assinatura</span>
+    <span class="t-f">anexar_nota_fiscal</span>(email, pedido)
+    <span class="t-k">return</span> email
+
+<span class="t-f">enviar</span>(<span class="t-f">email_de_confirmacao</span>(pedido))   <span class="t-c"># sem assunto — e ninguém conferiu</span></code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram. O objeto é <strong>inválido</strong> do começo ao fim — no meio do caminho ele não tem assunto, e nada o impede de ser enviado assim. A <strong>ordem</strong> das chamadas importa, mas nada a documenta: aqui, a atribuição ao <code>corpo</code> apagou a assinatura. E, como o objeto é mutável, qualquer um com a referência pode alterá-lo depois de "pronto".</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Separe <strong>montar</strong> de <strong>ter</strong>. Um objeto auxiliar, o builder, recebe as partes em qualquer ordem e as guarda; o produto só nasce quando alguém pede, e nesse momento o conjunto é validado. São cinco papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Produto</td><td>O objeto final, completo e imutável</td><td><code>Email</code></td></tr>
+                <tr><td>Builder</td><td>Guarda as partes enquanto a montagem acontece</td><td><code>EmailBuilder</code></td></tr>
+                <tr><td>Etapas</td><td>Os métodos que acrescentam uma parte e devolvem o próprio builder</td><td><code>para()</code>, <code>assunto()</code>, <code>corpo()</code>, <code>anexar()</code></td></tr>
+                <tr><td>Montagem final</td><td>O passo que valida o conjunto e entrega o produto</td><td><code>construir()</code></td></tr>
+                <tr><td>Cliente</td><td>Quem monta, sem tocar no produto até ele estar pronto</td><td><code>email_de_confirmacao()</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é <strong>quando o objeto passa a existir</strong>. Antes, ele existia desde a primeira linha e ficava inválido por um tempo. Agora ele só existe depois de <code>construir()</code>, e a validação mora nesse único momento: ou volta um <code>Email</code> completo, ou volta um erro dizendo o que faltou.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> dataclasses <span class="t-k">import</span> dataclass
+
+<span class="t-c"># 1. o produto: completo, imutável, sem setters</span>
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">Email</span>:
+    para: <span class="t-f">tuple</span>[<span class="t-f">str</span>, ...]
+    assunto: <span class="t-f">str</span>
+    corpo: <span class="t-f">str</span>
+    anexos: <span class="t-f">tuple</span>[<span class="t-f">str</span>, ...] = ()
+
+<span class="t-c"># 2. o builder: guarda as partes, em qualquer ordem</span>
+<span class="t-k">class</span> <span class="t-f">EmailBuilder</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._para = []
+        self._assunto = <span class="t-k">None</span>
+        self._partes_do_corpo = []
+        self._anexos = []
+
+    <span class="t-c"># 3. as etapas: cada uma acrescenta e devolve self</span>
+    <span class="t-k">def</span> <span class="t-f">para</span>(self, endereco: <span class="t-f">str</span>):
+        self._para.<span class="t-f">append</span>(endereco)
+        <span class="t-k">return</span> self
+
+    <span class="t-k">def</span> <span class="t-f">assunto</span>(self, texto: <span class="t-f">str</span>):
+        self._assunto = texto
+        <span class="t-k">return</span> self
+
+    <span class="t-k">def</span> <span class="t-f">corpo</span>(self, texto: <span class="t-f">str</span>):
+        self._partes_do_corpo.<span class="t-f">append</span>(texto)   <span class="t-c"># acumula: a assinatura não apaga nada</span>
+        <span class="t-k">return</span> self
+
+    <span class="t-k">def</span> <span class="t-f">anexar</span>(self, caminho: <span class="t-f">str</span>):
+        self._anexos.<span class="t-f">append</span>(caminho)
+        <span class="t-k">return</span> self
+
+    <span class="t-c"># 4. a montagem final: valida o conjunto e entrega o produto</span>
+    <span class="t-k">def</span> <span class="t-f">construir</span>(self) -&gt; Email:
+        <span class="t-k">if</span> <span class="t-k">not</span> self._para:
+            <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">"e-mail sem destinatário"</span>)
+        <span class="t-k">if</span> <span class="t-k">not</span> self._assunto:
+            <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">"e-mail sem assunto"</span>)
+        <span class="t-k">return</span> <span class="t-f">Email</span>(
+            para=<span class="t-f">tuple</span>(self._para),
+            assunto=self._assunto,
+            corpo=<span class="t-s">"\n"</span>.<span class="t-f">join</span>(self._partes_do_corpo),
+            anexos=<span class="t-f">tuple</span>(self._anexos),
+        )
+
+<span class="t-c"># 5. o cliente: monta, e só então tem um Email</span>
+<span class="t-k">def</span> <span class="t-f">email_de_confirmacao</span>(pedido):
+    <span class="t-k">return</span> (<span class="t-f">EmailBuilder</span>()
+        .<span class="t-f">para</span>(pedido.cliente.email)
+        .<span class="t-f">assunto</span>(<span class="t-s">f"Pedido {pedido.id}"</span>)
+        .<span class="t-f">corpo</span>(<span class="t-s">f"Seu pedido {pedido.id} foi confirmado."</span>)
+        .<span class="t-f">anexar</span>(<span class="t-f">nota_fiscal_em_pdf</span>(pedido))
+        .<span class="t-f">corpo</span>(ASSINATURA)
+        .<span class="t-f">construir</span>())</code></pre>
+              <pre><code><span class="t-c">// 1. o produto: completo, imutável, sem setters</span>
+<span class="t-k">interface</span> <span class="t-f">Email</span> {
+  <span class="t-k">readonly</span> para: <span class="t-k">readonly</span> <span class="t-f">string</span>[];
+  <span class="t-k">readonly</span> assunto: <span class="t-f">string</span>;
+  <span class="t-k">readonly</span> corpo: <span class="t-f">string</span>;
+  <span class="t-k">readonly</span> anexos: <span class="t-k">readonly</span> <span class="t-f">string</span>[];
+}
+
+<span class="t-c">// 2. o builder: guarda as partes, em qualquer ordem</span>
+<span class="t-k">class</span> <span class="t-f">EmailBuilder</span> {
+  <span class="t-k">private</span> _para: <span class="t-f">string</span>[] = [];
+  <span class="t-k">private</span> _assunto?: <span class="t-f">string</span>;
+  <span class="t-k">private</span> partesDoCorpo: <span class="t-f">string</span>[] = [];
+  <span class="t-k">private</span> _anexos: <span class="t-f">string</span>[] = [];
+
+  <span class="t-c">// 3. as etapas: cada uma acrescenta e devolve this</span>
+  <span class="t-f">para</span>(endereco: <span class="t-f">string</span>) { <span class="t-k">this</span>._para.<span class="t-f">push</span>(endereco); <span class="t-k">return</span> <span class="t-k">this</span>; }
+  <span class="t-f">assunto</span>(texto: <span class="t-f">string</span>) { <span class="t-k">this</span>._assunto = texto; <span class="t-k">return</span> <span class="t-k">this</span>; }
+  <span class="t-f">corpo</span>(texto: <span class="t-f">string</span>) { <span class="t-k">this</span>.partesDoCorpo.<span class="t-f">push</span>(texto); <span class="t-k">return</span> <span class="t-k">this</span>; }
+  <span class="t-f">anexar</span>(caminho: <span class="t-f">string</span>) { <span class="t-k">this</span>._anexos.<span class="t-f">push</span>(caminho); <span class="t-k">return</span> <span class="t-k">this</span>; }
+
+  <span class="t-c">// 4. a montagem final: valida o conjunto e entrega o produto</span>
+  <span class="t-f">construir</span>(): <span class="t-f">Email</span> {
+    <span class="t-k">if</span> (<span class="t-k">this</span>._para.length === <span class="t-n">0</span>) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">Error</span>(<span class="t-s">"e-mail sem destinatário"</span>);
+    <span class="t-k">if</span> (!<span class="t-k">this</span>._assunto) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">Error</span>(<span class="t-s">"e-mail sem assunto"</span>);
+    <span class="t-k">return</span> {
+      para: [...<span class="t-k">this</span>._para],
+      assunto: <span class="t-k">this</span>._assunto,
+      corpo: <span class="t-k">this</span>.partesDoCorpo.<span class="t-f">join</span>(<span class="t-s">"\n"</span>),
+      anexos: [...<span class="t-k">this</span>._anexos],
+    };
+  }
+}
+
+<span class="t-c">// 5. o cliente: monta, e só então tem um Email</span>
+<span class="t-k">const</span> email = <span class="t-k">new</span> <span class="t-f">EmailBuilder</span>()
+  .<span class="t-f">para</span>(pedido.cliente.email)
+  .<span class="t-f">assunto</span>(<span class="t-s">`Pedido ${pedido.id}`</span>)
+  .<span class="t-f">corpo</span>(<span class="t-s">`Seu pedido ${pedido.id} foi confirmado.`</span>)
+  .<span class="t-f">anexar</span>(<span class="t-f">notaFiscalEmPdf</span>(pedido))
+  .<span class="t-f">corpo</span>(ASSINATURA)
+  .<span class="t-f">construir</span>();</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O erro de montagem agora aparece em <code>construir()</code>, no ponto onde o e-mail foi montado, e diz o que faltou. Antes, ele aparecia em <code>enviar()</code>, mais longe do erro e talvez com o cliente já esperando o e-mail.</p></div>
+          <div class="callout" data-kind="note"><p>Em Python, quando todos os campos são conhecidos de uma vez, <code>Email(para=(...), assunto="...", corpo="...")</code> com o dataclass já basta. O Builder se paga quando a montagem é <em>em etapas</em>, <em>por pontos diferentes do código</em> ou com <em>validação do conjunto</em>.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Builder vale quando as três coisas acontecem ao mesmo tempo: o objeto é <strong>montado em etapas</strong> (em mais de um lugar, ou acumulando partes), só é válido <strong>completo</strong>, e você quer que ele <strong>nasça pronto</strong> — imutável, ou com o mesmo roteiro gerando saídas diferentes.</p>
+          <p>No código, isso aparece de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Um objeto passa por várias funções que o preenchem</td><td><code>adicionar_x(obj)</code>, <code>anexar_y(obj)</code>, <code>aplicar_z(obj)</code> em sequência, antes de alguém usá-lo</td><td>—</td></tr>
+                <tr><td>Validação espalhada por quem usa</td><td><code>if not obj.assunto</code> repetido em cada função que recebe o objeto</td><td>—</td></tr>
+                <tr><td>O mesmo roteiro com saídas diferentes</td><td><code>if formato == "html"</code> dentro de cada passo da geração</td><td><a href="uso.html#mesmo-roteiro">Uso #1</a></td></tr>
+                <tr><td>Duas coleções mantidas em sincronia</td><td><code>sql += …</code> junto de <code>params.append(…)</code>, em todo ramo</td><td><a href="uso.html#estado-interno">Uso #2</a></td></tr>
+                <tr><td>Montar o objeto no teste dá mais trabalho que o teste</td><td>Dez linhas de construção para afirmar sobre um único campo</td><td><a href="uso.html#dados-de-teste">Uso #3</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: a pergunta nunca é "tenho muitos parâmetros?". É "<strong>existe um momento em que o objeto está incompleto</strong>, e alguém pode ver ou usar esse estado?".</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>O objeto tem poucos campos, todos conhecidos de uma vez?</strong> Use o construtor, com argumentos nomeados.</li>
+            <li><strong>O problema é só "muitos parâmetros opcionais"?</strong> Argumentos nomeados, um dataclass ou um objeto de opções resolvem sem uma classe nova.</li>
+            <li><strong>Existe montagem em etapas, validação do conjunto, ou mais de uma saída?</strong> Se nenhuma das três, não é caso de Builder.</li>
+            <li><strong>Alguém pode usar o objeto antes de ele estar pronto?</strong> Se sim, é exatamente o que o Builder resolve.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Builder paga com <strong>uma classe a mais por produto</strong>, que quase espelha os campos dele: cada campo novo muda duas classes, e a cadeia de chamadas parece um fluxo simples mas guarda estado escondido. Para um objeto de três campos, o custo não se paga em lugar nenhum.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>O objeto tem poucos campos e todos conhecidos de uma vez</td><td>O builder só repete os campos em outra classe</td><td>Construtor, ou um dataclass</td></tr>
+                <tr><td>Muitos parâmetros opcionais e mais nada</td><td>Argumentos nomeados já deixam a chamada legível</td><td><code>Cliente(timeout=5, retries=3)</code>; em TypeScript, um objeto de opções</td></tr>
+                <tr><td>Você quer "o mesmo objeto, com um campo diferente"</td><td>Criar um builder para isso é desproporcional</td><td><code>dataclasses.replace(obj, assunto="…")</code> ou o spread <code>{ ...obj, assunto }</code></td></tr>
+                <tr><td>O problema é qual <em>classe</em> criar</td><td>O Builder decide como montar, não o que montar</td><td>Factory Method, ou uma função fábrica</td></tr>
+                <tr><td>Vários objetos que precisam combinar entre si</td><td>Um builder monta um objeto; a consistência entre vários fica de fora</td><td>Abstract Factory</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Builder saiu do lugar</h3>
+          <ul>
+            <li><strong>O builder espelha o produto campo a campo.</strong> Se cada método só guarda um valor e <code>construir()</code> só repassa, é um construtor com mais arquivos.</li>
+            <li><strong><code>construir()</code> nunca falha.</strong> Sem validação e sem decisão, o momento "pronto" não significa nada.</li>
+            <li><strong>O builder é reutilizado depois de construir.</strong> Se a lista interna é entregue ao produto sem cópia, o próximo produto herda as partes do anterior, ou o primeiro muda sozinho.</li>
+            <li><strong>O produto também tem setters.</strong> Se dá para alterá-lo depois, a garantia de "nasce pronto" não vale nada.</li>
+            <li><strong>Um builder com 30 métodos.</strong> O produto é grande demais: o problema é que ele está fazendo coisa demais, e a solução é dividi-lo.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: <code>construir()</code> só repassa o que recebeu. O padrão virou uma sintaxe diferente para o mesmo construtor.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com o construtor e argumentos nomeados. O momento do Builder chega com a primeira validação que depende de <em>vários campos juntos</em>, ou a primeira montagem espalhada por mais de uma função. Nesses dois casos a migração é pequena.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../abstract-factory/explicacao.html">Abstract Factory</a></td><td>Entrega <em>vários</em> objetos de uma família, cada um em uma chamada. O Builder monta <em>um</em> objeto complexo, em etapas</td></tr>
+                <tr><td><a href="../factory-method/explicacao.html">Factory Method</a></td><td>Decide <em>qual classe</em> criar. O Builder decide <em>como montar</em> o objeto</td></tr>
+                <tr><td>Argumentos nomeados / dataclass</td><td>Resolvem a legibilidade no ponto da chamada. O Builder acrescenta etapas, acúmulo de partes e validação final</td></tr>
+                <tr><td>Interface fluente (encadeamento)</td><td>É só a sintaxe de <code>a().b().c()</code>. O Builder costuma usá-la, mas <code>lista.filter().map()</code> é encadeamento sem Builder: não há montagem nem produto</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se a dificuldade é o objeto ser <em>montado</em> de forma complicada, é Builder. Se é decidir <em>qual tipo</em> de objeto criar, é uma fábrica.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

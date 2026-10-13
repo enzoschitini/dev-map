@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Proxy · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/proxy/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Proxy</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o Proxy resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o proxy controla em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Proxy. O carregamento preguiçoso (o <em>proxy virtual</em>) já está inteiro na <a href="explicacao.html#implementacao">explicação</a>, e imagens, documentos e relações de ORM sob demanda são o mesmo raciocínio. Sobraram três motivos que ela não cobre: <em>quem</em> pode chamar, <em>onde</em> o objeto mora e <em>o que</em> acontece com os campos dele. Os casos que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o proxy controla</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#acesso-por-papel">A mesma folha de pagamento, vista por papéis diferentes</a></td><td>Quem pode chamar cada método, e com quais argumentos</td></tr>
+                <tr><td>2</td><td><a href="#servico-extraido">Um módulo que virou serviço, com 40 chamadores</a></td><td>Onde o objeto mora</td></tr>
+                <tr><td>3</td><td><a href="#mudancas-de-campos">Salvar só o que o usuário mudou</a></td><td>O que acontece com os campos do objeto</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="note"><p>Os módulos <code>estoque</code> e <code>folha</code> e o serviço de estoque do segundo exemplo são fictícios. As chamadas de <code>requests</code> usam o formato real, simplificado.</p></div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="acesso-por-papel">1. A mesma folha de pagamento, vista por papéis diferentes</h2>
+          <p><strong>Situação.</strong> O RH vê o salário de todos. Cada gestor vê só o da própria equipe. Só a diretoria pode aplicar reajuste. A folha é usada por uma API, por três relatórios e por uma exportação mensal, escritos por pessoas diferentes.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada chamador lembra (ou não) de checar</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># relatorios/custo.py</span>
+<span class="t-k">def</span> <span class="t-f">custo_por_area</span>(folha, usuario, area):
+    <span class="t-k">if</span> usuario.papel <span class="t-k">not</span> <span class="t-k">in</span> (<span class="t-s">"rh"</span>, <span class="t-s">"diretoria"</span>):
+        <span class="t-k">raise</span> <span class="t-f">Proibido</span>()
+    <span class="t-k">return</span> <span class="t-f">sum</span>(folha.<span class="t-f">salario_de</span>(f.id) <span class="t-k">for</span> f <span class="t-k">in</span> area.funcionarios)
+
+<span class="t-c"># api/salarios.py</span>
+<span class="t-k">def</span> <span class="t-f">get_salario</span>(folha, usuario, funcionario_id):
+    <span class="t-k">if</span> usuario.papel == <span class="t-s">"gestor"</span> <span class="t-k">and</span> <span class="t-k">not</span> <span class="t-f">eh_subordinado</span>(usuario, funcionario_id):
+        <span class="t-k">raise</span> <span class="t-f">Proibido</span>()
+    <span class="t-k">return</span> folha.<span class="t-f">salario_de</span>(funcionario_id)
+
+<span class="t-c"># exportacao/mensal.py</span>
+<span class="t-k">def</span> <span class="t-f">exportar</span>(folha, funcionarios):
+    <span class="t-k">return</span> [(f.nome, folha.<span class="t-f">salario_de</span>(f.id)) <span class="t-k">for</span> f <span class="t-k">in</span> funcionarios]   <span class="t-c"># sem checagem nenhuma</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A regra de acesso está em cada chamador, escrita de um jeito, e a exportação mensal não tem nenhuma. Um chamador novo nasce sem proteção, e nada falha: o dado só vaza. Quando a regra muda ("gestor também vê o salário do próprio gestor"), são seis lugares para achar.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — quem recebe a folha só recebe o proxy</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Folha</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">salario_de</span>(self, funcionario_id: <span class="t-f">str</span>) -&gt; Decimal: ...
+    <span class="t-k">def</span> <span class="t-f">reajustar</span>(self, funcionario_id: <span class="t-f">str</span>, percentual: Decimal) -&gt; <span class="t-k">None</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">FolhaDePagamento</span>:
+    <span class="t-s">"""O objeto real: faz o trabalho e não sabe de papéis."""</span>
+    ...
+
+<span class="t-k">class</span> <span class="t-f">FolhaProtegida</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, real: Folha, usuario, politica):
+        self._real, self._usuario, self._politica = real, usuario, politica
+
+    <span class="t-k">def</span> <span class="t-f">salario_de</span>(self, funcionario_id):
+        <span class="t-k">if</span> <span class="t-k">not</span> self._politica.<span class="t-f">pode_ver_salario</span>(self._usuario, funcionario_id):
+            <span class="t-k">raise</span> <span class="t-f">Proibido</span>(<span class="t-s">"salario_de"</span>, funcionario_id)
+        <span class="t-k">return</span> self._real.<span class="t-f">salario_de</span>(funcionario_id)
+
+    <span class="t-k">def</span> <span class="t-f">reajustar</span>(self, funcionario_id, percentual):
+        <span class="t-k">if</span> <span class="t-k">not</span> self._politica.<span class="t-f">pode_reajustar</span>(self._usuario):
+            <span class="t-k">raise</span> <span class="t-f">Proibido</span>(<span class="t-s">"reajustar"</span>, funcionario_id)
+        self._real.<span class="t-f">reajustar</span>(funcionario_id, percentual)
+
+<span class="t-c"># na montagem da requisição: o real nunca sai daqui</span>
+folha: Folha = <span class="t-f">FolhaProtegida</span>(<span class="t-f">FolhaDePagamento</span>(db), usuario, politica)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o proxy controla.</strong> Quem pode chamar cada método, <strong>com quais argumentos</strong>. Isso é mais que o Decorator de permissão por função: a decisão depende do <code>funcionario_id</code> pedido, e o proxy carrega o <em>usuário</em> que faz a chamada. Relatórios, API e exportação recebem um <code>Folha</code> e não têm como esquecer a checagem, porque ela não está neles. A <code>FolhaDePagamento</code> real não sabe que existem papéis.</p>
+          <div class="callout" data-kind="warn"><p>A proteção só vale se o real não vaza. Se algum código ainda recebe a <code>FolhaDePagamento</code> diretamente, ou se o proxy expõe <code>.real</code>, o proxy protege os chamadores que o respeitam e ninguém mais. A montagem é o lugar onde isso se garante.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="servico-extraido">2. Um módulo que virou serviço, com 40 chamadores</h2>
+          <p><strong>Situação.</strong> O módulo de estoque, que morava dentro do monólito, foi extraído para um serviço próprio. O monólito o chama em 40 lugares por <code>estoque.disponivel(sku)</code> e <code>estoque.reservar(sku, quantidade)</code>. A mudança de endereço não pode vir com uma reescrita dos 40.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada chamador virou um cliente HTTP</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># em 40 lugares, cada um de um jeito</span>
+resp = requests.<span class="t-f">get</span>(<span class="t-s">f"{ESTOQUE_URL}/skus/{sku}/disponivel"</span>, timeout=<span class="t-n">2</span>)
+resp.<span class="t-f">raise_for_status</span>()
+disponivel = resp.<span class="t-f">json</span>()[<span class="t-s">"quantidade"</span>]
+
+<span class="t-c"># e em outros, sem timeout:</span>
+resp = requests.<span class="t-f">post</span>(<span class="t-s">f"{ESTOQUE_URL}/skus/{sku}/reservas"</span>, json={<span class="t-s">"quantidade"</span>: qtd})</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A localização do serviço, o formato do JSON e o tratamento de falha estão em 40 lugares, alguns sem <em>timeout</em>. O código de domínio, que só queria saber se há estoque, agora conhece URLs. Voltar atrás ou migrar aos poucos (alguns chamadores no serviço, outros no módulo antigo) é impraticável. E testar qualquer um exige falsificar <code>requests</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o serviço remoto atrás da interface que sempre existiu</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Estoque</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">disponivel</span>(self, sku: <span class="t-f">str</span>) -&gt; <span class="t-f">int</span>: ...
+    <span class="t-k">def</span> <span class="t-f">reservar</span>(self, sku: <span class="t-f">str</span>, quantidade: <span class="t-f">int</span>) -&gt; Reserva: ...
+
+<span class="t-k">class</span> <span class="t-f">EstoqueRemoto</span>:
+    <span class="t-s">"""O proxy: fala a interface de Estoque, mas o objeto real está em outro processo."""</span>
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, base_url: <span class="t-f">str</span>, sessao=<span class="t-k">None</span>):
+        self._url = base_url
+        self._http = sessao <span class="t-k">or</span> requests.<span class="t-f">Session</span>()
+
+    <span class="t-k">def</span> <span class="t-f">disponivel</span>(self, sku):
+        corpo = self.<span class="t-f">_chamar</span>(<span class="t-s">"GET"</span>, <span class="t-s">f"/skus/{sku}/disponivel"</span>)
+        <span class="t-k">return</span> corpo[<span class="t-s">"quantidade"</span>]
+
+    <span class="t-k">def</span> <span class="t-f">reservar</span>(self, sku, quantidade):
+        corpo = self.<span class="t-f">_chamar</span>(<span class="t-s">"POST"</span>, <span class="t-s">f"/skus/{sku}/reservas"</span>, json={<span class="t-s">"quantidade"</span>: quantidade})
+        <span class="t-k">return</span> <span class="t-f">Reserva</span>(corpo[<span class="t-s">"id"</span>], sku, quantidade)
+
+    <span class="t-k">def</span> <span class="t-f">_chamar</span>(self, metodo, caminho, **kwargs):
+        <span class="t-k">try</span>:
+            resp = self._http.<span class="t-f">request</span>(metodo, self._url + caminho, timeout=<span class="t-n">2</span>, **kwargs)
+            resp.<span class="t-f">raise_for_status</span>()
+            <span class="t-k">return</span> resp.<span class="t-f">json</span>()
+        <span class="t-k">except</span> requests.RequestException <span class="t-k">as</span> e:
+            <span class="t-k">raise</span> <span class="t-f">EstoqueIndisponivel</span>(caminho) <span class="t-k">from</span> e
+
+<span class="t-c"># na montagem: um flag escolhe o real local ou o proxy remoto</span>
+estoque: Estoque = <span class="t-f">EstoqueRemoto</span>(ESTOQUE_URL) <span class="t-k">if</span> USAR_SERVICO <span class="t-k">else</span> <span class="t-f">EstoqueLocal</span>(db)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o proxy controla.</strong> <em>Onde</em> o objeto mora. Os 40 chamadores continuam como estavam, e a decisão "local ou remoto" mora em uma linha de montagem, o que permite migrar por ambiente ou por percentual de tráfego. Os testes usam o <code>EstoqueLocal</code>, sem rede. É o <em>proxy remoto</em> do catálogo clássico: um representante local de algo que está em outro lugar, o mesmo papel dos <em>stubs</em> gerados por gRPC e por geradores de cliente OpenAPI.</p>
+          <div class="callout" data-kind="warn"><p>A interface é a mesma, mas a rede não é um método. <code>disponivel()</code> agora pode demorar e falhar, e <code>reservar()</code> repetido por causa de um <em>timeout</em> pode reservar duas vezes. Os chamadores precisam decidir o que fazer com <code>EstoqueIndisponivel</code>, e a reserva precisa ser idempotente (uma chave por tentativa). O proxy esconde a localização, e não a falha.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="mudancas-de-campos">3. Salvar só o que o usuário mudou</h2>
+          <p><strong>Situação.</strong> A tela de pedido edita um <code>Pedido</code> com 20 campos. Duas pessoas trabalham no mesmo pedido: uma muda o status, a outra escreve uma observação. O salvamento grava o objeto inteiro.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o UPDATE leva os 20 campos, inclusive os que ninguém tocou</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code>pedido = repo.<span class="t-f">buscar</span>(pedido_id)        <span class="t-c"># 20 campos, lidos às 10:00:00</span>
+pedido.status = <span class="t-s">"enviado"</span>              <span class="t-c"># só isto mudou</span>
+repo.<span class="t-f">salvar</span>(pedido)
+<span class="t-c"># UPDATE pedidos SET status=?, endereco=?, observacao=?, ... WHERE id=?</span>
+<span class="t-c"># a observação que a outra pessoa gravou às 10:00:03 foi sobrescrita pelo valor antigo</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O último a salvar apaga o trabalho de quem salvou antes, em campos que nem tocou, sem erro e sem aviso. Comparar com um <code>copy.deepcopy</code> feito ao carregar resolveria, mas cada objeto passaria a existir duas vezes, o que pesa em grafos grandes, e a comparação teria de ser escrita para cada classe.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — um proxy que anota cada campo alterado</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Rastreado</span>:
+    <span class="t-s">"""Proxy dinâmico: repassa tudo ao alvo e anota o que foi alterado."""</span>
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, alvo):
+        <span class="t-f">object</span>.__setattr__(self, <span class="t-s">"_alvo"</span>, alvo)
+        <span class="t-f">object</span>.__setattr__(self, <span class="t-s">"_mudancas"</span>, {})
+
+    <span class="t-k">def</span> <span class="t-f">__getattr__</span>(self, nome):         <span class="t-c"># só é chamado para o que o proxy não tem</span>
+        <span class="t-k">return</span> <span class="t-f">getattr</span>(self._alvo, nome)
+
+    <span class="t-k">def</span> <span class="t-f">__setattr__</span>(self, nome, valor):
+        <span class="t-k">if</span> <span class="t-f">getattr</span>(self._alvo, nome) != valor:
+            self._mudancas[nome] = valor
+            <span class="t-f">setattr</span>(self._alvo, nome, valor)
+
+    <span class="t-k">def</span> <span class="t-f">campos_alterados</span>(self) -&gt; <span class="t-f">dict</span>:
+        <span class="t-k">return</span> <span class="t-f">dict</span>(self._mudancas)
+
+pedido = <span class="t-f">Rastreado</span>(repo.<span class="t-f">buscar</span>(pedido_id))
+pedido.status = <span class="t-s">"enviado"</span>
+repo.<span class="t-f">atualizar</span>(pedido_id, pedido.<span class="t-f">campos_alterados</span>())
+<span class="t-c"># UPDATE pedidos SET status=? WHERE id=?</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que o proxy controla.</strong> O que acontece com os campos do objeto, sem que a classe <code>Pedido</code> mude. Este é o <em>proxy dinâmico</em>: em vez de escrever um método por método da interface (como nos outros dois), ele intercepta o acesso a atributo e repassa o resto. Por isso serve a qualquer objeto, de 3 ou de 300 campos. O <code>Pedido</code> não sabe que está sendo observado, e a tela edita como sempre editou.</p>
+          <div class="callout" data-kind="warn"><p>O proxy dinâmico tem limites. <code>isinstance(pedido, Pedido)</code> é falso; mudanças dentro de uma lista aninhada (<code>pedido.itens.append(...)</code>) não passam pelo <code>__setattr__</code>; e métodos especiais como <code>len()</code> ou <code>==</code> não passam pelo <code>__getattr__</code>. Para ORM de verdade, use o que a biblioteca já traz (o <em>unit of work</em> do SQLAlchemy faz esse rastreamento).</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três (ou na explicação):</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Imagem ou documento pesado, carregado só quando aparece na tela</td><td>Explicação — o proxy virtual</td></tr>
+                <tr><td>Relação de ORM carregada sob demanda (<em>lazy loading</em>)</td><td>Explicação — o proxy virtual</td></tr>
+                <tr><td>Cliente gerado por gRPC ou por OpenAPI</td><td>2 — representante local de algo remoto</td></tr>
+                <tr><td>Limite de requisições ou cota por chave de API</td><td>1 — a decisão depende de quem chama</td></tr>
+                <tr><td>Auditoria de quem leu qual registro</td><td>1 — o proxy conhece o usuário e os argumentos</td></tr>
+                <tr><td>Espião ou <em>mock</em> em testes, que registra as chamadas</td><td>3 — proxy que observa sem a classe saber</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Proxy, mas não é: um cache, ou uma tentativa extra, na frente de um cliente. Tem a mesma forma (um objeto com a mesma interface na frente do real), mas não controla o alcance: acrescenta algo em <em>toda</em> chamada. É Decorator. Veja a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

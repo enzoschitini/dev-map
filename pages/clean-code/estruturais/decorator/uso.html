@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Decorator · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/decorator/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Decorator</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o Decorator resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o decorador acrescenta em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Decorator. Cache, log, retry, métrica e trace sobre um cliente são o mesmo raciocínio, e ele já está inteiro no exemplo da <a href="explicacao.html#implementacao">explicação</a>. Comprimir ou criptografar um stream é o mesmo raciocínio do segundo exemplo. Sobraram três motivos, e os casos que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o decorador acrescenta</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#adicionais-no-checkout">Adicionais que o cliente escolhe no checkout</a></td><td>Um valor e uma descrição, na ordem escolhida</td></tr>
+                <tr><td>2</td><td><a href="#upload-com-limite">Upload que precisa de limite e de hash</a></td><td>Limite e medição sobre um objeto que não é seu</td></tr>
+                <tr><td>3</td><td><a href="#funcoes-de-handler">Permissão e métrica em dezenas de handlers</a></td><td>O que acontece em volta de uma função</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="adicionais-no-checkout">1. Adicionais que o cliente escolhe no checkout</h2>
+          <p><strong>Situação.</strong> O cinema vende ingresso inteira ou meia, e o cliente pode somar adicionais na compra: sessão em 3D, assento VIP e combo de pipoca. A taxa de serviço de 10% incide sobre o total. A tela de resumo mostra o preço e uma descrição ("Meia + 3D + combo"), e os dois precisam bater.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — um booleano por adicional, em duas funções</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">preco_do_ingresso</span>(sessao, meia=<span class="t-k">False</span>, tres_d=<span class="t-k">False</span>, vip=<span class="t-k">False</span>, combo=<span class="t-k">False</span>):
+    preco = sessao.preco_base
+    <span class="t-k">if</span> meia:
+        preco = preco / <span class="t-n">2</span>        <span class="t-c"># a meia vale sobre o base, não sobre os extras</span>
+    <span class="t-k">if</span> tres_d:
+        preco += <span class="t-n">8</span>
+    <span class="t-k">if</span> vip:
+        preco += <span class="t-n">25</span>
+    <span class="t-k">if</span> combo:
+        preco += <span class="t-n">22</span>
+    <span class="t-k">return</span> preco * <span class="t-f">Decimal</span>(<span class="t-s">"1.10"</span>)
+
+<span class="t-k">def</span> <span class="t-f">descricao_do_ingresso</span>(meia=<span class="t-k">False</span>, tres_d=<span class="t-k">False</span>, vip=<span class="t-k">False</span>, combo=<span class="t-k">False</span>):
+    partes = [<span class="t-s">"Meia"</span> <span class="t-k">if</span> meia <span class="t-k">else</span> <span class="t-s">"Inteira"</span>]
+    <span class="t-k">if</span> tres_d:
+        partes.<span class="t-f">append</span>(<span class="t-s">"3D"</span>)
+    <span class="t-k">if</span> combo:
+        partes.<span class="t-f">append</span>(<span class="t-s">"combo"</span>)       <span class="t-c"># e o vip? esqueceram aqui</span>
+    <span class="t-k">return</span> <span class="t-s">" + "</span>.<span class="t-f">join</span>(partes)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Preço e descrição têm os mesmos <code>if</code> em duas funções, e já divergiram: o VIP está no preço e não está na descrição. Cada adicional novo é um parâmetro em todos os chamadores. Quatro booleanos são 16 combinações para testar. E a regra "meia vale sobre o base" só existe pela posição de uma linha.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — cada adicional embrulha o ingresso e altera o resultado</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Ingresso</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">preco</span>(self) -&gt; <span class="t-f">Decimal</span>: ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">descricao</span>(self) -&gt; <span class="t-f">str</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">Inteira</span>(Ingresso):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, sessao):
+        self._sessao = sessao
+
+    <span class="t-k">def</span> <span class="t-f">preco</span>(self):
+        <span class="t-k">return</span> self._sessao.preco_base
+
+    <span class="t-k">def</span> <span class="t-f">descricao</span>(self):
+        <span class="t-k">return</span> <span class="t-s">"Inteira"</span>
+
+<span class="t-k">class</span> <span class="t-f">Meia</span>(Inteira):
+    <span class="t-k">def</span> <span class="t-f">preco</span>(self):
+        <span class="t-k">return</span> self._sessao.preco_base / <span class="t-n">2</span>
+
+    <span class="t-k">def</span> <span class="t-f">descricao</span>(self):
+        <span class="t-k">return</span> <span class="t-s">"Meia"</span>
+
+<span class="t-k">class</span> <span class="t-f">Adicional</span>(Ingresso):
+    NOME: <span class="t-f">str</span>
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, interno: Ingresso):
+        self._interno = interno
+
+    <span class="t-k">def</span> <span class="t-f">descricao</span>(self):
+        <span class="t-k">return</span> <span class="t-s">f"{self._interno.descricao()} + {self.NOME}"</span>
+
+<span class="t-k">class</span> <span class="t-f">Em3D</span>(Adicional):
+    NOME = <span class="t-s">"3D"</span>
+    <span class="t-k">def</span> <span class="t-f">preco</span>(self): <span class="t-k">return</span> self._interno.<span class="t-f">preco</span>() + <span class="t-f">Decimal</span>(<span class="t-n">8</span>)
+
+<span class="t-k">class</span> <span class="t-f">Vip</span>(Adicional):
+    NOME = <span class="t-s">"VIP"</span>
+    <span class="t-k">def</span> <span class="t-f">preco</span>(self): <span class="t-k">return</span> self._interno.<span class="t-f">preco</span>() + <span class="t-f">Decimal</span>(<span class="t-n">25</span>)
+
+<span class="t-k">class</span> <span class="t-f">Combo</span>(Adicional):
+    NOME = <span class="t-s">"combo"</span>
+    <span class="t-k">def</span> <span class="t-f">preco</span>(self): <span class="t-k">return</span> self._interno.<span class="t-f">preco</span>() + <span class="t-f">Decimal</span>(<span class="t-n">22</span>)
+
+<span class="t-k">class</span> <span class="t-f">TaxaDeServico</span>(Adicional):
+    NOME = <span class="t-s">"taxa"</span>
+    <span class="t-k">def</span> <span class="t-f">preco</span>(self): <span class="t-k">return</span> self._interno.<span class="t-f">preco</span>() * <span class="t-f">Decimal</span>(<span class="t-s">"1.10"</span>)
+
+<span class="t-c"># a ordem dos adicionais fica escrita aqui, e em lugar nenhum mais</span>
+ADICIONAIS = {<span class="t-s">"3d"</span>: Em3D, <span class="t-s">"vip"</span>: Vip, <span class="t-s">"combo"</span>: Combo}
+
+<span class="t-k">def</span> <span class="t-f">montar_ingresso</span>(sessao, meia: <span class="t-f">bool</span>, escolhidos: <span class="t-f">set</span>[<span class="t-f">str</span>]) -&gt; Ingresso:
+    ingresso = <span class="t-f">Meia</span>(sessao) <span class="t-k">if</span> meia <span class="t-k">else</span> <span class="t-f">Inteira</span>(sessao)
+    <span class="t-k">for</span> nome, classe <span class="t-k">in</span> ADICIONAIS.<span class="t-f">items</span>():
+        <span class="t-k">if</span> nome <span class="t-k">in</span> escolhidos:
+            ingresso = <span class="t-f">classe</span>(ingresso)
+    <span class="t-k">return</span> <span class="t-f">TaxaDeServico</span>(ingresso)     <span class="t-c"># por último: incide sobre tudo</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que o decorador acrescenta.</strong> Aqui o decorador <strong>muda o resultado</strong>, em vez de só observar: soma ao preço e acrescenta à descrição, na mesma classe e portanto sem divergir. Os exemplos de cache e log não mudam o que a chamada devolve; estes mudam. A pilha é montada em tempo de execução, a partir do que o cliente marcou na tela, com um laço. Um adicional novo é uma classe e uma linha no dicionário.</p>
+          <div class="callout" data-kind="warn"><p>Quando há percentuais, a ordem muda o preço: 10% de taxa antes de somar o combo dá um valor, depois dá outro. Por isso a ordem está em um único lugar, com um comentário, e não depende da ordem em que o cliente clicou.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="upload-com-limite">2. Upload que precisa de limite e de hash</h2>
+          <p><strong>Situação.</strong> O endpoint de importação recebe um arquivo de até 10 MB e precisa guardar o hash SHA-256 dele para auditoria. O objeto de arquivo vem do framework (<code>request.files</code>), e o destino é uma função da biblioteca padrão que só sabe chamar <code>.read()</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — lê tudo para a memória e depois confere</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">importar</span>(arquivo, destino):
+    dados = arquivo.<span class="t-f">read</span>()                  <span class="t-c"># e se vierem 2 GB?</span>
+    <span class="t-k">if</span> <span class="t-f">len</span>(dados) &gt; LIMITE:
+        <span class="t-k">raise</span> <span class="t-f">ArquivoGrande</span>(LIMITE)
+    sha = hashlib.<span class="t-f">sha256</span>(dados).<span class="t-f">hexdigest</span>()
+    destino.<span class="t-f">write</span>(dados)
+    <span class="t-k">return</span> sha</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A checagem acontece <em>depois</em> de o arquivo todo estar na memória, que é justamente o que o limite devia evitar. Se o código trocar para leitura em blocos, o contador e o hash entram no meio do laço, junto da cópia. E <code>shutil.copyfileobj</code>, que já copia em blocos, deixa de poder ser usado.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — dois leitores que embrulham o arquivo e falam .read()</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">LeitorLimitado</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, origem, limite: <span class="t-f">int</span>):
+        self._origem, self._limite, self._lidos = origem, limite, <span class="t-n">0</span>
+
+    <span class="t-k">def</span> <span class="t-f">read</span>(self, n=-<span class="t-n">1</span>):
+        bloco = self._origem.<span class="t-f">read</span>(n)
+        self._lidos += <span class="t-f">len</span>(bloco)
+        <span class="t-k">if</span> self._lidos &gt; self._limite:
+            <span class="t-k">raise</span> <span class="t-f">ArquivoGrande</span>(self._limite)
+        <span class="t-k">return</span> bloco
+
+<span class="t-k">class</span> <span class="t-f">LeitorComHash</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, origem):
+        self._origem, self._sha = origem, hashlib.<span class="t-f">sha256</span>()
+
+    <span class="t-k">def</span> <span class="t-f">read</span>(self, n=-<span class="t-n">1</span>):
+        bloco = self._origem.<span class="t-f">read</span>(n)
+        self._sha.<span class="t-f">update</span>(bloco)
+        <span class="t-k">return</span> bloco
+
+    <span class="t-k">def</span> <span class="t-f">hexdigest</span>(self):
+        <span class="t-k">return</span> self._sha.<span class="t-f">hexdigest</span>()
+
+<span class="t-k">def</span> <span class="t-f">importar</span>(arquivo, destino):
+    lido = <span class="t-f">LeitorComHash</span>(<span class="t-f">LeitorLimitado</span>(arquivo, LIMITE))
+    shutil.<span class="t-f">copyfileobj</span>(lido, destino)   <span class="t-c"># em blocos; estoura no meio, sem carregar tudo</span>
+    <span class="t-k">return</span> lido.<span class="t-f">hexdigest</span>()</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o decorador acrescenta.</strong> Limite e medição sobre um objeto <strong>que não é seu</strong>, sem tocar nele nem no consumidor. <code>copyfileobj</code> só chama <code>.read(n)</code>, e o decorador responde a isso, então o consumidor não sabe que há camadas. O que este exemplo ensina e o anterior não: o decorador guarda <strong>estado</strong> enquanto os dados passam (bytes lidos, hash parcial), e age <em>durante</em> a leitura, não antes nem depois. A biblioteca padrão usa a mesma forma: <code>gzip.GzipFile(fileobj=arquivo)</code> e <code>io.BufferedReader</code> embrulham um arquivo e continuam sendo um arquivo.</p>
+          <div class="callout" data-kind="warn"><p>O decorador só responde ao que implementou. Se o consumidor chamar <code>.seek()</code>, <code>.name</code> ou <code>.close()</code>, vai falhar. Implemente o que o consumidor usa, ou repasse o resto com <code>__getattr__</code>, sabendo que repassar <code>seek</code> sem ajustar o contador quebra o limite.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="funcoes-de-handler">3. Permissão e métrica em dezenas de handlers</h2>
+          <p><strong>Situação.</strong> A API de administração tem 30 handlers. Todos precisam checar o papel do usuário e registrar a duração da chamada. Cada handler é uma função simples que recebe o usuário e os argumentos da operação.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o mesmo cabeçalho e o mesmo try/finally em cada função</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">cancelar_pedido</span>(usuario, pedido_id):
+    <span class="t-k">if</span> <span class="t-s">"admin"</span> <span class="t-k">not</span> <span class="t-k">in</span> usuario.papeis:
+        <span class="t-k">raise</span> <span class="t-f">Proibido</span>(<span class="t-s">"admin"</span>)
+    inicio = time.<span class="t-f">perf_counter</span>()
+    <span class="t-k">try</span>:
+        pedido = pedidos.<span class="t-f">buscar</span>(pedido_id)
+        pedido.<span class="t-f">cancelar</span>()
+        <span class="t-k">return</span> pedido
+    <span class="t-k">finally</span>:
+        metricas.<span class="t-f">registrar</span>(<span class="t-s">"cancelar_pedido"</span>, time.<span class="t-f">perf_counter</span>() - inicio)
+
+<span class="t-c"># reembolsar_pedido, bloquear_cliente, exportar_relatorio...</span>
+<span class="t-c"># o mesmo bloco, com o nome da métrica copiado à mão em cada um</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A regra de negócio de cada handler é três linhas no meio de doze. O nome da métrica é copiado à mão e já há dois handlers registrando com o nome do outro. E esquecer o <code>if</code> de permissão em um handler novo não dá erro nenhum: dá um buraco de segurança.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a função é embrulhada na definição</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> functools
+
+<span class="t-k">def</span> <span class="t-f">exige_papel</span>(papel):
+    <span class="t-k">def</span> <span class="t-f">decorador</span>(funcao):
+        <span class="t-f">@functools.wraps</span>(funcao)
+        <span class="t-k">def</span> <span class="t-f">embrulhada</span>(usuario, *args, **kwargs):
+            <span class="t-k">if</span> papel <span class="t-k">not</span> <span class="t-k">in</span> usuario.papeis:
+                <span class="t-k">raise</span> <span class="t-f">Proibido</span>(papel)
+            <span class="t-k">return</span> <span class="t-f">funcao</span>(usuario, *args, **kwargs)
+        <span class="t-k">return</span> embrulhada
+    <span class="t-k">return</span> decorador
+
+<span class="t-k">def</span> <span class="t-f">medido</span>(funcao):
+    <span class="t-f">@functools.wraps</span>(funcao)
+    <span class="t-k">def</span> <span class="t-f">embrulhada</span>(*args, **kwargs):
+        inicio = time.<span class="t-f">perf_counter</span>()
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> <span class="t-f">funcao</span>(*args, **kwargs)
+        <span class="t-k">finally</span>:
+            metricas.<span class="t-f">registrar</span>(funcao.__name__, time.<span class="t-f">perf_counter</span>() - inicio)
+    <span class="t-k">return</span> embrulhada
+
+<span class="t-f">@exige_papel</span>(<span class="t-s">"admin"</span>)
+<span class="t-f">@medido</span>
+<span class="t-k">def</span> <span class="t-f">cancelar_pedido</span>(usuario, pedido_id):
+    pedido = pedidos.<span class="t-f">buscar</span>(pedido_id)
+    pedido.<span class="t-f">cancelar</span>()
+    <span class="t-k">return</span> pedido</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o decorador acrescenta.</strong> O que acontece <strong>em volta</strong> de uma função, sem que ela saiba. Aqui o "componente" é uma função, e a "interface" é a assinatura: <code>(*args, **kwargs)</code> faz o mesmo decorador servir a qualquer handler. Não existe classe nem camada para montar: a pilha está escrita em cima da função, e <code>functools.wraps</code> mantém o nome e a docstring, para que o log e as ferramentas de rota continuem mostrando <code>cancelar_pedido</code> e não <code>embrulhada</code>. O Python e o TypeScript trazem essa forma como sintaxe (<code>@</code>), mas é o mesmo pattern.</p>
+          <div class="callout" data-kind="tip"><p>A ordem de empilhar é a ordem de execução, de cima para baixo. Com <code>@exige_papel</code> por fora, uma chamada negada nunca chega à métrica. Invertendo, as tentativas proibidas passam a contar na latência dos handlers, e uma ou outra pode ser o que você quer. Decida de propósito.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três (ou na explicação):</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Cache, retry, log, métrica ou trace sobre um cliente ou repositório</td><td>Explicação — o exemplo condutor, com a pilha de camadas</td></tr>
+                <tr><td>Pizza ou café com ingredientes extras</td><td>1 — adicionais que mudam o resultado, em ordem</td></tr>
+                <tr><td>Comprimir ou criptografar um stream</td><td>2 — um objeto que continua sendo um arquivo</td></tr>
+                <tr><td>Notificação que vai por e-mail e também por SMS e Slack</td><td>1 — mas, se for "avisar vários", veja o Composite</td></tr>
+                <tr><td>Middleware de um framework web (autenticação, CORS, log)</td><td>3 — comportamento em volta de um handler</td></tr>
+                <tr><td>Validação, cache e log em métodos de classe</td><td>3 — o mesmo decorador, aplicado em método</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E dois casos que parecem Decorator, mas não são. Um objeto que cria o real só quando alguém o usa, ou que checa permissão antes de repassar, é um Proxy: controla o acesso, não acrescenta comportamento. E um embrulho que muda a assinatura (recebe um dicionário e chama o objeto com argumentos nomeados) é um Adapter. Veja a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

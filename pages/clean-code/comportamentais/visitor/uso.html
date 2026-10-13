@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Visitor · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/visitor/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Visitor</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o Visitor resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o visitante absorve.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Visitor. "Várias operações sobre uma estrutura estável" é o exemplo da <a href="explicacao.html#o-problema">Explicação</a>, e gerar HTML, Markdown ou texto de um documento em árvore se resolve com o mesmo raciocínio. O Visitor é um pattern estreito, e a página prefere ser curta a inventar um quarto motivo. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o visitante absorve</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#relatorio-de-arquivos">Um relatório que precisa de antes e depois de cada pasta</a></td><td>O que fazer antes e depois de cada tipo, e o estado acumulado</td></tr>
+                <tr><td>2</td><td><a href="#ast-nodevisitor">Analisar uma árvore que não é sua</a></td><td>A operação, para nós que você não pode alterar</td></tr>
+                <tr><td>3</td><td><a href="#simplificar-regras">Reescrever uma árvore sem mutá-la</a></td><td>A recursão de reconstruir a árvore, para cada transformação</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="note"><p>O exemplo 2 usa o módulo <code>ast</code> da biblioteca padrão do Python; os nomes de classe e de método são os reais. Os exemplos 1 e 3 usam classes fictícias, definidas na própria página.</p></div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="relatorio-de-arquivos">1. Um relatório que precisa de antes e depois de cada pasta</h2>
+          <p><strong>Situação.</strong> Uma ferramenta de limpeza de disco imprime a árvore de arquivos, com recuo, e mostra ao lado de cada pasta o total ocupado por tudo o que há dentro dela. O tamanho da pasta só se sabe <em>depois</em> de visitar os filhos, mas a linha dela precisa aparecer <em>antes</em>. Ao mesmo tempo, o relatório conta quantos arquivos há por extensão.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o total de cada pasta é recalculado em cada nível</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">tamanho_total</span>(no):
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, Pasta):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(<span class="t-f">tamanho_total</span>(f) <span class="t-k">for</span> f <span class="t-k">in</span> no.filhos)
+    <span class="t-k">return</span> no.tamanho
+
+<span class="t-k">def</span> <span class="t-f">imprimir</span>(no, nivel=<span class="t-n">0</span>):
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, Pasta):
+        <span class="t-f">print</span>(<span class="t-s">"  "</span> * nivel + <span class="t-s">f"{no.nome}/ — {tamanho_total(no)} B"</span>)   <span class="t-c"># percorre a subárvore inteira</span>
+        <span class="t-k">for</span> filho <span class="t-k">in</span> no.filhos:
+            <span class="t-f">imprimir</span>(filho, nivel + <span class="t-n">1</span>)
+    <span class="t-k">else</span>:
+        <span class="t-f">print</span>(<span class="t-s">"  "</span> * nivel + <span class="t-s">f"{no.nome} ({no.tamanho} B)"</span>)
+
+<span class="t-k">def</span> <span class="t-f">por_extensao</span>(no, acc=<span class="t-k">None</span>):
+    acc = {} <span class="t-k">if</span> acc <span class="t-k">is</span> <span class="t-k">None</span> <span class="t-k">else</span> acc
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, Pasta):
+        <span class="t-k">for</span> f <span class="t-k">in</span> no.filhos:
+            <span class="t-f">por_extensao</span>(f, acc)
+    <span class="t-k">else</span>:
+        acc[no.extensao] = acc.<span class="t-f">get</span>(no.extensao, <span class="t-n">0</span>) + <span class="t-n">1</span>
+    <span class="t-k">return</span> acc</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Para imprimir o total de cada pasta, <code>imprimir</code> chama <code>tamanho_total</code>, que percorre toda a subárvore, e isso se repete em cada nível: o custo cresce com o quadrado da profundidade. Cada operação percorre a árvore por conta própria, com o mesmo esqueleto, e o acumulador vira um argumento extra passado por todos os níveis.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — um visitante que desce, acumula e sobe com o resultado</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Arquivo</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, nome, tamanho):
+        self.nome, self.tamanho = nome, tamanho
+        self.extensao = nome.<span class="t-f">rpartition</span>(<span class="t-s">"."</span>)[<span class="t-n">2</span>] <span class="t-k">if</span> <span class="t-s">"."</span> <span class="t-k">in</span> nome <span class="t-k">else</span> <span class="t-s">""</span>
+
+    <span class="t-k">def</span> <span class="t-f">aceitar</span>(self, v):
+        <span class="t-k">return</span> v.<span class="t-f">visitar_arquivo</span>(self)
+
+<span class="t-k">class</span> <span class="t-f">Pasta</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, nome, filhos):
+        self.nome, self.filhos = nome, filhos
+
+    <span class="t-k">def</span> <span class="t-f">aceitar</span>(self, v):
+        <span class="t-k">return</span> v.<span class="t-f">visitar_pasta</span>(self)
+
+<span class="t-k">class</span> <span class="t-f">Relatorio</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self.linhas = []
+        self.por_extensao = {}
+        self._nivel = <span class="t-n">0</span>
+
+    <span class="t-k">def</span> <span class="t-f">visitar_arquivo</span>(self, arquivo):
+        self.linhas.<span class="t-f">append</span>(<span class="t-s">"  "</span> * self._nivel + <span class="t-s">f"{arquivo.nome} ({arquivo.tamanho} B)"</span>)
+        self.por_extensao[arquivo.extensao] = self.por_extensao.<span class="t-f">get</span>(arquivo.extensao, <span class="t-n">0</span>) + <span class="t-n">1</span>
+        <span class="t-k">return</span> arquivo.tamanho
+
+    <span class="t-k">def</span> <span class="t-f">visitar_pasta</span>(self, pasta):
+        posicao = <span class="t-f">len</span>(self.linhas)
+        self.linhas.<span class="t-f">append</span>(<span class="t-s">""</span>)                    <span class="t-c"># reserva a linha: o total ainda não existe</span>
+        self._nivel += <span class="t-n">1</span>
+        total = <span class="t-f">sum</span>(f.<span class="t-f">aceitar</span>(self) <span class="t-k">for</span> f <span class="t-k">in</span> pasta.filhos)
+        self._nivel -= <span class="t-n">1</span>
+        self.linhas[posicao] = <span class="t-s">"  "</span> * self._nivel + <span class="t-s">f"{pasta.nome}/ — {total} B"</span>
+        <span class="t-k">return</span> total
+
+relatorio = <span class="t-f">Relatorio</span>()
+raiz.<span class="t-f">aceitar</span>(relatorio)                  <span class="t-c"># uma única passada</span>
+<span class="t-f">print</span>(<span class="t-s">"\n"</span>.<span class="t-f">join</span>(relatorio.linhas), relatorio.por_extensao)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o visitante absorve.</strong> O que fazer antes e depois de cada tipo de nó, e o estado que se acumula pelo caminho. O <code>visitar_pasta</code> tem o <em>antes</em> (reservar a linha e descer um nível) e o <em>depois</em> (somar, subir e preencher), e devolve o total para a pasta de cima. Nada é calculado duas vezes, e o acumulador é um campo do visitante, não um argumento que passa por todos.</p>
+          <div class="callout" data-kind="tip"><p>Um <a href="../iterator/explicacao.html">Iterator</a> sozinho não faz isto: ele entrega cada nó uma vez, e não tem como "voltar" a uma pasta depois de visitar os filhos. É esse "antes e depois por tipo" que o Visitor oferece a mais.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="ast-nodevisitor">2. Analisar uma árvore que não é sua</h2>
+          <p><strong>Situação.</strong> O time quer um verificador simples, rodado no CI: acusar qualquer chamada a <code>eval</code> ou <code>exec</code> e qualquer função com mais de cinco parâmetros. O código a analisar é Python, e as classes que o descrevem, <code>ast.Call</code>, <code>ast.FunctionDef</code>, são da biblioteca padrão: não há onde pôr um método novo.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — expressões regulares sobre o texto</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> re
+
+<span class="t-k">def</span> <span class="t-f">auditar</span>(codigo: <span class="t-f">str</span>):
+    achados = []
+    <span class="t-k">for</span> n, linha <span class="t-k">in</span> <span class="t-f">enumerate</span>(codigo.<span class="t-f">splitlines</span>(), <span class="t-n">1</span>):
+        <span class="t-k">if</span> re.<span class="t-f">search</span>(<span class="t-s">r"\beval\("</span>, linha):
+            achados.<span class="t-f">append</span>((n, <span class="t-s">"chamada a eval"</span>))
+        m = re.<span class="t-f">match</span>(<span class="t-s">r"\s*def \w+\((.*)\):"</span>, linha)
+        <span class="t-k">if</span> m <span class="t-k">and</span> <span class="t-f">len</span>(m.<span class="t-f">group</span>(<span class="t-n">1</span>).<span class="t-f">split</span>(<span class="t-s">","</span>)) &gt; <span class="t-n">5</span>:
+            achados.<span class="t-f">append</span>((n, <span class="t-s">"função com mais de 5 parâmetros"</span>))
+    <span class="t-k">return</span> achados</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O texto não tem estrutura. <code>eval(</code> dentro de um comentário ou de uma string é acusado; uma assinatura escrita em várias linhas escapa; um parâmetro com valor padrão como <code>(1, 2)</code> conta como dois. Cada regra nova é mais uma expressão regular, e cada uma tem os seus furos.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — ast.NodeVisitor despacha por tipo de nó</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> ast
+<span class="t-k">from</span> pathlib <span class="t-k">import</span> Path
+
+<span class="t-k">class</span> <span class="t-f">Auditor</span>(ast.NodeVisitor):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self.achados = []
+
+    <span class="t-k">def</span> <span class="t-f">visit_Call</span>(self, node):
+        <span class="t-k">if</span> <span class="t-f">isinstance</span>(node.func, ast.Name) <span class="t-k">and</span> node.func.id <span class="t-k">in</span> {<span class="t-s">"eval"</span>, <span class="t-s">"exec"</span>}:
+            self.achados.<span class="t-f">append</span>((node.lineno, <span class="t-s">f"chamada a {node.func.id}"</span>))
+        self.<span class="t-f">generic_visit</span>(node)             <span class="t-c"># continua descendo pelos argumentos</span>
+
+    <span class="t-k">def</span> <span class="t-f">visit_FunctionDef</span>(self, node):
+        <span class="t-k">if</span> <span class="t-f">len</span>(node.args.args) &gt; <span class="t-n">5</span>:
+            self.achados.<span class="t-f">append</span>((node.lineno, <span class="t-s">f"{node.name} tem {len(node.args.args)} parâmetros"</span>))
+        self.<span class="t-f">generic_visit</span>(node)             <span class="t-c"># funções aninhadas também</span>
+
+arvore = ast.<span class="t-f">parse</span>(Path(<span class="t-s">"servico.py"</span>).<span class="t-f">read_text</span>())
+auditor = <span class="t-f">Auditor</span>()
+auditor.<span class="t-f">visit</span>(arvore)
+<span class="t-f">print</span>(auditor.achados)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o visitante absorve.</strong> A operação inteira, para nós que você não pode alterar. As classes <code>ast.Call</code> e <code>ast.FunctionDef</code> não ganham método nenhum; a biblioteca escolhe <code>visit_Call</code> pelo nome da classe do nó. O <code>generic_visit</code> faz a descida padrão, e você só escreve o método dos tipos que lhe interessam. Um comentário ou uma string nunca é acusado, porque não existem como nós de chamada.</p>
+          <p>Sem <code>generic_visit</code>, a descida para: é assim que um visitante poda uma parte da árvore, por exemplo ignorando o corpo de funções de teste.</p>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="simplificar-regras">3. Reescrever uma árvore sem mutá-la</h2>
+          <p><strong>Situação.</strong> As regras de segmentação da página do <a href="../interpreter/explicacao.html">Interpreter</a> são árvores de <code>E</code>, <code>Ou</code> e <code>Nao</code>. Quem monta as regras na tela produz formas desajeitadas: um <code>E</code> dentro de outro <code>E</code>, uma negação dupla. Antes de salvar, o sistema simplifica a árvore, e mais regras de simplificação chegam a cada mês.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — uma função recursiva que reconstrói tudo, e outra para cada regra</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">achatar_e</span>(no):
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, E):
+        partes = []
+        <span class="t-k">for</span> p <span class="t-k">in</span> no.partes:
+            p = <span class="t-f">achatar_e</span>(p)
+            partes.<span class="t-f">extend</span>(p.partes <span class="t-k">if</span> <span class="t-f">isinstance</span>(p, E) <span class="t-k">else</span> [p])
+        <span class="t-k">return</span> <span class="t-f">E</span>(*partes)
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, Ou):
+        <span class="t-k">return</span> <span class="t-f">Ou</span>(*[<span class="t-f">achatar_e</span>(p) <span class="t-k">for</span> p <span class="t-k">in</span> no.partes])
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, Nao):
+        <span class="t-k">return</span> <span class="t-f">Nao</span>(<span class="t-f">achatar_e</span>(no.parte))
+    <span class="t-k">return</span> no
+
+<span class="t-k">def</span> <span class="t-f">remover_dupla_negacao</span>(no):
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, Nao):
+        interno = <span class="t-f">remover_dupla_negacao</span>(no.parte)
+        <span class="t-k">return</span> interno.parte <span class="t-k">if</span> <span class="t-f">isinstance</span>(interno, Nao) <span class="t-k">else</span> <span class="t-f">Nao</span>(interno)
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, E):
+        <span class="t-k">return</span> <span class="t-f">E</span>(*[<span class="t-f">remover_dupla_negacao</span>(p) <span class="t-k">for</span> p <span class="t-k">in</span> no.partes])
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, Ou):
+        <span class="t-k">return</span> <span class="t-f">Ou</span>(*[<span class="t-f">remover_dupla_negacao</span>(p) <span class="t-k">for</span> p <span class="t-k">in</span> no.partes])
+    <span class="t-k">return</span> no</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A parte que muda em cada regra é pequena: um <code>if</code>. O resto, descer pelos filhos e reconstruir cada nó, é copiado em cada função. Um nó novo (<code>Xor</code>) cai no <code>return no</code> final e passa por todas as regras sem ser visitado, e nenhuma falha avisa.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a recursão mora na base, cada regra escreve só o que muda</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># cada nó: Comparacao, E, Ou e Nao ganham um aceitar, como este</span>
+<span class="t-k">class</span> <span class="t-f">E</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, *partes):
+        self.partes = partes
+
+    <span class="t-k">def</span> <span class="t-f">aceitar</span>(self, v):
+        <span class="t-k">return</span> v.<span class="t-f">visitar_e</span>(self)
+
+<span class="t-k">class</span> <span class="t-f">Transformador</span>:
+    <span class="t-s">"""Reconstrói a árvore igual. Cada regra sobrescreve só o que quer mudar."""</span>
+
+    <span class="t-k">def</span> <span class="t-f">visitar_e</span>(self, no):
+        <span class="t-k">return</span> <span class="t-f">E</span>(*[p.<span class="t-f">aceitar</span>(self) <span class="t-k">for</span> p <span class="t-k">in</span> no.partes])
+
+    <span class="t-k">def</span> <span class="t-f">visitar_ou</span>(self, no):
+        <span class="t-k">return</span> <span class="t-f">Ou</span>(*[p.<span class="t-f">aceitar</span>(self) <span class="t-k">for</span> p <span class="t-k">in</span> no.partes])
+
+    <span class="t-k">def</span> <span class="t-f">visitar_nao</span>(self, no):
+        <span class="t-k">return</span> <span class="t-f">Nao</span>(no.parte.<span class="t-f">aceitar</span>(self))
+
+    <span class="t-k">def</span> <span class="t-f">visitar_comparacao</span>(self, no):
+        <span class="t-k">return</span> no
+
+<span class="t-k">class</span> <span class="t-f">AchatarE</span>(Transformador):
+    <span class="t-k">def</span> <span class="t-f">visitar_e</span>(self, no):
+        partes = []
+        <span class="t-k">for</span> p <span class="t-k">in</span> (p.<span class="t-f">aceitar</span>(self) <span class="t-k">for</span> p <span class="t-k">in</span> no.partes):
+            partes.<span class="t-f">extend</span>(p.partes <span class="t-k">if</span> <span class="t-f">isinstance</span>(p, E) <span class="t-k">else</span> [p])
+        <span class="t-k">return</span> <span class="t-f">E</span>(*partes)
+
+<span class="t-k">class</span> <span class="t-f">RemoverDuplaNegacao</span>(Transformador):
+    <span class="t-k">def</span> <span class="t-f">visitar_nao</span>(self, no):
+        interno = no.parte.<span class="t-f">aceitar</span>(self)
+        <span class="t-k">return</span> interno.parte <span class="t-k">if</span> <span class="t-f">isinstance</span>(interno, Nao) <span class="t-k">else</span> <span class="t-f">Nao</span>(interno)
+
+simplificada = regra.<span class="t-f">aceitar</span>(<span class="t-f">AchatarE</span>()).<span class="t-f">aceitar</span>(<span class="t-f">RemoverDuplaNegacao</span>())</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o visitante absorve.</strong> O trabalho mecânico de percorrer e reconstruir. A base <code>Transformador</code> faz a recursão uma vez; cada regra nova sobrescreve só o método do tipo que lhe interessa, e escrever <code>RemoverDuplaNegacao</code> são cinco linhas. A árvore original não é alterada: cada passada devolve uma árvore nova, e as regras se encadeiam.</p>
+          <p>É o mesmo desenho do <code>ast.NodeTransformer</code> da biblioteca padrão, que faz isso para a árvore sintática do Python.</p>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três (ou na Explicação):</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Gerar HTML, Markdown e texto de um documento em árvore</td><td>A <a href="explicacao.html#o-problema">Explicação</a> — uma operação por formato, em uma classe cada</td></tr>
+                <tr><td>Imposto, frete, nota fiscal e etiqueta sobre os itens de um pedido</td><td>A Explicação</td></tr>
+                <tr><td>Contar nós, medir a profundidade ou achar o maior elemento</td><td>1 — estado acumulado durante a descida</td></tr>
+                <tr><td>Verificadores de estilo, linters, buscas por padrões de risco</td><td>2 — operação sobre uma árvore que não é sua</td></tr>
+                <tr><td>Minificadores, otimizadores e migrações automáticas de código</td><td>3 — reescrever a árvore sem mutá-la</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Visitor, mas não é: <code>for item in itens: item.imposto()</code>. Se cada classe já sabe calcular o próprio imposto, é polimorfismo comum, e é a solução certa enquanto os tipos mudarem mais do que as operações. Veja as seções <a href="explicacao.html#quando-nao-usar">Quando não usar</a> e <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

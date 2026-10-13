@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Strategy · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/strategy/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Strategy</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como trocar o jeito de fazer uma coisa sem mexer em quem a pede, e sem um <code>if</code> novo a cada jeito que aparece.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>O fechamento do mês calcula a comissão de cada venda. Só que a regra muda: no primeiro trimestre vale um percentual fixo, no segundo uma tabela por faixa de valor, e para uma campanha especial entra um bônus por meta batida. O fechamento é sempre o mesmo; o <strong>jeito de calcular</strong> é que varia.</p>
+          <p>A saída preguiçosa é um <code>if</code> que escolhe a regra dentro do próprio cálculo:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — toda regra nova abre o mesmo método</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Fechamento</span>:
+    <span class="t-k">def</span> <span class="t-f">comissao_de</span>(self, venda, regra):
+        <span class="t-k">if</span> regra == <span class="t-s">"percentual"</span>:
+            <span class="t-k">return</span> venda.total * <span class="t-f">Decimal</span>(<span class="t-s">"0.05"</span>)
+        <span class="t-k">elif</span> regra == <span class="t-s">"escalonada"</span>:
+            <span class="t-k">if</span> venda.total &lt;= <span class="t-n">1000</span>:
+                <span class="t-k">return</span> venda.total * <span class="t-f">Decimal</span>(<span class="t-s">"0.03"</span>)
+            <span class="t-k">elif</span> venda.total &lt;= <span class="t-n">5000</span>:
+                <span class="t-k">return</span> venda.total * <span class="t-f">Decimal</span>(<span class="t-s">"0.05"</span>)
+            <span class="t-k">return</span> venda.total * <span class="t-f">Decimal</span>(<span class="t-s">"0.07"</span>)
+        <span class="t-k">elif</span> regra == <span class="t-s">"meta"</span>:
+            base = venda.total * <span class="t-f">Decimal</span>(<span class="t-s">"0.04"</span>)
+            <span class="t-k">if</span> venda.total &gt;= venda.meta_do_mes:
+                base += <span class="t-f">Decimal</span>(<span class="t-s">"500"</span>)
+            <span class="t-k">return</span> base
+        <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">f"regra desconhecida: {regra}"</span>)</code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram daqui a pouco. Cada campanha nova exige abrir um método que também calcula todas as outras, o que fere o Open/Closed: para <em>acrescentar</em> um jeito, você <em>modifica</em> o código. Uma taxa que muda é uma edição no meio de um <code>if</code> aninhado, ao lado de regras que nada têm a ver com ela. E testar uma regra passa pelo método inteiro, com um texto no meio que alguém vai digitar errado.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Cada jeito de calcular vira um objeto com a mesma interface, e quem precisa do cálculo recebe o objeto em vez de um texto. São três papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Estratégia</td><td>A interface: o que o contexto precisa, e nada mais</td><td><code>RegraDeComissao</code></td></tr>
+                <tr><td>Estratégia concreta</td><td>Um jeito de fazer, sem conhecer o contexto</td><td><code>Percentual</code>, <code>Escalonada</code>, <code>PorMeta</code></td></tr>
+                <tr><td>Contexto</td><td>Quem usa a estratégia, sem saber qual é</td><td><code>Fechamento</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é quem escolhe. O contexto não decide qual regra usar: ele <strong>recebe</strong> uma pronta. A escolha sobe para o lugar que monta o sistema, onde ela é uma linha de configuração em vez de uma ramificação no meio do cálculo.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> dataclasses <span class="t-k">import</span> dataclass
+<span class="t-k">from</span> decimal <span class="t-k">import</span> Decimal
+<span class="t-k">from</span> typing <span class="t-k">import</span> Protocol
+
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">Venda</span>:
+    vendedor: <span class="t-f">str</span>
+    total: <span class="t-f">Decimal</span>
+    meta_do_mes: <span class="t-f">Decimal</span>
+
+<span class="t-c"># 1. a estratégia: o que o fechamento precisa, e nada mais</span>
+<span class="t-k">class</span> <span class="t-f">RegraDeComissao</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">calcular</span>(self, venda: Venda) -&gt; <span class="t-f">Decimal</span>: ...
+
+<span class="t-c"># 2. as estratégias concretas: um jeito cada, sem conhecer o fechamento</span>
+<span class="t-k">class</span> <span class="t-f">Percentual</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, taxa: <span class="t-f">Decimal</span>):
+        self._taxa = taxa
+
+    <span class="t-k">def</span> <span class="t-f">calcular</span>(self, venda):
+        <span class="t-k">return</span> venda.total * self._taxa
+
+<span class="t-k">class</span> <span class="t-f">Escalonada</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, faixas: <span class="t-f">list</span>[<span class="t-f">tuple</span>[<span class="t-f">Decimal</span>, <span class="t-f">Decimal</span>]]):
+        self._faixas = faixas  <span class="t-c"># [(limite, taxa), ...] em ordem crescente</span>
+
+    <span class="t-k">def</span> <span class="t-f">calcular</span>(self, venda):
+        <span class="t-k">for</span> limite, taxa <span class="t-k">in</span> self._faixas:
+            <span class="t-k">if</span> venda.total &lt;= limite:
+                <span class="t-k">return</span> venda.total * taxa
+        <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">"a última faixa precisa ter teto infinito"</span>)
+
+<span class="t-k">class</span> <span class="t-f">PorMeta</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, taxa: <span class="t-f">Decimal</span>, bonus: <span class="t-f">Decimal</span>):
+        self._taxa, self._bonus = taxa, bonus
+
+    <span class="t-k">def</span> <span class="t-f">calcular</span>(self, venda):
+        comissao = venda.total * self._taxa
+        <span class="t-k">if</span> venda.total &gt;= venda.meta_do_mes:
+            comissao += self._bonus
+        <span class="t-k">return</span> comissao
+
+<span class="t-c"># 3. o contexto: usa uma regra, e não sabe qual</span>
+<span class="t-k">class</span> <span class="t-f">Fechamento</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, regra: RegraDeComissao):
+        self._regra = regra
+
+    <span class="t-k">def</span> <span class="t-f">comissao_de</span>(self, venda: Venda) -&gt; <span class="t-f">Decimal</span>:
+        <span class="t-k">return</span> self._regra.<span class="t-f">calcular</span>(venda).<span class="t-f">quantize</span>(<span class="t-f">Decimal</span>(<span class="t-s">"0.01"</span>))
+
+<span class="t-c"># a escolha acontece na montagem, em uma linha</span>
+fechamento = <span class="t-f">Fechamento</span>(<span class="t-f">Escalonada</span>([
+    (<span class="t-f">Decimal</span>(<span class="t-s">"1000"</span>), <span class="t-f">Decimal</span>(<span class="t-s">"0.03"</span>)),
+    (<span class="t-f">Decimal</span>(<span class="t-s">"5000"</span>), <span class="t-f">Decimal</span>(<span class="t-s">"0.05"</span>)),
+    (<span class="t-f">Decimal</span>(<span class="t-s">"Infinity"</span>), <span class="t-f">Decimal</span>(<span class="t-s">"0.07"</span>)),
+]))</code></pre>
+              <pre><code><span class="t-k">interface</span> <span class="t-f">Venda</span> {
+  vendedor: <span class="t-f">string</span>;
+  total: <span class="t-f">number</span>;
+  metaDoMes: <span class="t-f">number</span>;
+}
+
+<span class="t-c">// 1. a estratégia: o que o fechamento precisa, e nada mais</span>
+<span class="t-k">export</span> <span class="t-k">interface</span> <span class="t-f">RegraDeComissao</span> {
+  <span class="t-f">calcular</span>(venda: <span class="t-f">Venda</span>): <span class="t-f">number</span>;
+}
+
+<span class="t-c">// 2. as estratégias concretas: um jeito cada, sem conhecer o fechamento</span>
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">Percentual</span> <span class="t-k">implements</span> <span class="t-f">RegraDeComissao</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> taxa: <span class="t-f">number</span>) {}
+
+  <span class="t-f">calcular</span>(venda: <span class="t-f">Venda</span>) {
+    <span class="t-k">return</span> venda.total * <span class="t-k">this</span>.taxa;
+  }
+}
+
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">Escalonada</span> <span class="t-k">implements</span> <span class="t-f">RegraDeComissao</span> {
+  <span class="t-c">// [limite, taxa] em ordem crescente; a última faixa tem teto Infinity</span>
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> faixas: [<span class="t-f">number</span>, <span class="t-f">number</span>][]) {}
+
+  <span class="t-f">calcular</span>(venda: <span class="t-f">Venda</span>) {
+    <span class="t-k">const</span> faixa = <span class="t-k">this</span>.faixas.<span class="t-f">find</span>(([limite]) =&gt; venda.total &lt;= limite);
+    <span class="t-k">if</span> (!faixa) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">Error</span>(<span class="t-s">"a última faixa precisa ter teto Infinity"</span>);
+    <span class="t-k">return</span> venda.total * faixa[<span class="t-n">1</span>];
+  }
+}
+
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">PorMeta</span> <span class="t-k">implements</span> <span class="t-f">RegraDeComissao</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> taxa: <span class="t-f">number</span>, <span class="t-k">private</span> bonus: <span class="t-f">number</span>) {}
+
+  <span class="t-f">calcular</span>(venda: <span class="t-f">Venda</span>) {
+    <span class="t-k">const</span> comissao = venda.total * <span class="t-k">this</span>.taxa;
+    <span class="t-k">return</span> venda.total &gt;= venda.metaDoMes ? comissao + <span class="t-k">this</span>.bonus : comissao;
+  }
+}
+
+<span class="t-c">// 3. o contexto: usa uma regra, e não sabe qual</span>
+<span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">Fechamento</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> regra: <span class="t-f">RegraDeComissao</span>) {}
+
+  <span class="t-f">comissaoDe</span>(venda: <span class="t-f">Venda</span>): <span class="t-f">number</span> {
+    <span class="t-k">return</span> Math.<span class="t-f">round</span>(<span class="t-k">this</span>.regra.<span class="t-f">calcular</span>(venda) * <span class="t-n">100</span>) / <span class="t-n">100</span>;
+  }
+}
+
+<span class="t-c">// a escolha acontece na montagem, em uma linha</span>
+<span class="t-k">const</span> fechamento = <span class="t-k">new</span> <span class="t-f">Fechamento</span>(
+  <span class="t-k">new</span> <span class="t-f">Escalonada</span>([[<span class="t-n">1000</span>, <span class="t-n">0.03</span>], [<span class="t-n">5000</span>, <span class="t-n">0.05</span>], [Infinity, <span class="t-n">0.07</span>]]),
+);</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>Testar a <code>Escalonada</code> é chamar <code>calcular</code> com vendas de 999, 1000 e 1001: sem fechamento, sem texto de regra, sem nada no caminho. E o teste do <code>Fechamento</code> usa uma regra de uma linha que devolve sempre 10, porque ele só quer saber se o arredondamento acontece.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Strategy vale quando três coisas acontecem ao mesmo tempo: existe <strong>mais de um jeito</strong> de fazer a mesma coisa, com a mesma entrada e o mesmo tipo de saída; a escolha de qual jeito usar <strong>vem de fora</strong> (usuário, configuração, contexto), e não do tipo do objeto; e quem usa o resultado <strong>não deve saber</strong> qual jeito foi usado.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Um texto ou enum escolhe o algoritmo</td><td><code>if ordem == "preco"</code> … <code>elif ordem == "nota"</code> …, e cada opção nova da tela é um <code>elif</code></td><td><a href="uso.html#ordenacao-escolhida">Uso #1</a></td></tr>
+                <tr><td>O mesmo resultado, com custos diferentes</td><td><code>if len(dados) &gt; LIMITE</code> trocando de implementação dentro da função, ou um booleano como <code>tempo_real=True</code></td><td><a href="uso.html#custo-diferente">Uso #2</a></td></tr>
+                <tr><td>Um laço com uma política dentro</td><td><code>time.sleep(2 ** tentativa)</code> e <code>range(8)</code> escritos no meio do laço, copiados com números diferentes</td><td><a href="uso.html#politica-de-retentativa">Uso #3</a></td></tr>
+                <tr><td>Teste que dorme, sorteia ou depende do relógio</td><td><code>time.sleep</code>, <code>random</code> ou <code>datetime.now()</code> chamados direto dentro da regra; o teste demora ou falha de vez em quando</td><td><a href="uso.html#politica-de-retentativa">Uso #3</a></td></tr>
+                <tr><td>Regra que muda por cliente e hoje exige deploy</td><td><code>if cliente.id == 42</code>, ou um <code>dict</code> de parâmetros lido por dentro da regra</td><td><a href="uso.html#regra-do-cadastro">Uso #4</a></td></tr>
+                <tr><td>Uma função cheia de parâmetros de "modo"</td><td><code>calcular(venda, com_bonus=True, arredondar=False, tabela="2024")</code></td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: uma <em>decisão</em> misturada com a <em>execução</em>. O <code>if</code> que escolhe e o código que faz estão no mesmo lugar. O Strategy os separa, e a decisão vira um valor que se passa.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Existe mais de um jeito de verdade?</strong> Se há um só hoje e nenhum à vista, escreva a função direto.</li>
+            <li><strong>Os jeitos recebem as mesmas entradas e devolvem o mesmo tipo de resultado?</strong> Se não, não são intercambiáveis. Provavelmente são coisas diferentes com o mesmo verbo.</li>
+            <li><strong>A escolha é fixa por tipo, para sempre?</strong> Se um <code>Boleto</code> sempre calcula de um jeito e um <code>Cartao</code> de outro, é polimorfismo comum: um método em cada classe.</li>
+            <li><strong>A escolha vem de fora e pode mudar sem mexer na classe?</strong> Usuário, configuração, tamanho dos dados. Se sim, é Strategy.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Strategy tem um custo fixo: uma interface e uma classe por variante, e a lógica deixa de estar à vista. Para entender "como a comissão é calculada" você abre um arquivo, depois outro, e ainda precisa achar onde a regra é escolhida. Ele só se paga quando a variação é real.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Só há um jeito, ou dois que não vão mudar</td><td>Uma interface e duas classes para o que cabe em um <code>if</code> de três linhas</td><td>Fique com o <code>if</code>. Extraia quando aparecer o terceiro jeito, ou quando a escolha vier de fora</td></tr>
+                <tr><td>Cada variante é uma função pequena e sem estado</td><td>A classe é cerimônia em torno de um método</td><td>Passe a própria função (<code>Callable</code> no Python, arrow function no TypeScript)</td></tr>
+                <tr><td>A variação é fixa por tipo</td><td>O polimorfismo da linguagem já escolhe o método certo</td><td>Um método em cada subclasse</td></tr>
+                <tr><td>O objeto muda de comportamento conforme o próprio estado</td><td>Quem decide é o objeto, ao passar de um estado para outro, e não quem o chama</td><td><a href="../state/explicacao.html">State</a></td></tr>
+                <tr><td>Você quer acrescentar cache, log ou limite sem trocar o algoritmo</td><td>O jeito de fazer continua o mesmo; o que muda é o que o envolve</td><td>Decorator</td></tr>
+                <tr><td>As variantes diferem em um número</td><td>Uma classe por taxa duplica a estrutura inteira para variar um valor</td><td>Um parâmetro no construtor</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Strategy saiu do lugar</h3>
+          <ul>
+            <li><strong>A estratégia mexe no contexto.</strong> Se <code>calcular</code> chega em <code>self._contexto._campo</code>, ela deixou de ser intercambiável: só funciona ao lado daquele contexto.</li>
+            <li><strong>O <code>if</code> só mudou de lugar.</strong> Uma estratégia com <code>if tipo == …</code> dentro escondeu a ramificação, e o problema original continua inteiro.</li>
+            <li><strong>Quem usa pergunta qual é.</strong> Um <code>isinstance(regra, PorMeta)</code> no contexto mostra que a interface não está segurando a diferença.</li>
+            <li><strong>Uma estratégia por <code>if</code> de uma linha.</strong> Quatro classes para escolher entre <code>&lt;</code> e <code>&gt;</code> é abstração por precaução, cobrada hoje.</li>
+            <li><strong>A estratégia nunca varia em execução e só tem uma implementação.</strong> É uma interface com um único implementador, que só acrescenta um salto na leitura.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: a interface cresce para caber na variante mais exigente. <code>calcular(venda, cliente, mes, tabela, config, sessao)</code>, e cada estratégia usa dois parâmetros e ignora quatro. O contexto passa a conhecer o que só uma delas precisa. O que sobra deveria entrar no construtor dessa estratégia.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com o <code>if</code> ou com uma função. A segunda variante cabe em um parâmetro. O sinal para extrair é a terceira variante, ou a escolha passar a vir de fora do código: aí a refatoração é pequena, porque cada ramo do <code>if</code> já é uma função em potencial.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../state/explicacao.html">State</a></td><td>Tem a mesma forma, mas quem troca de objeto é o próprio contexto, quando seu estado muda. No Strategy, a troca vem de fora e o contexto não a faz sozinho</td></tr>
+                <tr><td><a href="../command/explicacao.html">Command</a></td><td>É uma ação concreta, com seus dados, que se guarda e se executa depois. A estratégia é um jeito de fazer, usado na hora, e normalmente nem carrega os dados</td></tr>
+                <tr><td><a href="../template-method/explicacao.html">Template Method</a></td><td>Fixa o esqueleto do algoritmo e deixa os passos para as subclasses, trocando por herança. O Strategy troca o algoritmo inteiro, por composição, em execução</td></tr>
+                <tr><td><a href="../../estruturais/decorator/explicacao.html">Decorator</a></td><td>Envolve por fora, mantendo o algoritmo. O Strategy troca o miolo por dentro</td></tr>
+                <tr><td><a href="../../estruturais/bridge/explicacao.html">Bridge</a></td><td>Tem a mesma forma, mas a abstração também varia e as duas hierarquias crescem. No Strategy só o lado do algoritmo varia</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se quem escolhe o jeito de fazer é quem chama, é Strategy; se é o próprio objeto, ao mudar de estado, é State.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

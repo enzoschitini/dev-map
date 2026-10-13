@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Flyweight · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/flyweight/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Flyweight</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como manter centenas de milhares de objetos na memória sem repetir, em cada um, o que é igual para todos do mesmo tipo.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>O painel de logística desenha no mapa toda a frota em tempo real: 500 mil marcadores, entre motos, carros, vans, caminhões e drones. Cada marcador tem uma posição e, conforme o tipo, um ícone e uma cor.</p>
+          <p>Escrito do jeito óbvio, cada marcador carrega o próprio ícone:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — cada marcador guarda uma cópia do que é do tipo</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Marcador</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, lat, lng, tipo):
+        self.lat, self.lng, self.tipo = lat, lng, tipo
+        self.icone = <span class="t-f">carregar_icone</span>(<span class="t-s">f"icones/{tipo}.png"</span>)  <span class="t-c"># 32×32 RGBA: 4 KB decodificados</span>
+        self.cor = CORES[tipo]
+
+    <span class="t-k">def</span> <span class="t-f">desenhar</span>(self, tela, projecao):
+        x, y = <span class="t-f">projecao</span>(self.lat, self.lng)
+        tela.<span class="t-f">blit</span>(self.icone, (x - <span class="t-n">16</span>, y - <span class="t-n">16</span>))
+
+marcadores = [<span class="t-f">Marcador</span>(v.lat, v.lng, v.tipo) <span class="t-k">for</span> v <span class="t-k">in</span> frota]   <span class="t-c"># 500 mil</span></code></pre>
+            </div>
+          </div>
+          <p>A conta é simples: 500 mil marcadores com 4 KB de ícone cada são cerca de <strong>2 GB</strong>, para guardar cinco imagens diferentes. Abrir o painel decodifica meio milhão de PNGs, e o navegador ou o servidor fica sem memória antes de a frota crescer. Trocar o ícone das vans é percorrer todos os marcadores para achar as vans. O dado que muda por marcador (a posição) é uma fração do que se guarda.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Separe o que é <em>do tipo</em> (igual para milhares de marcadores) do que é <em>do marcador</em> (a posição). O primeiro vira um objeto <strong>compartilhado e imutável</strong>, criado uma vez por tipo. O segundo fica no marcador, que só guarda uma referência para o compartilhado. Os papéis são quatro:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Flyweight</td><td>O objeto compartilhado, com o estado igual para muitos (o <em>intrínseco</em>). É imutável</td><td><code>EstiloDeMarcador</code>: ícone e cor</td></tr>
+                <tr><td>Fábrica</td><td>Entrega o flyweight de uma chave, criando-o só na primeira vez</td><td><code>FabricaDeEstilos</code></td></tr>
+                <tr><td>Contexto</td><td>O objeto que existe aos milhares. Guarda o estado próprio (o <em>extrínseco</em>) e uma referência ao flyweight</td><td><code>Marcador</code>: posição e estilo</td></tr>
+                <tr><td>Cliente</td><td>Quem cria os contextos pedindo os flyweights à fábrica</td><td>O painel</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é a <strong>linha entre os dois estados</strong>. Só cabe no flyweight o que <em>não depende de qual marcador</em> o usa. O que depende, como a posição na tela, chega como argumento na hora de desenhar. É essa regra que permite compartilhar com segurança: um objeto que muitos enxergam, e que nenhum pode alterar.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> dataclasses <span class="t-k">import</span> dataclass
+
+<span class="t-c"># 1. o flyweight: o que é do tipo, imutável, compartilhado</span>
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">EstiloDeMarcador</span>:
+    tipo: <span class="t-f">str</span>
+    icone: <span class="t-f">bytes</span>
+    cor: <span class="t-f">str</span>
+
+    <span class="t-k">def</span> <span class="t-f">desenhar</span>(self, tela, x: <span class="t-f">int</span>, y: <span class="t-f">int</span>):   <span class="t-c"># o extrínseco chega como argumento</span>
+        tela.<span class="t-f">blit</span>(self.icone, (x - <span class="t-n">16</span>, y - <span class="t-n">16</span>))
+
+<span class="t-c"># 2. a fábrica: um flyweight por tipo, criado na primeira vez</span>
+<span class="t-k">class</span> <span class="t-f">FabricaDeEstilos</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._estilos: <span class="t-f">dict</span>[<span class="t-f">str</span>, EstiloDeMarcador] = {}
+
+    <span class="t-k">def</span> <span class="t-f">obter</span>(self, tipo: <span class="t-f">str</span>) -&gt; EstiloDeMarcador:
+        <span class="t-k">if</span> tipo <span class="t-k">not</span> <span class="t-k">in</span> self._estilos:
+            self._estilos[tipo] = <span class="t-f">EstiloDeMarcador</span>(
+                tipo, <span class="t-f">carregar_icone</span>(<span class="t-s">f"icones/{tipo}.png"</span>), CORES[tipo]
+            )
+        <span class="t-k">return</span> self._estilos[tipo]
+
+<span class="t-c"># 3. o contexto: o que é do marcador, mais uma referência</span>
+<span class="t-k">class</span> <span class="t-f">Marcador</span>:
+    __slots__ = (<span class="t-s">"lat"</span>, <span class="t-s">"lng"</span>, <span class="t-s">"estilo"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, lat: <span class="t-f">float</span>, lng: <span class="t-f">float</span>, estilo: EstiloDeMarcador):
+        self.lat, self.lng, self.estilo = lat, lng, estilo
+
+    <span class="t-k">def</span> <span class="t-f">desenhar</span>(self, tela, projecao):
+        x, y = <span class="t-f">projecao</span>(self.lat, self.lng)
+        self.estilo.<span class="t-f">desenhar</span>(tela, x, y)
+
+<span class="t-c"># 4. o cliente: 500 mil marcadores, 5 estilos</span>
+estilos = <span class="t-f">FabricaDeEstilos</span>()
+marcadores = [<span class="t-f">Marcador</span>(v.lat, v.lng, estilos.<span class="t-f">obter</span>(v.tipo)) <span class="t-k">for</span> v <span class="t-k">in</span> frota]</code></pre>
+              <pre><code><span class="t-c">// 1. o flyweight: o que é do tipo, imutável, compartilhado</span>
+<span class="t-k">class</span> <span class="t-f">EstiloDeMarcador</span> {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">readonly</span> tipo: <span class="t-f">string</span>,
+    <span class="t-k">readonly</span> icone: <span class="t-f">HTMLImageElement</span>,
+    <span class="t-k">readonly</span> cor: <span class="t-f">string</span>,
+  ) {}
+
+  <span class="t-c">// o extrínseco chega como argumento</span>
+  <span class="t-f">desenhar</span>(ctx: <span class="t-f">CanvasRenderingContext2D</span>, x: <span class="t-f">number</span>, y: <span class="t-f">number</span>) {
+    ctx.<span class="t-f">drawImage</span>(<span class="t-k">this</span>.icone, x - <span class="t-n">16</span>, y - <span class="t-n">16</span>);
+  }
+}
+
+<span class="t-c">// 2. a fábrica: um flyweight por tipo, criado na primeira vez</span>
+<span class="t-k">class</span> <span class="t-f">FabricaDeEstilos</span> {
+  <span class="t-k">private</span> estilos = <span class="t-k">new</span> <span class="t-f">Map</span>&lt;<span class="t-f">string</span>, <span class="t-f">EstiloDeMarcador</span>&gt;();
+
+  <span class="t-f">obter</span>(tipo: <span class="t-f">string</span>): <span class="t-f">EstiloDeMarcador</span> {
+    <span class="t-k">let</span> estilo = <span class="t-k">this</span>.estilos.<span class="t-f">get</span>(tipo);
+    <span class="t-k">if</span> (!estilo) {
+      estilo = <span class="t-k">new</span> <span class="t-f">EstiloDeMarcador</span>(tipo, <span class="t-f">carregarIcone</span>(tipo), CORES[tipo]);
+      <span class="t-k">this</span>.estilos.<span class="t-f">set</span>(tipo, estilo);
+    }
+    <span class="t-k">return</span> estilo;
+  }
+}
+
+<span class="t-c">// 3. o contexto: o que é do marcador, mais uma referência</span>
+<span class="t-k">class</span> <span class="t-f">Marcador</span> {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">readonly</span> lat: <span class="t-f">number</span>,
+    <span class="t-k">readonly</span> lng: <span class="t-f">number</span>,
+    <span class="t-k">readonly</span> estilo: <span class="t-f">EstiloDeMarcador</span>,
+  ) {}
+
+  <span class="t-f">desenhar</span>(ctx: <span class="t-f">CanvasRenderingContext2D</span>, projecao: <span class="t-f">Projecao</span>) {
+    <span class="t-k">const</span> [x, y] = <span class="t-f">projecao</span>(<span class="t-k">this</span>.lat, <span class="t-k">this</span>.lng);
+    <span class="t-k">this</span>.estilo.<span class="t-f">desenhar</span>(ctx, x, y);
+  }
+}
+
+<span class="t-c">// 4. o cliente: 500 mil marcadores, 5 estilos</span>
+<span class="t-k">const</span> estilos = <span class="t-k">new</span> <span class="t-f">FabricaDeEstilos</span>();
+<span class="t-k">const</span> marcadores = frota.<span class="t-f">map</span>((v) =&gt; <span class="t-k">new</span> <span class="t-f">Marcador</span>(v.lat, v.lng, estilos.<span class="t-f">obter</span>(v.tipo)));</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O compartilhamento é testável como qualquer outra regra: <code>estilos.obter("van") is estilos.obter("van")</code>. E o <code>EstiloDeMarcador</code> é testado sem tela: basta um <code>tela</code> falso que registra a chamada de <code>blit</code> com as coordenadas recebidas.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Flyweight vale quando quatro coisas acontecem ao mesmo tempo: há <strong>muitos objetos</strong> (dezenas de milhares ou mais), uma parte relevante do estado deles é <strong>igual</strong> entre muitos, essa parte pode ser <strong>imutável</strong>, e a memória (ou o custo de criar) é um problema que você <strong>mediu</strong>.</p>
+          <p>No código, isso aparece de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Muitos objetos, cada um com a mesma cópia de algo pesado</td><td><code>self.icone = carregar(...)</code> no <code>__init__</code> de algo criado em laço de milhares; a memória cresce com a contagem</td><td><a href="#implementacao">Implementação, acima</a></td></tr>
+                <tr><td>Registros com os mesmos valores repetidos</td><td>Colunas de texto de poucos valores (país, status, categoria) em milhões de linhas; <code>len(set(coluna))</code> muito menor que o total</td><td><a href="uso.html#valores-repetidos">Uso #1</a></td></tr>
+                <tr><td>Um objeto imutável e caro de construir, criado de novo a cada uso</td><td>Um construtor que lê arquivo ou compila regra, chamado dentro de um laço ou de cada requisição</td><td><a href="uso.html#objeto-caro-de-criar">Uso #2</a></td></tr>
+                <tr><td>Uma grade ou uma lista enorme de itens que só variam por tipo</td><td><code>[[Tile(...) for x in ...] for y in ...]</code>: um objeto por célula, com os mesmos campos de textura e de custo</td><td><a href="uso.html#grade-de-tiles">Uso #3</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: o número de objetos cresce com os dados, mas o número de objetos <em>diferentes</em> não. O Flyweight faz a memória acompanhar o segundo número, em vez do primeiro.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Você mediu, e o problema é memória ou custo de criação?</strong> Se não mediu, pare. O Flyweight troca clareza por economia, e economia hipotética não paga.</li>
+            <li><strong>Boa parte do estado é igual entre muitos objetos?</strong> Compare o total com <code>len(set(...))</code> do campo. Se cada objeto é único, não há o que compartilhar.</li>
+            <li><strong>Esse estado pode ser imutável?</strong> Se alguém precisa alterar o ícone de <em>um</em> marcador, o compartilhamento quebra: a alteração apareceria em todos.</li>
+            <li><strong>O que varia é fácil de passar como argumento?</strong> Se cada método precisaria de oito argumentos de contexto, o custo em leitura pesa mais que a memória economizada.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Flyweight tem um custo de design: você precisa separar dois estados que estavam juntos, o contexto passa a carregar uma referência, os métodos recebem o estado extrínseco por argumento, e a identidade muda (dois marcadores "com o mesmo ícone" compartilham o <em>mesmo</em> objeto). Se a fábrica for mal escrita, ainda vira um cache que nunca esvazia.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Poucos objetos (centenas)</td><td>A memória economizada não compensa a separação de estados</td><td>Objetos comuns</td></tr>
+                <tr><td>Cada objeto tem o próprio estado, e ele é único</td><td>Não há nada para compartilhar</td><td>Estrutura compacta: <code>__slots__</code>, <code>@dataclass(slots=True)</code>, arrays</td></tr>
+                <tr><td>O estado compartilhado precisa mudar por objeto</td><td>O Flyweight pressupõe imutabilidade; mudar um muda todos</td><td>Troque a <em>referência</em> por outro flyweight, ou guarde o valor no contexto</td></tr>
+                <tr><td>Você não mediu</td><td>Troca clareza por um ganho que talvez não exista</td><td>Meça (<code>tracemalloc</code>, perfil) e comece por <code>__slots__</code></td></tr>
+                <tr><td>Você quer reaproveitar objetos caros e mutáveis (conexões, buffers)</td><td>O Flyweight compartilha valores imutáveis ao mesmo tempo; não empresta objetos um de cada vez</td><td>Object Pool</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Flyweight saiu do lugar</h3>
+          <ul>
+            <li><strong>O flyweight ganhou um <em>setter</em>.</strong> Alguém altera "só o desta van", e todas as vans mudam de cor. Um objeto compartilhado precisa ser imutável de verdade, e não só por convenção.</li>
+            <li><strong>A fábrica nunca esvazia.</strong> Com chaves abertas (texto digitado pelo usuário, por exemplo) o cache cresce sem limite, e o pattern que devia economizar memória a vaza.</li>
+            <li><strong>O estado extrínseco foi para dentro do flyweight.</strong> Quando a posição entra "só desta vez", o objeto deixa de ser compartilhável e há um por marcador de novo.</li>
+            <li><strong>Existem duas fábricas.</strong> Cada uma tem o seu cache, e o "compartilhado" se divide em dois objetos iguais.</li>
+            <li><strong>Foi aplicado sem medir.</strong> O código ficou mais difícil de ler e ninguém sabe quantos megabytes foram poupados.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: um método que altera o flyweight. Em um objeto que milhares de contextos enxergam, a mutação é um bug de ação à distância, e o pior tipo, porque só aparece em um marcador que ninguém estava olhando.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com objetos comuns e <code>__slots__</code>. É uma mudança de uma linha e costuma cortar a memória pela metade. Introduza o Flyweight onde o perfil mostrar que ainda é preciso.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../../criacionais/singleton/explicacao.html">Singleton</a></td><td>Garante uma instância para a classe inteira. O Flyweight tem uma instância <em>por valor da chave</em> (uma por tipo de marcador), e várias vivem juntas</td></tr>
+                <tr><td>Object Pool</td><td>Empresta objetos mutáveis, um uso de cada vez, e os recebe de volta. O Flyweight entrega o mesmo objeto imutável a todos, ao mesmo tempo, e ninguém devolve</td></tr>
+                <tr><td><a href="../composite/explicacao.html">Composite</a></td><td>Organiza objetos em árvore. Os dois aparecem juntos com frequência: as folhas de uma árvore enorme podem ser flyweights</td></tr>
+                <tr><td>Cache</td><td>Guarda o resultado de uma operação por entrada para não recalcular. No Flyweight o objeto compartilhado faz parte do <em>modelo</em>, e a identidade (o mesmo objeto) é o objetivo</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se muitos objetos apontam para a mesma instância imutável por valor de uma chave, é Flyweight; se só existe uma instância para a classe toda, é Singleton.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Interpreter · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/interpreter/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Interpreter</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o Interpreter resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que a gramática garante.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Interpreter. Quando dois casos se resolvem com o mesmo raciocínio — permissões por regra e feature flags com segmentação, por exemplo — só um fica. O Interpreter é um pattern estreito: seguindo essa regra, sobraram três motivos, e a página prefere ser curta a inventar um quarto. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que a gramática garante</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#regra-configuravel">Regra que não-programadores mudam, guardada no banco</a></td><td>Que a regra só pode ser o que a linguagem permite</td></tr>
+                <tr><td>2</td><td><a href="#filtro-digitado">Filtro digitado pelo usuário em uma caixa de texto</a></td><td>Que o erro aparece ao digitar, com a posição</td></tr>
+                <tr><td>3</td><td><a href="#varias-leituras">A mesma regra no código, no banco e na tela</a></td><td>Que as várias leituras da regra não divergem</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="regra-configuravel">1. Regra que não-programadores mudam, guardada no banco</h2>
+          <p><strong>Situação.</strong> O marketing monta segmentos de clientes para campanhas de e-mail: "mais de cinco compras e moram em SP ou RJ". Os segmentos ficam em uma tabela, e a equipe quer criá-los e alterá-los em uma tela, sem pedir deploy. A Explicação montava a árvore em código; aqui ela já vem dos dados.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — a regra é um texto Python avaliado com eval</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># segmento.regra é um texto, salvo pela tela do marketing:</span>
+<span class="t-c">#   "cliente['compras'] &gt; 5 and cliente['uf'] in ('SP', 'RJ')"</span>
+<span class="t-k">def</span> <span class="t-f">pertence</span>(cliente, segmento):
+    <span class="t-k">return</span> <span class="t-f">eval</span>(segmento.regra, {}, {<span class="t-s">"cliente"</span>: cliente})</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Quem salva um segmento pode executar qualquer código no servidor, não só "compras &gt; 5". Um erro de digitação só aparece quando a campanha roda, no meio do envio. E a tela não consegue oferecer um formulário "campo, operador, valor", porque o que ela gera é um texto que só um programador sabe escrever.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a regra é uma árvore em JSON, validada ao montar</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># o que a tela salva (e o banco guarda) — dados, não código:</span>
+<span class="t-c">#   {"e": [{"campo": "compras", "op": "&gt;=", "valor": 6},</span>
+<span class="t-c">#          {"campo": "uf", "op": "in", "valor": ["SP", "RJ"]}]}</span>
+
+CAMPOS = {<span class="t-s">"compras"</span>, <span class="t-s">"uf"</span>, <span class="t-s">"vip"</span>, <span class="t-s">"ultima_compra_dias"</span>}
+OPERADORES = {<span class="t-s">"&gt;="</span>, <span class="t-s">"&lt;="</span>, <span class="t-s">"=="</span>, <span class="t-s">"in"</span>}
+
+<span class="t-k">def</span> <span class="t-f">montar</span>(no: <span class="t-f">dict</span>) -&gt; <span class="t-f">Condicao</span>:
+    <span class="t-k">if</span> <span class="t-s">"e"</span> <span class="t-k">in</span> no:
+        <span class="t-k">return</span> <span class="t-f">E</span>(*[<span class="t-f">montar</span>(n) <span class="t-k">for</span> n <span class="t-k">in</span> no[<span class="t-s">"e"</span>]])
+    <span class="t-k">if</span> <span class="t-s">"ou"</span> <span class="t-k">in</span> no:
+        <span class="t-k">return</span> <span class="t-f">Ou</span>(*[<span class="t-f">montar</span>(n) <span class="t-k">for</span> n <span class="t-k">in</span> no[<span class="t-s">"ou"</span>]])
+    <span class="t-k">if</span> <span class="t-s">"nao"</span> <span class="t-k">in</span> no:
+        <span class="t-k">return</span> <span class="t-f">Nao</span>(<span class="t-f">montar</span>(no[<span class="t-s">"nao"</span>]))
+    <span class="t-k">if</span> no.<span class="t-f">get</span>(<span class="t-s">"campo"</span>) <span class="t-k">not</span> <span class="t-k">in</span> CAMPOS <span class="t-k">or</span> no.<span class="t-f">get</span>(<span class="t-s">"op"</span>) <span class="t-k">not</span> <span class="t-k">in</span> OPERADORES:
+        <span class="t-k">raise</span> <span class="t-f">RegraInvalida</span>(no)
+    <span class="t-k">return</span> <span class="t-f">Comparacao</span>(no[<span class="t-s">"campo"</span>], no[<span class="t-s">"op"</span>], no[<span class="t-s">"valor"</span>])
+
+<span class="t-c"># ao salvar o segmento: se a regra é inválida, o erro é na tela, agora</span>
+regra = <span class="t-f">montar</span>(json.<span class="t-f">loads</span>(segmento.regra_json))
+
+<span class="t-k">def</span> <span class="t-f">pertence</span>(cliente, regra):
+    <span class="t-k">return</span> regra.<span class="t-f">avaliar</span>(cliente)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a gramática garante.</strong> Que uma regra só pode ser uma das coisas que a linguagem permite: campos da lista, operadores da lista, e combinações por E, OU e NÃO. Não há como escrever "apague a tabela". A validação acontece em <code>montar</code>, ao salvar, e o formulário da tela é uma forma direta de produzir o JSON.</p>
+          <p>As classes são as da Explicação. A regra mudou de lugar: foi do código para o banco, e o que deploy troca agora é só a lista de campos e operadores, que é de fato uma decisão técnica.</p>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="filtro-digitado">2. Filtro digitado pelo usuário em uma caixa de texto</h2>
+          <p><strong>Situação.</strong> O gerenciador de tarefas tem uma caixa de busca avançada: <code>status == aberto E prazo &lt; 7</code>, ou <code>(dono == ana OU dono == rui) E prioridade &gt;= 2</code>. O usuário escreve em texto, e a lista na tela precisa filtrar na hora.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o texto fatiado à mão</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">function</span> <span class="t-f">filtrar</span>(tarefas: <span class="t-f">Tarefa</span>[], texto: <span class="t-f">string</span>) {
+  <span class="t-k">const</span> partes = texto.<span class="t-f">split</span>(<span class="t-s">" E "</span>);
+  <span class="t-k">return</span> tarefas.<span class="t-f">filter</span>((t) =&gt;
+    partes.<span class="t-f">every</span>((p) =&gt; {
+      <span class="t-k">const</span> [campo, valor] = p.<span class="t-f">split</span>(<span class="t-s">"=="</span>);
+      <span class="t-k">return</span> <span class="t-f">String</span>(t[campo.<span class="t-f">trim</span>()]) === valor.<span class="t-f">trim</span>();
+    }),
+  );
+}
+
+<span class="t-c">// "prazo &lt; 7" não tem "==", então campo = "prazo &lt; 7" e valor = undefined: quebra.</span>
+<span class="t-c">// "A OU B" não existe. Parênteses, nem pensar. E o erro só aparece em runtime.</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada recurso novo (comparação, OU, parênteses) obriga a reescrever a função inteira, porque o <code>split</code> não entende estrutura. Texto incompleto, como <code>status ==</code>, quebra com um erro genérico, no meio da digitação. E a precedência (E antes de OU) não está em lugar nenhum: o código simplesmente a ignora.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o texto vira árvore uma vez, a árvore filtra a lista</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c">// Condicao, Comparacao, E e Ou: as classes da Explicação,</span>
+<span class="t-c">// com "&lt;" e "&gt;" somados aos operadores da Comparacao.</span>
+<span class="t-c">//</span>
+<span class="t-c">// gramática (E tem precedência sobre OU):</span>
+<span class="t-c">//   ou    := e ("OU" e)*</span>
+<span class="t-c">//   e     := atomo ("E" atomo)*</span>
+<span class="t-c">//   atomo := "(" ou ")" | campo operador valor</span>
+<span class="t-k">function</span> <span class="t-f">parse</span>(texto: <span class="t-f">string</span>): <span class="t-f">Condicao</span> {
+  <span class="t-k">const</span> tokens = texto.<span class="t-f">match</span>(<span class="t-s">/\(|\)|[&lt;&gt;=]=?|[^\s()&lt;&gt;=]+/g</span>) ?? [];
+  <span class="t-k">let</span> i = <span class="t-n">0</span>;
+
+  <span class="t-k">const</span> ou = (): <span class="t-f">Condicao</span> =&gt; {
+    <span class="t-k">const</span> partes = [<span class="t-f">e</span>()];
+    <span class="t-k">while</span> (tokens[i] === <span class="t-s">"OU"</span>) { i++; partes.<span class="t-f">push</span>(<span class="t-f">e</span>()); }
+    <span class="t-k">return</span> partes.length === <span class="t-n">1</span> ? partes[<span class="t-n">0</span>] : <span class="t-k">new</span> <span class="t-f">Ou</span>(...partes);
+  };
+
+  <span class="t-k">const</span> e = (): <span class="t-f">Condicao</span> =&gt; {
+    <span class="t-k">const</span> partes = [<span class="t-f">atomo</span>()];
+    <span class="t-k">while</span> (tokens[i] === <span class="t-s">"E"</span>) { i++; partes.<span class="t-f">push</span>(<span class="t-f">atomo</span>()); }
+    <span class="t-k">return</span> partes.length === <span class="t-n">1</span> ? partes[<span class="t-n">0</span>] : <span class="t-k">new</span> <span class="t-f">E</span>(...partes);
+  };
+
+  <span class="t-k">const</span> atomo = (): <span class="t-f">Condicao</span> =&gt; {
+    <span class="t-k">if</span> (tokens[i] === <span class="t-s">"("</span>) {
+      i++;
+      <span class="t-k">const</span> c = <span class="t-f">ou</span>();
+      <span class="t-k">if</span> (tokens[i++] !== <span class="t-s">")"</span>) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">ErroDeSintaxe</span>(<span class="t-s">"faltou )"</span>, i);
+      <span class="t-k">return</span> c;
+    }
+    <span class="t-k">const</span> [campo, op, valor] = tokens.<span class="t-f">slice</span>(i, i + <span class="t-n">3</span>);
+    <span class="t-k">if</span> (!valor) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">ErroDeSintaxe</span>(<span class="t-s">"regra incompleta"</span>, i);
+    i += <span class="t-n">3</span>;
+    <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">Comparacao</span>(campo, op, <span class="t-f">isNaN</span>(+valor) ? valor : +valor);
+  };
+
+  <span class="t-k">const</span> arvore = <span class="t-f">ou</span>();
+  <span class="t-k">if</span> (i &lt; tokens.length) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">ErroDeSintaxe</span>(<span class="t-s">`não esperava "${tokens[i]}"`</span>, i);
+  <span class="t-k">return</span> arvore;
+}
+
+<span class="t-c">// na tela</span>
+<span class="t-k">try</span> {
+  <span class="t-k">const</span> regra = <span class="t-f">parse</span>(caixa.value);            <span class="t-c">// erra aqui, com a posição, antes de tocar em dado algum</span>
+  <span class="t-f">mostrar</span>(tarefas.<span class="t-f">filter</span>((t) =&gt; regra.<span class="t-f">avaliar</span>(t)));
+} <span class="t-k">catch</span> (e) {
+  <span class="t-k">if</span> (e <span class="t-k">instanceof</span> <span class="t-f">ErroDeSintaxe</span>) <span class="t-f">sublinhar</span>(caixa, e.posicao, e.message);
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a gramática garante.</strong> Que o texto ou é uma sentença válida da linguagem, ou falha em <code>parse</code>, com a posição do problema, antes de qualquer tarefa ser avaliada. A árvore é construída uma vez e avaliada para cada tarefa. E a precedência e os parênteses vêm da forma da gramática, em vez de remendos: <code>A OU B E C</code> é <code>A OU (B E C)</code> porque <code>e</code> está abaixo de <code>ou</code>.</p>
+          <div class="callout" data-kind="note"><p>O <em>parser</em> não faz parte do Interpreter do catálogo GoF: o padrão começa na árvore. Mas sem ele a regra em texto não existe, e é a parte mais trabalhosa. Se a linguagem passar de meia dúzia de construções, use uma biblioteca de parsing em vez de escrever à mão.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="varias-leituras">3. A mesma regra no código, no banco e na tela</h2>
+          <p><strong>Situação.</strong> Os segmentos do primeiro exemplo agora precisam de mais duas leituras. A primeira: contar e listar os clientes do segmento no banco, que tem dois milhões deles, então carregar todos em memória para avaliar um a um está fora de questão. A segunda: a tela mostra a regra em palavras, para quem confere o que está valendo.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — três implementações da mesma regra</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">pertence</span>(cliente, no):                   <span class="t-c"># em memória</span>
+    <span class="t-k">if</span> <span class="t-s">"e"</span> <span class="t-k">in</span> no:
+        <span class="t-k">return</span> <span class="t-f">all</span>(<span class="t-f">pertence</span>(cliente, n) <span class="t-k">for</span> n <span class="t-k">in</span> no[<span class="t-s">"e"</span>])
+    <span class="t-k">return</span> OPS[no[<span class="t-s">"op"</span>]](cliente[no[<span class="t-s">"campo"</span>]], no[<span class="t-s">"valor"</span>])
+
+<span class="t-k">def</span> <span class="t-f">para_sql</span>(no):                             <span class="t-c"># no banco — escrita meses depois, por outra pessoa</span>
+    <span class="t-k">if</span> <span class="t-s">"e"</span> <span class="t-k">in</span> no:
+        <span class="t-k">return</span> <span class="t-s">"("</span> + <span class="t-s">" AND "</span>.<span class="t-f">join</span>(<span class="t-f">para_sql</span>(n) <span class="t-k">for</span> n <span class="t-k">in</span> no[<span class="t-s">"e"</span>]) + <span class="t-s">")"</span>
+    <span class="t-k">return</span> <span class="t-s">f"{no['campo']} {no['op']} {no['valor']}"</span>   <span class="t-c"># injeção de SQL; e como fica o "in" com lista?</span>
+
+<span class="t-k">def</span> <span class="t-f">descrever</span>(no):                           <span class="t-c"># na tela</span>
+    <span class="t-k">if</span> <span class="t-s">"e"</span> <span class="t-k">in</span> no:
+        <span class="t-k">return</span> <span class="t-s">" e "</span>.<span class="t-f">join</span>(<span class="t-f">descrever</span>(n) <span class="t-k">for</span> n <span class="t-k">in</span> no[<span class="t-s">"e"</span>])
+    <span class="t-c"># ... e o "ou", e o "nao" — em três lugares</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A mesma lógica existe três vezes, em três arquivos, e cada uma tem os seus furos. Quando alguém acrescenta o <code>nao</code>, esquece de uma das três, e o segmento mostrado na tela deixa de ser o que o banco devolve. O valor entra no SQL colado ao texto, o que é uma injeção à espera de acontecer.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — cada nó sabe as três leituras</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Comparacao</span>(Condicao):
+    <span class="t-k">def</span> <span class="t-f">avaliar</span>(self, cliente):
+        <span class="t-k">return</span> self._OPERADORES[self._op](cliente[self._campo], self._valor)
+
+    <span class="t-k">def</span> <span class="t-f">para_sql</span>(self):
+        <span class="t-k">if</span> self._op == <span class="t-s">"in"</span>:
+            marcas = <span class="t-s">", "</span>.<span class="t-f">join</span>(<span class="t-s">"?"</span> * <span class="t-f">len</span>(self._valor))
+            <span class="t-k">return</span> <span class="t-s">f"{self._campo} IN ({marcas})"</span>, <span class="t-f">list</span>(self._valor)
+        op = <span class="t-s">"="</span> <span class="t-k">if</span> self._op == <span class="t-s">"=="</span> <span class="t-k">else</span> self._op
+        <span class="t-k">return</span> <span class="t-s">f"{self._campo} {op} ?"</span>, [self._valor]    <span class="t-c"># o valor vai como parâmetro</span>
+
+    <span class="t-k">def</span> <span class="t-f">descrever</span>(self):
+        <span class="t-k">return</span> <span class="t-s">f"{self._campo} {self._op} {self._valor}"</span>
+
+<span class="t-k">class</span> <span class="t-f">E</span>(Condicao):
+    <span class="t-k">def</span> <span class="t-f">avaliar</span>(self, cliente):
+        <span class="t-k">return</span> <span class="t-f">all</span>(p.<span class="t-f">avaliar</span>(cliente) <span class="t-k">for</span> p <span class="t-k">in</span> self._partes)
+
+    <span class="t-k">def</span> <span class="t-f">para_sql</span>(self):
+        pedacos = [p.<span class="t-f">para_sql</span>() <span class="t-k">for</span> p <span class="t-k">in</span> self._partes]
+        sql = <span class="t-s">"("</span> + <span class="t-s">" AND "</span>.<span class="t-f">join</span>(s <span class="t-k">for</span> s, _ <span class="t-k">in</span> pedacos) + <span class="t-s">")"</span>
+        <span class="t-k">return</span> sql, [v <span class="t-k">for</span> _, vs <span class="t-k">in</span> pedacos <span class="t-k">for</span> v <span class="t-k">in</span> vs]
+
+    <span class="t-k">def</span> <span class="t-f">descrever</span>(self):
+        <span class="t-k">return</span> <span class="t-s">" e "</span>.<span class="t-f">join</span>(p.<span class="t-f">descrever</span>() <span class="t-k">for</span> p <span class="t-k">in</span> self._partes)
+
+<span class="t-c"># uma regra, três usos</span>
+regra.<span class="t-f">avaliar</span>(cliente)                              <span class="t-c"># em memória</span>
+sql, params = regra.<span class="t-f">para_sql</span>()
+cur.<span class="t-f">execute</span>(<span class="t-s">f"SELECT id FROM clientes WHERE {sql}"</span>, params)   <span class="t-c"># no banco (DB-API, ex.: sqlite3)</span>
+regra.<span class="t-f">descrever</span>()                                 <span class="t-c"># "compras &gt;= 5 e uf in ['SP', 'RJ']"</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que a gramática garante.</strong> Que existe uma única descrição da regra, a árvore, e que cada leitura é um método do nó. Um nó novo (<code>Nao</code>) obriga a pensar nas três leituras no mesmo lugar, em vez de em três arquivos. O campo no SQL é seguro porque passou pela lista fechada de <code>montar</code>; o valor vai como parâmetro.</p>
+          <div class="callout" data-kind="warn"><p>Com três leituras, o desenho ainda cabe nos nós. Com seis ou sete, cada classe fica inchada de operações que não têm a ver com ela. É o ponto de passar para o Visitor, que tira as leituras de dentro da árvore — veja <a href="explicacao.html#parecidos">Parecidos</a>.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Permissões por regra (<code>papel == admin OU dono == usuario</code>)</td><td>1 — a regra guardada como dados, validada ao montar</td></tr>
+                <tr><td>Feature flags com segmentação por usuário</td><td>1 — o mesmo segmento, vindo de configuração</td></tr>
+                <tr><td>Fórmulas de preço ou de campo calculado, digitadas por quem administra</td><td>2 — o texto vira árvore uma vez e é avaliado muitas</td></tr>
+                <tr><td>Regras de roteamento de e-mails ou de chamados</td><td>1 — regras guardadas no banco, avaliadas por mensagem</td></tr>
+                <tr><td>Mostrar a regra em linguagem natural para auditoria</td><td>3 — mais uma leitura da mesma árvore</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Interpreter, mas não é: ler um dicionário de configuração com <code>if config["modo"] == …</code>. A estrutura é plana, sem aninhamento e sem gramática: é só configuração, e um <code>if</code> ou um dicionário de funções basta. Veja a seção <a href="explicacao.html#quando-nao-usar">Quando não usar</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

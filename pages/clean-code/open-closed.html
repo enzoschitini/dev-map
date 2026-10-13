@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open/Closed | SOLID · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../assets/css/design-system.css">
+</head>
+<body data-root="../../" data-tab="clean-code" data-page="open-closed">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / SOLID / Open/Closed</div>
+          <h1 class="page-title" tabindex="-1">Open/Closed</h1>
+          <p class="lead">Como acrescentar um caso novo escrevendo código novo, sem reabrir e retestar o código que já funcionava.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Um e-commerce calcula o frete por transportadora. No começo são duas, e um <code>if</code> resolve. A cada transportadora nova alguém abre a mesma função, acrescenta um <code>elif</code> e reza para não ter quebrado as outras.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — cada transportadora nova reabre a função</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">calcular_frete</span>(pedido, transportadora):
+    <span class="t-k">if</span> transportadora == <span class="t-s">"correios"</span>:
+        <span class="t-k">return</span> <span class="t-n">12</span> + pedido.peso * <span class="t-n">2.5</span>
+    <span class="t-k">elif</span> transportadora == <span class="t-s">"jadlog"</span>:
+        <span class="t-k">return</span> <span class="t-n">9</span> + pedido.peso * <span class="t-n">3</span>
+    <span class="t-k">elif</span> transportadora == <span class="t-s">"retirada"</span>:
+        <span class="t-k">return</span> <span class="t-n">0</span>
+    <span class="t-c"># e a próxima? mais um elif, na mesma função, testada junto com as outras</span>
+    <span class="t-k">raise</span> <span class="t-f">ValueError</span>(transportadora)</code></pre>
+            </div>
+          </div>
+          <p>Adicionar um caso exige <strong>editar</strong> código que já está em produção e já foi testado. Todo teste das outras transportadoras volta a ser candidato a quebrar. E o mesmo <code>if transportadora ==</code> costuma aparecer copiado em outros lugares (prazo, rastreio, etiqueta), então "adicionar uma" vira "achar todos os ifs".</p>
+
+          <h2 id="a-ideia">A ideia</h2>
+          <p>O código deve ser <strong>aberto para extensão</strong> e <strong>fechado para modificação</strong>: o comportamento novo entra como código novo, e o que já existia continua intocado. Para isso, o que varia vira uma abstração, e cada variação, uma implementação separada.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Peça</th><th>Papel</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Ponto de extensão</td><td>A abstração que diz o que cada variação faz</td><td><code>Frete</code></td></tr>
+                <tr><td>Variações</td><td>Uma implementação por caso</td><td><code>FreteCorreios</code>, <code>FreteJadlog</code>, <code>Retirada</code></td></tr>
+                <tr><td>Código fechado</td><td>Quem usa a abstração, sem conhecer os casos</td><td><code>calcular_frete</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é identificar <em>o eixo que varia</em>. Aqui é "como cada transportadora calcula". O que não varia (receber pedido, devolver número) fica fechado; o que varia fica atrás da abstração.</p>
+
+          <h2 id="depois">Como fica</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+
+<span class="t-c"># 1. o ponto de extensão</span>
+<span class="t-k">class</span> <span class="t-f">Frete</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">calcular</span>(self, pedido) -&gt; <span class="t-f">float</span>: ...
+
+<span class="t-c"># 2. uma classe por variação — cada nova é um arquivo novo</span>
+<span class="t-k">class</span> <span class="t-f">FreteCorreios</span>(Frete):
+    <span class="t-k">def</span> <span class="t-f">calcular</span>(self, pedido):
+        <span class="t-k">return</span> <span class="t-n">12</span> + pedido.peso * <span class="t-n">2.5</span>
+
+<span class="t-k">class</span> <span class="t-f">FreteJadlog</span>(Frete):
+    <span class="t-k">def</span> <span class="t-f">calcular</span>(self, pedido):
+        <span class="t-k">return</span> <span class="t-n">9</span> + pedido.peso * <span class="t-n">3</span>
+
+<span class="t-k">class</span> <span class="t-f">Retirada</span>(Frete):
+    <span class="t-k">def</span> <span class="t-f">calcular</span>(self, pedido):
+        <span class="t-k">return</span> <span class="t-n">0</span>
+
+<span class="t-c"># 3. o código fechado: não muda quando surge a quarta opção</span>
+<span class="t-k">def</span> <span class="t-f">cobrar_frete</span>(pedido, frete: <span class="t-f">Frete</span>):
+    <span class="t-k">return</span> frete.<span class="t-f">calcular</span>(pedido)</code></pre>
+              <pre><code><span class="t-c">// 1. o ponto de extensão</span>
+<span class="t-k">interface</span> <span class="t-f">Frete</span> {
+  <span class="t-f">calcular</span>(pedido: <span class="t-f">Pedido</span>): <span class="t-f">number</span>;
+}
+
+<span class="t-c">// 2. uma classe por variação — cada nova é um arquivo novo</span>
+<span class="t-k">class</span> <span class="t-f">FreteCorreios</span> <span class="t-k">implements</span> <span class="t-f">Frete</span> {
+  <span class="t-f">calcular</span>(pedido: <span class="t-f">Pedido</span>) { <span class="t-k">return</span> <span class="t-n">12</span> + pedido.peso * <span class="t-n">2.5</span>; }
+}
+
+<span class="t-k">class</span> <span class="t-f">FreteJadlog</span> <span class="t-k">implements</span> <span class="t-f">Frete</span> {
+  <span class="t-f">calcular</span>(pedido: <span class="t-f">Pedido</span>) { <span class="t-k">return</span> <span class="t-n">9</span> + pedido.peso * <span class="t-n">3</span>; }
+}
+
+<span class="t-k">class</span> <span class="t-f">Retirada</span> <span class="t-k">implements</span> <span class="t-f">Frete</span> {
+  <span class="t-f">calcular</span>() { <span class="t-k">return</span> <span class="t-n">0</span>; }
+}
+
+<span class="t-c">// 3. o código fechado: não muda quando surge a quarta opção</span>
+<span class="t-k">function</span> <span class="t-f">cobrarFrete</span>(pedido: <span class="t-f">Pedido</span>, frete: <span class="t-f">Frete</span>) {
+  <span class="t-k">return</span> frete.<span class="t-f">calcular</span>(pedido);
+}</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="note"><p>Em algum lugar ainda existe a escolha de qual classe usar. Ela só <strong>muda de endereço</strong>: sai de dentro da regra e vai para a borda do sistema (configuração, um mapa de nome para classe, o container de dependências). Aí o <code>if</code> tem um lugar só, e ele não é regra de negócio.</p></div>
+
+          <h2 id="como-reconhecer">Como reconhecer a violação</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Sintoma</th><th>O que está acontecendo</th></tr></thead>
+              <tbody>
+                <tr><td><code>if tipo == …</code> / <code>switch (tipo)</code> repetido em mais de um lugar</td><td>O mesmo eixo de variação está espalhado; cada caso novo toca todos os pontos</td></tr>
+                <tr><td>Histórico do <code>git</code> mostrando "adiciona X" sempre editando a mesma função</td><td>A função é o ponto de extensão, mas sem abstração nenhuma</td></tr>
+                <tr><td>Enum que cresce junto com cada <code>switch</code> que o usa</td><td>O enum virou uma lista de casos que ninguém pode esquecer</td></tr>
+                <tr><td>Medo de mexer: "se eu tocar aqui, quebra o outro cliente"</td><td>Casos diferentes compartilham código que não deveriam</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="quando-nao-aplicar">Quando não aplicar</h2>
+          <p>A abstração custa: uma interface a mais e uma indireção para ler. Só compensa depois que você <strong>viu a variação acontecer</strong>. Antes disso, você está chutando o eixo certo, e uma abstração no eixo errado é pior que um <code>if</code>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Há dois casos e nada indica um terceiro</td><td>Duas classes e uma interface para substituir um <code>if</code> de três linhas</td><td>Mantenha o <code>if</code>; extraia no terceiro caso</td></tr>
+                <tr><td>A variação é uma regra de negócio que muda junto, não um caso novo</td><td>Não é extensão, é correção; abrir o código é o certo</td><td>Edite a regra e atualize os testes</td></tr>
+                <tr><td>Você não sabe ainda qual é o eixo</td><td>A abstração nasce no lugar errado e vira peso</td><td>Espere a segunda mudança e deixe o padrão aparecer</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="danger"><p>O exagero comum: interface com uma implementação só, "para estender no futuro". Se o futuro não chegou depois de seis meses, a interface é só um arquivo a mais para abrir antes de chegar ao código.</p></div>
+
+          <h2 id="relacao">Relação com os outros</h2>
+          <p>Open/Closed é o princípio por trás de vários padrões. O exemplo acima é o <a href="comportamentais/strategy/explicacao.html">Strategy</a> quase sem disfarce. O <a href="estruturais/decorator/explicacao.html">Decorator</a> acrescenta comportamento por embrulho, sem mexer no objeto. O <a href="comportamentais/template-method/explicacao.html">Template Method</a> fecha a ordem dos passos e abre cada passo. Para que as variações sejam trocáveis de verdade, elas precisam respeitar o <a href="liskov-substitution.html">Liskov</a>.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../assets/js/site.js"></script>
+<script src="../../assets/js/shell.js"></script>
+<script src="../../assets/js/ds.js"></script>
+</body>
+</html>

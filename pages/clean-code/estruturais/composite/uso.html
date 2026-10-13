@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Composite · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/composite/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Composite</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Quatro situações em que o Composite resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o composto unifica em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que quatro</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Composite. Árvore de categorias com contagem de produtos, organograma com custo por área e kit com preço são o mesmo raciocínio do primeiro exemplo (agregar sobre uma árvore), então só um fica. Sobraram quatro motivos. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o Composite unifica</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#pastas-e-arquivos">Várias operações sobre a mesma árvore</a></td><td>Arquivo e pasta, diante de qualquer operação</td></tr>
+                <tr><td>2</td><td><a href="#regras-combinaveis">Regras que se combinam com E, OU e NÃO</a></td><td>A regra simples e a regra composta</td></tr>
+                <tr><td>3</td><td><a href="#um-ou-varios-destinatarios">Avisar uma pessoa ou um grupo de grupos</a></td><td>Um destinatário e vários</td></tr>
+                <tr><td>4</td><td><a href="#menu-com-permissoes">Menu com itens que o usuário não pode ver</a></td><td>O link e o submenu, ao filtrar</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="pastas-e-arquivos">1. Várias operações sobre a mesma árvore</h2>
+          <p><strong>Situação.</strong> Um serviço de armazenamento guarda arquivos e pastas, e as pastas contêm outras pastas. A tela precisa do tamanho total de uma pasta, da contagem de arquivos e da busca por extensão. Cada operação foi escrita por uma pessoa diferente, quando precisou.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada função refaz a pergunta de tipo</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">tamanho</span>(no):
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, Pasta):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(<span class="t-f">tamanho</span>(f) <span class="t-k">for</span> f <span class="t-k">in</span> no.filhos)
+    <span class="t-k">return</span> no.bytes
+
+<span class="t-k">def</span> <span class="t-f">contar_arquivos</span>(no):
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, Pasta):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(<span class="t-f">contar_arquivos</span>(f) <span class="t-k">for</span> f <span class="t-k">in</span> no.filhos)
+    <span class="t-k">return</span> <span class="t-n">1</span>
+
+<span class="t-k">def</span> <span class="t-f">buscar</span>(no, extensao, caminho=<span class="t-s">""</span>):
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(no, Pasta):
+        achados = []
+        <span class="t-k">for</span> f <span class="t-k">in</span> no.filhos:
+            achados += <span class="t-f">buscar</span>(f, extensao, caminho + no.nome + <span class="t-s">"/"</span>)
+        <span class="t-k">return</span> achados
+    <span class="t-k">return</span> [caminho + no.nome] <span class="t-k">if</span> no.nome.<span class="t-f">endswith</span>(extensao) <span class="t-k">else</span> []</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A recursão e o <code>isinstance</code> estão copiados em cada função. Quando o produto ganha um <code>Atalho</code> (um link para outra pasta, sem bytes próprios), é preciso lembrar de editar as três: a que for esquecida cai no <code>return no.bytes</code> e quebra com <code>AttributeError</code> em produção, no dia em que alguém tiver um atalho.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — cada nó sabe responder às três perguntas</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">No</span>(ABC):
+    nome: <span class="t-f">str</span>
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">tamanho</span>(self) -&gt; <span class="t-f">int</span>: ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">contar_arquivos</span>(self) -&gt; <span class="t-f">int</span>: ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, extensao: <span class="t-f">str</span>, caminho: <span class="t-f">str</span> = <span class="t-s">""</span>) -&gt; <span class="t-f">list</span>[<span class="t-f">str</span>]: ...
+
+<span class="t-k">class</span> <span class="t-f">Arquivo</span>(No):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, nome, bytes_):
+        self.nome, self._bytes = nome, bytes_
+
+    <span class="t-k">def</span> <span class="t-f">tamanho</span>(self):
+        <span class="t-k">return</span> self._bytes
+
+    <span class="t-k">def</span> <span class="t-f">contar_arquivos</span>(self):
+        <span class="t-k">return</span> <span class="t-n">1</span>
+
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, extensao, caminho=<span class="t-s">""</span>):
+        <span class="t-k">return</span> [caminho + self.nome] <span class="t-k">if</span> self.nome.<span class="t-f">endswith</span>(extensao) <span class="t-k">else</span> []
+
+<span class="t-k">class</span> <span class="t-f">Pasta</span>(No):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, nome, filhos: <span class="t-f">list</span>[No]):
+        self.nome, self._filhos = nome, filhos
+
+    <span class="t-k">def</span> <span class="t-f">tamanho</span>(self):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(f.<span class="t-f">tamanho</span>() <span class="t-k">for</span> f <span class="t-k">in</span> self._filhos)
+
+    <span class="t-k">def</span> <span class="t-f">contar_arquivos</span>(self):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(f.<span class="t-f">contar_arquivos</span>() <span class="t-k">for</span> f <span class="t-k">in</span> self._filhos)
+
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, extensao, caminho=<span class="t-s">""</span>):
+        achados = []
+        <span class="t-k">for</span> f <span class="t-k">in</span> self._filhos:
+            achados += f.<span class="t-f">buscar</span>(extensao, caminho + self.nome + <span class="t-s">"/"</span>)
+        <span class="t-k">return</span> achados</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o composto unifica.</strong> Arquivo e pasta diante de <em>qualquer</em> operação. A pergunta de tipo some do cliente, e a recursão passa a ser consequência de a pasta pedir a cada filho. O <code>Atalho</code> vira uma classe nova: como <code>No</code> é abstrata, esquecer uma das três operações dá erro na criação do objeto, não um bug silencioso meses depois.</p>
+          <div class="callout" data-kind="warn"><p>A troca é real: antes, uma operação nova era uma função; agora é um método em cada classe. Se as operações mudam mais que os tipos de nó (um relatório novo por semana, e os nós parados há anos), o Visitor tira as operações de dentro dos nós.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="regras-combinaveis">2. Regras que se combinam com E, OU e NÃO</h2>
+          <p><strong>Situação.</strong> O marketing cria cupons por um painel e define quem tem direito: "primeira compra", "pedido acima de R$ 100", e agora também combinações — "primeira compra <em>e</em> acima de R$ 100", "acima de R$ 100 <em>ou</em> cliente premium". A regra de cada cupom precisa vir do cadastro, sem deploy.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada combinação pedida vira um tipo</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">elegivel</span>(cupom, cliente, pedido):
+    <span class="t-k">if</span> cupom.tipo == <span class="t-s">"primeira_compra"</span>:
+        <span class="t-k">return</span> cliente.pedidos == <span class="t-n">0</span>
+    <span class="t-k">if</span> cupom.tipo == <span class="t-s">"valor_minimo"</span>:
+        <span class="t-k">return</span> pedido.total &gt;= cupom.valor
+    <span class="t-k">if</span> cupom.tipo == <span class="t-s">"primeira_compra_e_valor_minimo"</span>:
+        <span class="t-k">return</span> cliente.pedidos == <span class="t-n">0</span> <span class="t-k">and</span> pedido.total &gt;= cupom.valor
+    <span class="t-k">if</span> cupom.tipo == <span class="t-s">"premium_ou_valor_minimo"</span>:
+        <span class="t-k">return</span> cliente.premium <span class="t-k">or</span> pedido.total &gt;= cupom.valor
+    <span class="t-c"># "primeira compra, mas não premium"? mais um tipo, mais um deploy</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada pedido do marketing vira código e deploy. Três regras simples geram dezenas de combinações, e o nome do tipo passa a ser uma expressão booleana em texto. Ninguém consegue montar "A e (B ou não C)" sem pedir ao time de engenharia.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — regras simples e regras que combinam regras</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Regra</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">vale</span>(self, cliente, pedido) -&gt; <span class="t-f">bool</span>: ...
+
+<span class="t-c"># folhas: uma pergunta cada</span>
+<span class="t-k">class</span> <span class="t-f">PrimeiraCompra</span>:
+    <span class="t-k">def</span> <span class="t-f">vale</span>(self, cliente, pedido):
+        <span class="t-k">return</span> cliente.pedidos == <span class="t-n">0</span>
+
+<span class="t-k">class</span> <span class="t-f">ValorMinimo</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, minimo):
+        self._minimo = minimo
+
+    <span class="t-k">def</span> <span class="t-f">vale</span>(self, cliente, pedido):
+        <span class="t-k">return</span> pedido.total &gt;= self._minimo
+
+<span class="t-c"># compostos: combinam outras regras, de qualquer tipo</span>
+<span class="t-k">class</span> <span class="t-f">Todas</span>:      <span class="t-c"># E</span>
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, *regras):
+        self._regras = regras
+
+    <span class="t-k">def</span> <span class="t-f">vale</span>(self, cliente, pedido):
+        <span class="t-k">return</span> <span class="t-f">all</span>(r.<span class="t-f">vale</span>(cliente, pedido) <span class="t-k">for</span> r <span class="t-k">in</span> self._regras)
+
+<span class="t-k">class</span> <span class="t-f">Alguma</span>:     <span class="t-c"># OU</span>
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, *regras):
+        self._regras = regras
+
+    <span class="t-k">def</span> <span class="t-f">vale</span>(self, cliente, pedido):
+        <span class="t-k">return</span> <span class="t-f">any</span>(r.<span class="t-f">vale</span>(cliente, pedido) <span class="t-k">for</span> r <span class="t-k">in</span> self._regras)
+
+<span class="t-k">class</span> <span class="t-f">Nao</span>:        <span class="t-c"># NÃO</span>
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, regra):
+        self._regra = regra
+
+    <span class="t-k">def</span> <span class="t-f">vale</span>(self, cliente, pedido):
+        <span class="t-k">return</span> <span class="t-k">not</span> self._regra.<span class="t-f">vale</span>(cliente, pedido)
+
+<span class="t-c"># a árvore vem do cadastro: {"tipo": "todas", "regras": [...]}</span>
+<span class="t-k">def</span> <span class="t-f">montar</span>(spec) -&gt; Regra:
+    tipo = spec[<span class="t-s">"tipo"</span>]
+    <span class="t-k">if</span> tipo == <span class="t-s">"todas"</span>:
+        <span class="t-k">return</span> <span class="t-f">Todas</span>(*[<span class="t-f">montar</span>(s) <span class="t-k">for</span> s <span class="t-k">in</span> spec[<span class="t-s">"regras"</span>]])
+    <span class="t-k">if</span> tipo == <span class="t-s">"alguma"</span>:
+        <span class="t-k">return</span> <span class="t-f">Alguma</span>(*[<span class="t-f">montar</span>(s) <span class="t-k">for</span> s <span class="t-k">in</span> spec[<span class="t-s">"regras"</span>]])
+    <span class="t-k">if</span> tipo == <span class="t-s">"nao"</span>:
+        <span class="t-k">return</span> <span class="t-f">Nao</span>(<span class="t-f">montar</span>(spec[<span class="t-s">"regra"</span>]))
+    <span class="t-k">if</span> tipo == <span class="t-s">"primeira_compra"</span>:
+        <span class="t-k">return</span> <span class="t-f">PrimeiraCompra</span>()
+    <span class="t-k">if</span> tipo == <span class="t-s">"valor_minimo"</span>:
+        <span class="t-k">return</span> <span class="t-f">ValorMinimo</span>(spec[<span class="t-s">"valor"</span>])
+    <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">f"regra desconhecida: {tipo}"</span>)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o composto unifica.</strong> A regra simples e a regra composta, que respondem a <code>vale()</code> do mesmo jeito. O que este exemplo ensina e o anterior não: os compostos têm <strong>semântica própria</strong> (E, OU, NÃO), e a árvore é construída em tempo de execução, a partir de dado. Quem monta o cupom no painel pode aninhar o quanto quiser sem que o código mude. E <code>all</code> e <code>any</code> param na primeira resposta que decide, então regras caras no fim da lista só rodam quando precisam.</p>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="um-ou-varios-destinatarios">3. Avisar uma pessoa ou um grupo de grupos</h2>
+          <p><strong>Situação.</strong> O sistema de avisos manda e-mail para uma pessoa, mas o time de RH quer mandar para "Engenharia", que contém "Backend" e "Frontend", que têm gente. Alguns grupos entram em outros por engano, e há gente em mais de um grupo.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — a função decide se é um ou vários, e vai só até o segundo nível</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">avisar</span>(destino, texto):
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(destino, Pessoa):
+        correio.<span class="t-f">enviar</span>(destino.email, texto)
+    <span class="t-k">elif</span> <span class="t-f">isinstance</span>(destino, Grupo):
+        <span class="t-k">for</span> m <span class="t-k">in</span> destino.membros:
+            <span class="t-k">if</span> <span class="t-f">isinstance</span>(m, Pessoa):
+                correio.<span class="t-f">enviar</span>(m.email, texto)
+            <span class="t-k">else</span>:
+                <span class="t-k">for</span> mm <span class="t-k">in</span> m.membros:   <span class="t-c"># grupo dentro de grupo: um nível</span>
+                    correio.<span class="t-f">enviar</span>(mm.email, texto)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Um grupo dentro de um grupo dentro de um grupo ainda quebra. Quem está em "Backend" e em "Plantão" recebe o aviso duas vezes. E se alguém colocar "Engenharia" dentro de "Backend", a recursão (quando alguém a escrever) não termina.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — todo destino sabe listar as pessoas, sem repetir</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Destino</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">pessoas</span>(self, vistos: <span class="t-f">set</span>[<span class="t-f">str</span>] | <span class="t-k">None</span> = <span class="t-k">None</span>) -&gt; <span class="t-f">Iterator</span>[Pessoa]: ...
+
+<span class="t-k">class</span> <span class="t-f">Pessoa</span>(Destino):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, id_, email):
+        self.id, self.email = id_, email
+
+    <span class="t-k">def</span> <span class="t-f">pessoas</span>(self, vistos=<span class="t-k">None</span>):
+        vistos = <span class="t-f">set</span>() <span class="t-k">if</span> vistos <span class="t-k">is</span> <span class="t-k">None</span> <span class="t-k">else</span> vistos
+        <span class="t-k">if</span> self.id <span class="t-k">not</span> <span class="t-k">in</span> vistos:
+            vistos.<span class="t-f">add</span>(self.id)
+            <span class="t-k">yield</span> self
+
+<span class="t-k">class</span> <span class="t-f">Grupo</span>(Destino):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, id_, membros: <span class="t-f">list</span>[Destino]):
+        self.id, self._membros = id_, membros
+
+    <span class="t-k">def</span> <span class="t-f">pessoas</span>(self, vistos=<span class="t-k">None</span>):
+        vistos = <span class="t-f">set</span>() <span class="t-k">if</span> vistos <span class="t-k">is</span> <span class="t-k">None</span> <span class="t-k">else</span> vistos
+        <span class="t-k">if</span> self.id <span class="t-k">in</span> vistos:      <span class="t-c"># já passou por aqui: ciclo ou repetição</span>
+            <span class="t-k">return</span>
+        vistos.<span class="t-f">add</span>(self.id)
+        <span class="t-k">for</span> m <span class="t-k">in</span> self._membros:
+            <span class="t-k">yield from</span> m.<span class="t-f">pessoas</span>(vistos)
+
+<span class="t-k">def</span> <span class="t-f">avisar</span>(destino: Destino, texto):
+    <span class="t-k">for</span> p <span class="t-k">in</span> destino.<span class="t-f">pessoas</span>():
+        correio.<span class="t-f">enviar</span>(p.email, texto)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o composto unifica.</strong> Uma pessoa e vários, para quem chama <code>avisar</code>: a função não sabe mais o que recebeu. O que este exemplo ensina é que dados reais raramente são árvores puras. "Mesma pessoa em dois grupos" e "grupo que contém a si mesmo" são grafos, e quem trata isso é o nó, com um conjunto de <code>vistos</code> que acompanha a travessia. O cliente continua sem saber.</p>
+          <div class="callout" data-kind="warn"><p>O Composite pressupõe árvore. Se a estrutura aceita compartilhamento ou ciclos, e a de grupos aceita, carregue o conjunto de visitados na operação. Sem ele, a recursão envia duas vezes ou não termina.</p></div>
+
+          <!-- 4 ─────────────────────────────────────────────── -->
+          <h2 id="menu-com-permissoes">4. Menu com itens que o usuário não pode ver</h2>
+          <p><strong>Situação.</strong> O menu lateral do painel tem links e submenus que contêm outros submenus. Cada item pode exigir uma permissão. Usuário sem a permissão não deve ver o link, e um submenu que ficou sem nenhum link visível deve sumir, não aparecer vazio.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o filtro conhece exatamente dois níveis</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">function</span> <span class="t-f">filtrar</span>(menu: <span class="t-f">ItemMenu</span>[], perms: <span class="t-f">Set</span>&lt;<span class="t-f">string</span>&gt;): <span class="t-f">ItemMenu</span>[] {
+  <span class="t-k">const</span> saida: <span class="t-f">ItemMenu</span>[] = [];
+  <span class="t-k">for</span> (<span class="t-k">const</span> item <span class="t-k">of</span> menu) {
+    <span class="t-k">if</span> (item.filhos) {
+      <span class="t-k">const</span> filhos = item.filhos.<span class="t-f">filter</span>((f) =&gt; !f.perm || perms.<span class="t-f">has</span>(f.perm));
+      <span class="t-k">if</span> (filhos.length &gt; <span class="t-n">0</span>) saida.<span class="t-f">push</span>({ ...item, filhos });
+    } <span class="t-k">else</span> <span class="t-k">if</span> (!item.perm || perms.<span class="t-f">has</span>(item.perm)) {
+      saida.<span class="t-f">push</span>(item);
+    }
+  }
+  <span class="t-k">return</span> saida;
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Um submenu dentro de um submenu passa sem filtro: os links do terceiro nível aparecem para quem não tem permissão. A permissão do próprio submenu é ignorada. E a regra "grupo vazio some" só vale para o primeiro nível, então aparece um submenu com título e sem itens.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — filtrar devolve o nó filtrado, ou nada</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">interface</span> <span class="t-f">NoMenu</span> {
+  <span class="t-c">/** o nó que sobrou para estas permissões, ou null se ele some */</span>
+  <span class="t-f">filtrar</span>(perms: <span class="t-f">Set</span>&lt;<span class="t-f">string</span>&gt;): <span class="t-f">NoMenu</span> | <span class="t-k">null</span>;
+  <span class="t-f">renderizar</span>(): <span class="t-f">string</span>;
+}
+
+<span class="t-k">class</span> <span class="t-f">Link</span> <span class="t-k">implements</span> <span class="t-f">NoMenu</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> rotulo: <span class="t-f">string</span>, <span class="t-k">private</span> href: <span class="t-f">string</span>, <span class="t-k">private</span> perm?: <span class="t-f">string</span>) {}
+
+  <span class="t-f">filtrar</span>(perms: <span class="t-f">Set</span>&lt;<span class="t-f">string</span>&gt;) {
+    <span class="t-k">return</span> !<span class="t-k">this</span>.perm || perms.<span class="t-f">has</span>(<span class="t-k">this</span>.perm) ? <span class="t-k">this</span> : <span class="t-k">null</span>;
+  }
+
+  <span class="t-f">renderizar</span>() {
+    <span class="t-k">return</span> <span class="t-s">`&lt;li&gt;&lt;a href="${this.href}"&gt;${this.rotulo}&lt;/a&gt;&lt;/li&gt;`</span>;
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">Submenu</span> <span class="t-k">implements</span> <span class="t-f">NoMenu</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> rotulo: <span class="t-f">string</span>, <span class="t-k">private</span> filhos: <span class="t-f">NoMenu</span>[]) {}
+
+  <span class="t-f">filtrar</span>(perms: <span class="t-f">Set</span>&lt;<span class="t-f">string</span>&gt;) {
+    <span class="t-k">const</span> visiveis = <span class="t-k">this</span>.filhos
+      .<span class="t-f">map</span>((f) =&gt; f.<span class="t-f">filtrar</span>(perms))
+      .<span class="t-f">filter</span>((f): f <span class="t-k">is</span> <span class="t-f">NoMenu</span> =&gt; f !== <span class="t-k">null</span>);
+    <span class="t-k">return</span> visiveis.length &gt; <span class="t-n">0</span> ? <span class="t-k">new</span> <span class="t-f">Submenu</span>(<span class="t-k">this</span>.rotulo, visiveis) : <span class="t-k">null</span>;
+  }
+
+  <span class="t-f">renderizar</span>() {
+    <span class="t-k">return</span> <span class="t-s">`&lt;li&gt;${this.rotulo}&lt;ul&gt;${this.filhos.map((f) =&gt; f.renderizar()).join("")}&lt;/ul&gt;&lt;/li&gt;`</span>;
+  }
+}
+
+<span class="t-c">// o cliente: duas linhas, qualquer profundidade</span>
+<span class="t-k">const</span> visivel = raiz.<span class="t-f">filtrar</span>(permissoesDoUsuario);
+<span class="t-k">const</span> html = visivel ? visivel.<span class="t-f">renderizar</span>() : <span class="t-s">""</span>;</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o composto unifica.</strong> O link e o submenu diante de uma operação que <strong>devolve uma árvore nova</strong>, e não um número ou um booleano. Aqui o composto decide pelo que sobrou dos filhos: a regra "submenu sem nada visível some" está escrita uma vez e vale em todos os níveis. A árvore original não é alterada, então o mesmo menu serve a todos os usuários e cada um recebe a sua versão.</p>
+          <div class="callout" data-kind="warn"><p>Esconder o link não é controle de acesso. Quem sabe a URL ainda chega na rota, e o servidor precisa checar a permissão de novo. O filtro do menu cuida de quem <em>vê</em>, não de quem <em>pode</em>.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos quatro:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Kit com kits dentro, com preço e peso</td><td>1 — operações sobre uma árvore; é o exemplo da <a href="explicacao.html#o-problema">explicação</a></td></tr>
+                <tr><td>Árvore de categorias com contagem de produtos</td><td>1 — operações sobre uma árvore</td></tr>
+                <tr><td>Organograma com custo por área</td><td>1 — operações sobre uma árvore</td></tr>
+                <tr><td>Formulário com seções e campos, validando tudo</td><td>2 — a validação composta responde "vale?" como as regras</td></tr>
+                <tr><td>Macro: uma lista de comandos executada como um só</td><td>3 — um comando e vários, tratados igual</td></tr>
+                <tr><td>Formas vetoriais com grupos de formas</td><td>1 e 3 — operações sobre uma árvore, com o mesmo cuidado se um nó entra em dois grupos</td></tr>
+                <tr><td>Árvore de componentes de UI (o DOM, o React)</td><td>4 — a operação desce e devolve uma árvore nova; o DOM já é um Composite</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Composite, mas não é: o carrinho que contém produtos. É uma lista de coisas de um nível só, e nenhum item contém outros itens. Se ela virar uma árvore (kits dentro de kits), aí sim. E um objeto que embrulha outro da mesma interface para acrescentar log ou cache é Decorator. Veja a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

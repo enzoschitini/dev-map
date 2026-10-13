@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Iterator · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/iterator/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Iterator</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o Iterator resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o iterador esconde de quem percorre.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Iterator. Quando dois casos se resolvem com o mesmo raciocínio — ler um arquivo linha a linha e consumir um cursor de banco, por exemplo — só um fica. Percorrer uma API paginada como se fosse uma lista é o mesmo raciocínio do exemplo 2, e já tem seção própria na <a href="../../estruturais/adapter/uso.html#paginacao">página de Uso do Adapter</a>. Sobraram três motivos. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o iterador esconde</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#varios-percursos">Mais de uma ordem de percurso sobre a mesma árvore</a></td><td>A estrutura e a ordem do percurso</td></tr>
+                <tr><td>2</td><td><a href="#fonte-grande">Uma fonte grande demais para carregar inteira</a></td><td>Que a fonte não existe inteira em lugar nenhum</td></tr>
+                <tr><td>3</td><td><a href="#retomar-de-onde-parou">Retomar um percurso do ponto onde ele parou</a></td><td>Onde, na fonte, o percurso está</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="varios-percursos">1. Mais de uma ordem de percurso sobre a mesma árvore</h2>
+          <p><strong>Situação.</strong> Um explorador de arquivos na web. A busca precisa passar por tudo, em profundidade. A lista de "resultados mais próximos" precisa ir por níveis, em largura, para mostrar o que está perto da raiz primeiro. E o painel de tamanho só quer os arquivos, sem as pastas. A Explicação mostrou um percurso só; aqui há três, sobre a mesma árvore.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada ordem é uma função que lê .filhos</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">function</span> <span class="t-f">emProfundidade</span>(no: <span class="t-f">No</span>, saida: <span class="t-f">No</span>[] = []): <span class="t-f">No</span>[] {
+  saida.<span class="t-f">push</span>(no);
+  no.filhos.<span class="t-f">forEach</span>((f) =&gt; <span class="t-f">emProfundidade</span>(f, saida));
+  <span class="t-k">return</span> saida;
+}
+
+<span class="t-k">function</span> <span class="t-f">emLargura</span>(raiz: <span class="t-f">No</span>): <span class="t-f">No</span>[] {
+  <span class="t-k">const</span> fila = [raiz], saida: <span class="t-f">No</span>[] = [];
+  <span class="t-k">while</span> (fila.length) {
+    <span class="t-k">const</span> no = fila.<span class="t-f">shift</span>()!;
+    saida.<span class="t-f">push</span>(no);
+    fila.<span class="t-f">push</span>(...no.filhos);
+  }
+  <span class="t-k">return</span> saida;
+}
+
+<span class="t-k">function</span> <span class="t-f">soArquivos</span>(no: <span class="t-f">No</span>): <span class="t-f">No</span>[] {
+  <span class="t-k">return</span> no.filhos.length ? no.filhos.<span class="t-f">flatMap</span>(soArquivos) : [no];
+}
+
+<span class="t-c">// as três leem .filhos direto. No dia em que a pasta carregar os filhos</span>
+<span class="t-c">// sob demanda, são três correções, uma em cada função.</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A estrutura da árvore está copiada em três lugares, e cada função monta a lista inteira antes de devolver, mesmo para mostrar só os dez primeiros resultados. Quem precisar de uma quarta ordem escreve uma quarta cópia.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — cada percurso é um método que devolve um iterador novo</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">No</span> <span class="t-k">implements</span> <span class="t-f">Iterable</span>&lt;<span class="t-f">No</span>&gt; {
+  <span class="t-k">constructor</span>(<span class="t-k">readonly</span> nome: <span class="t-f">string</span>, <span class="t-k">private</span> filhos: <span class="t-f">No</span>[] = []) {}
+
+  <span class="t-k">get</span> <span class="t-f">ehArquivo</span>() { <span class="t-k">return</span> <span class="t-k">this</span>.filhos.length === <span class="t-n">0</span>; }
+
+  <span class="t-c">// o percurso padrão: em profundidade</span>
+  *[Symbol.iterator](): <span class="t-f">Generator</span>&lt;<span class="t-f">No</span>&gt; {
+    <span class="t-k">yield</span> <span class="t-k">this</span>;
+    <span class="t-k">for</span> (<span class="t-k">const</span> f <span class="t-k">of</span> <span class="t-k">this</span>.filhos) <span class="t-k">yield*</span> f;
+  }
+
+  *<span class="t-f">emLargura</span>(): <span class="t-f">Generator</span>&lt;<span class="t-f">No</span>&gt; {
+    <span class="t-k">const</span> fila: <span class="t-f">No</span>[] = [<span class="t-k">this</span>];
+    <span class="t-k">while</span> (fila.length) {
+      <span class="t-k">const</span> no = fila.<span class="t-f">shift</span>()!;
+      <span class="t-k">yield</span> no;
+      fila.<span class="t-f">push</span>(...no.filhos);
+    }
+  }
+
+  *<span class="t-f">arquivos</span>(): <span class="t-f">Generator</span>&lt;<span class="t-f">No</span>&gt; {
+    <span class="t-k">for</span> (<span class="t-k">const</span> no <span class="t-k">of</span> <span class="t-k">this</span>) <span class="t-k">if</span> (no.ehArquivo) <span class="t-k">yield</span> no;
+  }
+}
+
+<span class="t-c">// os clientes escolhem a ordem e param quando quiserem</span>
+<span class="t-k">let</span> vistos = <span class="t-n">0</span>;
+<span class="t-k">for</span> (<span class="t-k">const</span> no <span class="t-k">of</span> raiz.<span class="t-f">emLargura</span>()) {
+  <span class="t-f">mostrarResultado</span>(no);
+  <span class="t-k">if</span> (++vistos === <span class="t-n">10</span>) <span class="t-k">break</span>;
+}
+<span class="t-k">const</span> bytes = [...raiz.<span class="t-f">arquivos</span>()].<span class="t-f">reduce</span>((s, a) =&gt; s + a.tamanho, <span class="t-n">0</span>);</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o iterador esconde.</strong> A estrutura e a ordem. O campo <code>filhos</code> é lido em uma classe só, e cada percurso é um método que devolve um iterador novo, com posição própria. Dois percursos ao mesmo tempo, por exemplo a busca e o painel de tamanho, não se atrapalham. Uma ordem nova é um método novo, sem tocar em nenhum cliente.</p>
+          <div class="callout" data-kind="warn"><p><code>raiz.emLargura()</code> devolve um gerador <strong>novo</strong> a cada chamada, mas o gerador em si é de uso único. Se você guardar o resultado em uma variável e percorrer duas vezes, a segunda passada vem vazia. Chame o método de novo, ou materialize com <code>[...]</code>.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="fonte-grande">2. Uma fonte grande demais para carregar inteira</h2>
+          <p><strong>Situação.</strong> O log de acessos do dia tem 8 GB. O relatório conta os erros 500 e mostra os cinco primeiros, para quem está de plantão ver rápido. O arquivo nunca cabe em memória, e a fonte do "log de hoje" ainda está sendo escrita enquanto o relatório roda.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o arquivo inteiro vira uma lista</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">erros_500</span>(caminho):
+    <span class="t-k">with</span> <span class="t-f">open</span>(caminho) <span class="t-k">as</span> f:
+        linhas = f.<span class="t-f">readlines</span>()                  <span class="t-c"># 8 GB na memória</span>
+    <span class="t-k">return</span> [l <span class="t-k">for</span> l <span class="t-k">in</span> linhas <span class="t-k">if</span> <span class="t-s">" 500 "</span> <span class="t-k">in</span> l]
+
+primeiros = <span class="t-f">erros_500</span>(<span class="t-s">"acessos.log"</span>)[:<span class="t-n">5</span>]</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O processo estoura a memória antes de mostrar nada. Mesmo com memória de sobra, o relatório lê os 8 GB inteiros para exibir cinco linhas, e nada aparece até o fim da leitura.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — cada etapa é um iterador sobre o anterior</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> itertools <span class="t-k">import</span> islice
+
+<span class="t-k">def</span> <span class="t-f">linhas</span>(caminho):
+    <span class="t-k">with</span> <span class="t-f">open</span>(caminho) <span class="t-k">as</span> f:
+        <span class="t-k">for</span> linha <span class="t-k">in</span> f:                  <span class="t-c"># o arquivo já é um iterador: uma linha por vez</span>
+            <span class="t-k">yield</span> linha.<span class="t-f">rstrip</span>(<span class="t-s">"\n"</span>)
+
+<span class="t-k">def</span> <span class="t-f">erros_500</span>(linhas):
+    <span class="t-k">return</span> (l <span class="t-k">for</span> l <span class="t-k">in</span> linhas <span class="t-k">if</span> <span class="t-s">" 500 "</span> <span class="t-k">in</span> l)
+
+primeiros = <span class="t-f">list</span>(<span class="t-f">islice</span>(<span class="t-f">erros_500</span>(<span class="t-f">linhas</span>(<span class="t-s">"acessos.log"</span>)), <span class="t-n">5</span>))   <span class="t-c"># lê só até achar cinco</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que o iterador esconde.</strong> Que a fonte não existe inteira em lugar nenhum. Cada linha nasce quando o consumidor pede e some quando ele passa para a próxima; a memória usada é a de uma linha. As etapas se encadeiam sem listas intermediárias, e o <code>islice</code> encerra tudo assim que acha a quinta, deixando o resto do arquivo sem ser lido.</p>
+          <p>O mesmo desenho serve para fontes que não têm fim: <code>itertools.count()</code>, um fluxo de eventos, um cursor de banco. Para o consumidor, o fim é só a hora em que ele para de pedir.</p>
+          <div class="callout" data-kind="warn"><p>A preguiça esconde <em>quando</em> o trabalho acontece. Um erro de leitura estoura dentro do laço de quem consome, e não onde o gerador foi criado. E, se você parar no meio, o arquivo fica aberto até o gerador ser descartado ou fechado.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="retomar-de-onde-parou">3. Retomar um percurso do ponto onde ele parou</h2>
+          <p><strong>Situação.</strong> A importação noturna lê um CSV de dois milhões de linhas e grava cada registro no banco. Às vezes o processo cai no meio: um timeout, um deploy. Na noite seguinte, ela precisa continuar da linha em que parou, sem reprocessar o que já entrou.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — reler tudo só para pular até o ponto</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">importar</span>(caminho, ultima_linha=<span class="t-n">0</span>):
+    <span class="t-k">with</span> <span class="t-f">open</span>(caminho, newline=<span class="t-s">""</span>) <span class="t-k">as</span> f:
+        <span class="t-k">for</span> n, registro <span class="t-k">in</span> <span class="t-f">enumerate</span>(csv.<span class="t-f">reader</span>(f)):
+            <span class="t-k">if</span> n &lt; ultima_linha:
+                <span class="t-k">continue</span>                    <span class="t-c"># relê 1,35 milhão de linhas só para pular</span>
+            <span class="t-f">gravar</span>(registro)
+            <span class="t-k">if</span> n % <span class="t-n">1000</span> == <span class="t-n">0</span>:
+                <span class="t-f">salvar_checkpoint</span>(n)       <span class="t-c"># o controle misturado com a regra de importação</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Retomar custa o tempo de reler tudo que já foi processado. A posição do percurso vive em uma variável solta, <code>n</code>, no meio da regra de importação, ao lado de <code>gravar</code>. E ela é um número de linha, e não um ponto no arquivo: para continuar dali, é preciso reler desde o começo para chegar nele.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o iterador expõe a própria posição</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">LeitorDeRegistros</span>:
+    <span class="t-s">"""Percorre um CSV de um registro por linha, e sabe voltar ao ponto onde estava."""</span>
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, caminho, posicao=<span class="t-n">0</span>):
+        self._f = <span class="t-f">open</span>(caminho, newline=<span class="t-s">""</span>)
+        self._f.<span class="t-f">seek</span>(posicao)             <span class="t-c"># pula direto, sem reler</span>
+
+    <span class="t-k">def</span> <span class="t-f">__iter__</span>(self):
+        <span class="t-k">return</span> self
+
+    <span class="t-k">def</span> <span class="t-f">__next__</span>(self):
+        linha = self._f.<span class="t-f">readline</span>()
+        <span class="t-k">if</span> <span class="t-k">not</span> linha:
+            self._f.<span class="t-f">close</span>()
+            <span class="t-k">raise</span> <span class="t-f">StopIteration</span>
+        <span class="t-k">return</span> <span class="t-f">next</span>(csv.<span class="t-f">reader</span>([linha]))
+
+    <span class="t-f">@property</span>
+    <span class="t-k">def</span> <span class="t-f">posicao</span>(self):
+        <span class="t-k">return</span> self._f.<span class="t-f">tell</span>()           <span class="t-c"># o estado do percurso é do iterador</span>
+
+<span class="t-k">def</span> <span class="t-f">importar</span>(caminho):
+    leitor = <span class="t-f">LeitorDeRegistros</span>(caminho, posicao=checkpoint.<span class="t-f">carregar</span>())
+    <span class="t-k">for</span> i, registro <span class="t-k">in</span> <span class="t-f">enumerate</span>(leitor, <span class="t-n">1</span>):
+        <span class="t-f">gravar</span>(registro)
+        <span class="t-k">if</span> i % <span class="t-n">1000</span> == <span class="t-n">0</span>:
+            checkpoint.<span class="t-f">salvar</span>(leitor.posicao)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o iterador esconde.</strong> Onde, no arquivo, o percurso está. A importação trata a posição como um valor opaco: pede ao leitor, guarda, devolve ao construtor na vez seguinte. O <code>seek</code> e o <code>tell</code> ficam dentro do leitor, e a regra de importação não conhece arquivo nenhum. Aqui o iterador é uma classe de verdade, e não um gerador, porque o estado dele precisa ser <em>lido de fora</em>.</p>
+          <div class="callout" data-kind="warn"><p>Se o processo cair entre <code>gravar</code> e <code>checkpoint.salvar</code>, o último lote é gravado duas vezes na retomada. A importação precisa ser idempotente (um <em>upsert</em> pela chave do registro), ou gravar e salvar a posição na mesma transação.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Percorrer uma API paginada como se fosse uma lista</td><td>2 — fonte que não existe inteira; com o código completo no <a href="../../estruturais/adapter/uso.html#paginacao">Uso do Adapter, #6</a></td></tr>
+                <tr><td>Consumir o resultado de uma consulta ao banco com um cursor</td><td>2 — as linhas chegam sob demanda</td></tr>
+                <tr><td>Gerar uma sequência sem fim (ids, números de uma série)</td><td>2 — o consumidor é quem decide parar</td></tr>
+                <tr><td>Percorrer pastas e subpastas (<code>os.walk</code>)</td><td>1 — estrutura em árvore escondida atrás de um percurso</td></tr>
+                <tr><td>Botões "anterior" e "próximo" sobre uma lista de resultados</td><td>3 — a posição como um valor que o cliente guarda</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Iterator, mas não é: <code>for item in lista:</code>. A lista da linguagem já é um iterável, e escrever uma classe de iterador para ela é só cerimônia. Veja a seção <a href="explicacao.html#quando-nao-usar">Quando não usar</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>
