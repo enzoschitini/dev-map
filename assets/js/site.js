@@ -76,6 +76,11 @@ window.DEVMAP = {
                       id: 'explicacao',
                       label: 'Explicação',
                       summary: 'Como encaixar uma interface que você não controla na que o seu código espera.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Sete situações reais, com o código antes e depois do Adapter.'
                     }
                   ]
                 }
