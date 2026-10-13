@@ -21,6 +21,7 @@
  *
  *   pasta    { folder: 'adapter', label: 'Adapter', pages: [ ... ] }
  *            pasta de verdade: o que está dentro mora em adapter/
+ *            pastas podem ficar dentro de pastas (estruturais/adapter/)
  *            começa fechada, e abre sozinha quando guarda a página aberta
  *            `open: true` faz ela já começar aberta
  *
@@ -31,7 +32,7 @@
  *   1. adicione o nó aqui, no lugar certo da árvore
  *   2. copie pages/_template.html para o caminho correspondente
  *   3. no <body>, ajuste data-root, data-tab e data-page
- *      data-page é o caminho dentro da aba, sem .html — ex.: adapter/explicacao
+ *      data-page é o caminho dentro da aba, sem .html — ex.: estruturais/adapter/explicacao
  */
 window.DEVMAP = {
   name: 'DevMap',
@@ -64,13 +65,19 @@ window.DEVMAP = {
           group: 'Design Pattern',
           pages: [
             {
-              folder: 'adapter',
-              label: 'Adapter',
+              folder: 'estruturais',
+              label: 'Estruturais',
               pages: [
                 {
-                  id: 'explicacao',
-                  label: 'Explicação',
-                  summary: 'Como encaixar uma interface que você não controla na que o seu código espera.'
+                  folder: 'adapter',
+                  label: 'Adapter',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como encaixar uma interface que você não controla na que o seu código espera.'
+                    }
+                  ]
                 }
               ]
             }
