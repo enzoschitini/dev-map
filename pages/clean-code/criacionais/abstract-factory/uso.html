@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Abstract Factory · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="criacionais/abstract-factory/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Abstract Factory</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que a Abstract Factory resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que a fábrica garante em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para criar as peças por uma fábrica. Quando dois casos se resolvem com o mesmo raciocínio — dialetos de SQL e componentes por sistema operacional, por exemplo — só um fica. A Abstract Factory tem poucos motivos próprios, e a lista é curta de propósito. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que a Abstract Factory garante</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#pecas-que-combinam">Peças que só funcionam juntas</a></td><td>Que as peças são da mesma família</td></tr>
+                <tr><td>2</td><td><a href="#contexto-compartilhado">Peças que precisam do mesmo contexto</a></td><td>Que todas usam a mesma conexão</td></tr>
+                <tr><td>3</td><td><a href="#familia-por-pedido">Uma família diferente a cada pedido</a></td><td>Que a escolha existe em um lugar só</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="note"><p>O exemplo 2 usa <code>psycopg2</code> com a chamada simplificada. Os repositórios e as classes fiscais são fictícios; o objetivo é mostrar a estrutura.</p></div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="pecas-que-combinam">1. Peças que só funcionam juntas</h2>
+          <p><strong>Situação.</strong> A tela de cadastro tem tema claro e escuro. Os componentes — botão, campo de texto e aviso — são desenhados em pares: o campo escuro tem fundo escuro e texto claro, e o aviso escuro assume que está sobre esse fundo. Cada componente é montado onde é usado, a partir do tema.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — um ternário por componente</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">function</span> <span class="t-f">montarFormulario</span>(tema: <span class="t-s">"claro"</span> | <span class="t-s">"escuro"</span>) {
+  <span class="t-k">const</span> botao = tema === <span class="t-s">"claro"</span> ? <span class="t-k">new</span> <span class="t-f">BotaoClaro</span>() : <span class="t-k">new</span> <span class="t-f">BotaoEscuro</span>();
+  <span class="t-k">const</span> campo = tema === <span class="t-s">"claro"</span> ? <span class="t-k">new</span> <span class="t-f">CampoClaro</span>() : <span class="t-k">new</span> <span class="t-f">CampoEscuro</span>();
+  <span class="t-k">const</span> aviso = tema === <span class="t-s">"escuro"</span> ? <span class="t-k">new</span> <span class="t-f">AvisoClaro</span>() : <span class="t-k">new</span> <span class="t-f">AvisoEscuro</span>();   <span class="t-c">// invertido</span>
+  <span class="t-k">return</span> { botao, campo, aviso };
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O ternário invertido do aviso passa em qualquer leitura rápida, e o resultado é texto claro sobre fundo claro, só no tema escuro. Cada tela repete esses três ternários, então o erro tem três chances de nascer em cada uma. E um tema novo (alto contraste) é um terceiro ramo em cada ternário, em todas as telas.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a escolha do tema é a escolha de uma fábrica</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">interface</span> <span class="t-f">FabricaDeComponentes</span> {
+  <span class="t-f">criarBotao</span>(): <span class="t-f">Botao</span>;
+  <span class="t-f">criarCampo</span>(): <span class="t-f">Campo</span>;
+  <span class="t-f">criarAviso</span>(): <span class="t-f">Aviso</span>;
+}
+
+<span class="t-k">class</span> <span class="t-f">ComponentesClaros</span> <span class="t-k">implements</span> <span class="t-f">FabricaDeComponentes</span> {
+  <span class="t-f">criarBotao</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">BotaoClaro</span>(); }
+  <span class="t-f">criarCampo</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">CampoClaro</span>(); }
+  <span class="t-f">criarAviso</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">AvisoClaro</span>(); }
+}
+
+<span class="t-k">class</span> <span class="t-f">ComponentesEscuros</span> <span class="t-k">implements</span> <span class="t-f">FabricaDeComponentes</span> {
+  <span class="t-f">criarBotao</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">BotaoEscuro</span>(); }
+  <span class="t-f">criarCampo</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">CampoEscuro</span>(); }
+  <span class="t-f">criarAviso</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">AvisoEscuro</span>(); }
+}
+
+<span class="t-k">function</span> <span class="t-f">montarFormulario</span>(f: <span class="t-f">FabricaDeComponentes</span>) {
+  <span class="t-k">return</span> { botao: f.<span class="t-f">criarBotao</span>(), campo: f.<span class="t-f">criarCampo</span>(), aviso: f.<span class="t-f">criarAviso</span>() };
+}
+
+<span class="t-c">// a escolha do tema, uma vez</span>
+<span class="t-k">const</span> fabrica = tema === <span class="t-s">"escuro"</span> ? <span class="t-k">new</span> <span class="t-f">ComponentesEscuros</span>() : <span class="t-k">new</span> <span class="t-f">ComponentesClaros</span>();
+<span class="t-f">montarFormulario</span>(fabrica);</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a fábrica garante.</strong> Que as peças são <strong>da mesma família</strong>. Para pôr um aviso claro em uma tela escura, alguém precisaria escrever isso de propósito, fora da fábrica. O tema novo é uma classe nova, e <code>montarFormulario</code> nem é aberta.</p>
+          <div class="callout" data-kind="warn"><p>Repare no preço: um componente novo (<code>criarTooltip()</code>) obriga a mexer na interface e em <strong>cada</strong> fábrica. A Abstract Factory facilita incluir temas, não incluir tipos de componente. Se os tipos mudam toda semana, o padrão vai incomodar.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="contexto-compartilhado">2. Peças que precisam do mesmo contexto</h2>
+          <p><strong>Situação.</strong> Fechar um pedido grava o pedido e soma os pontos de fidelidade do cliente. Os dois gravam no PostgreSQL, por dois repositórios, e precisam acontecer juntos: ou os dois, ou nenhum.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada repositório abre a sua própria conexão</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ServicoDePedidos</span>:
+    <span class="t-k">def</span> <span class="t-f">fechar</span>(self, pedido):
+        pedidos = <span class="t-f">RepositorioDePedidos</span>(psycopg2.<span class="t-f">connect</span>(DSN))
+        clientes = <span class="t-f">RepositorioDeClientes</span>(psycopg2.<span class="t-f">connect</span>(DSN))   <span class="t-c"># outra conexão, outra transação</span>
+
+        pedidos.<span class="t-f">salvar</span>(pedido)                              <span class="t-c"># confirmado aqui</span>
+        clientes.<span class="t-f">somar_pontos</span>(pedido.cliente_id, pedido.total)   <span class="t-c"># e se isto falhar?</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> São duas conexões, portanto duas transações. Se a segunda operação falha, o pedido já está gravado e o cliente não ganhou os pontos: o banco fica inconsistente, sem erro visível. E para trocar o banco em teste, é preciso achar cada <code>connect</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a fábrica guarda a conexão e a entrega às peças</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">FabricaDeRepositorios</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">pedidos</span>(self) -&gt; RepositorioDePedidos: ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">clientes</span>(self) -&gt; RepositorioDeClientes: ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">confirmar</span>(self) -&gt; <span class="t-k">None</span>: ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self) -&gt; <span class="t-k">None</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">RepositoriosPostgres</span>(FabricaDeRepositorios):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, dsn):
+        self._conn = psycopg2.<span class="t-f">connect</span>(dsn)     <span class="t-c"># uma conexão para a família toda</span>
+
+    <span class="t-k">def</span> <span class="t-f">pedidos</span>(self):
+        <span class="t-k">return</span> <span class="t-f">PedidosPostgres</span>(self._conn)
+
+    <span class="t-k">def</span> <span class="t-f">clientes</span>(self):
+        <span class="t-k">return</span> <span class="t-f">ClientesPostgres</span>(self._conn)
+
+    <span class="t-k">def</span> <span class="t-f">confirmar</span>(self):
+        self._conn.<span class="t-f">commit</span>()
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        self._conn.<span class="t-f">rollback</span>()
+
+<span class="t-k">class</span> <span class="t-f">ServicoDePedidos</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, repos: FabricaDeRepositorios):
+        self._repos = repos
+
+    <span class="t-k">def</span> <span class="t-f">fechar</span>(self, pedido):
+        <span class="t-k">try</span>:
+            self._repos.<span class="t-f">pedidos</span>().<span class="t-f">salvar</span>(pedido)
+            self._repos.<span class="t-f">clientes</span>().<span class="t-f">somar_pontos</span>(pedido.cliente_id, pedido.total)
+            self._repos.<span class="t-f">confirmar</span>()
+        <span class="t-k">except</span> <span class="t-f">Exception</span>:
+            self._repos.<span class="t-f">desfazer</span>()
+            <span class="t-k">raise</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que a fábrica garante.</strong> Que todas as peças usam <strong>o mesmo contexto</strong>. A diferença para o exemplo 1 é o que as peças têm em comum: ali, a aparência; aqui, um recurso que existe uma vez por fábrica — a conexão. Os repositórios não sabem se são Postgres ou SQLite, mas todos sabem que a conexão é a da fábrica, e o <code>commit</code> vale para os dois.</p>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="familia-por-pedido">3. Uma família diferente a cada pedido</h2>
+          <p><strong>Situação.</strong> A loja vende para o Brasil e para Portugal. Cada pedido gera um documento fiscal, e o país muda tudo ao mesmo tempo: o cálculo do imposto (ICMS ou IVA), o documento (nota fiscal ou fatura) e a numeração. As operações que mexem nisso são várias: emitir, cancelar e reemitir.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o país decide cada peça, em cada operação</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">emitir</span>(pedido):
+    <span class="t-k">if</span> pedido.pais == <span class="t-s">"BR"</span>:
+        imposto = <span class="t-f">ImpostoBR</span>().<span class="t-f">calcular</span>(pedido)
+        numero = <span class="t-f">NumeracaoBR</span>().<span class="t-f">proximo</span>()
+        <span class="t-k">return</span> <span class="t-f">NotaFiscalBR</span>(pedido, imposto, numero)
+    <span class="t-k">elif</span> pedido.pais == <span class="t-s">"PT"</span>:
+        imposto = <span class="t-f">IvaPT</span>().<span class="t-f">calcular</span>(pedido)
+        numero = <span class="t-f">NumeracaoPT</span>().<span class="t-f">proximo</span>()
+        <span class="t-k">return</span> <span class="t-f">FaturaPT</span>(pedido, imposto, numero)
+
+<span class="t-k">def</span> <span class="t-f">reemitir</span>(pedido):
+    <span class="t-k">if</span> pedido.pais == <span class="t-s">"BR"</span>:
+        ...   <span class="t-c"># mesmos três ramos, de novo</span>
+    <span class="t-k">elif</span> pedido.pais == <span class="t-s">"PT"</span>:
+        ...
+
+<span class="t-k">def</span> <span class="t-f">cancelar</span>(pedido):
+    <span class="t-k">if</span> pedido.pais == <span class="t-s">"BR"</span>:
+        ...   <span class="t-c"># e uma terceira vez</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Um país novo (Espanha) é um ramo em <strong>cada</strong> função, e esquecer uma delas só aparece quando um pedido espanhol cai exatamente nela. As regras de um país ficam picotadas em várias funções, e nenhuma delas mostra como é "ser a Fatura de Portugal" por inteiro.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o país escolhe a fábrica, e as operações a usam</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">FabricaFiscal</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">criar_calculador</span>(self) -&gt; CalculadorDeImposto: ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">criar_numeracao</span>(self) -&gt; Numeracao: ...
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">criar_documento</span>(self, pedido, imposto, numero) -&gt; DocumentoFiscal: ...
+
+<span class="t-k">class</span> <span class="t-f">FabricaFiscalBR</span>(FabricaFiscal):
+    <span class="t-k">def</span> <span class="t-f">criar_calculador</span>(self):
+        <span class="t-k">return</span> <span class="t-f">ImpostoBR</span>()
+
+    <span class="t-k">def</span> <span class="t-f">criar_numeracao</span>(self):
+        <span class="t-k">return</span> <span class="t-f">NumeracaoBR</span>()
+
+    <span class="t-k">def</span> <span class="t-f">criar_documento</span>(self, pedido, imposto, numero):
+        <span class="t-k">return</span> <span class="t-f">NotaFiscalBR</span>(pedido, imposto, numero)
+
+<span class="t-c"># FabricaFiscalPT: a mesma forma, com IvaPT, NumeracaoPT e FaturaPT</span>
+
+<span class="t-c"># o único lugar que conhece os países</span>
+FABRICAS = {<span class="t-s">"BR"</span>: <span class="t-f">FabricaFiscalBR</span>(), <span class="t-s">"PT"</span>: <span class="t-f">FabricaFiscalPT</span>()}
+
+<span class="t-k">def</span> <span class="t-f">emitir</span>(pedido):
+    f = FABRICAS[pedido.pais]
+    imposto = f.<span class="t-f">criar_calculador</span>().<span class="t-f">calcular</span>(pedido)
+    numero = f.<span class="t-f">criar_numeracao</span>().<span class="t-f">proximo</span>()
+    <span class="t-k">return</span> f.<span class="t-f">criar_documento</span>(pedido, imposto, numero)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a fábrica garante.</strong> Que a escolha acontece <strong>uma vez por pedido</strong>, e todo o resto fala com a interface. A diferença para os exemplos anteriores é a fonte da escolha: ali, o tema ou o ambiente é decidido na inicialização; aqui, o país vem do pedido, e a fábrica é um parâmetro que vai de função em função. Espanha é uma classe e uma linha no dicionário — nenhuma operação é aberta.</p>
+          <p>O dicionário ainda é uma escolha por dado. A diferença é que ele existe <em>uma vez</em>, e que entrega a família inteira; as três operações não perguntam mais "qual país".</p>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Dialetos de SQL: aspas, paginação e upsert de cada banco</td><td>1 — peças que só combinam em conjunto</td></tr>
+                <tr><td>Janela, menu e diálogo com a aparência de cada sistema operacional</td><td>1 — peças que só combinam em conjunto</td></tr>
+                <tr><td>Unit of Work: repositórios que compartilham uma transação</td><td>2 — mesmo contexto</td></tr>
+                <tr><td>SDK de um fornecedor: cliente, cobrança e reembolso com a mesma chave de API</td><td>2 — mesmo contexto</td></tr>
+                <tr><td>Formatação de endereço, telefone e moeda por localidade</td><td>3 — família por pedido</td></tr>
+                <tr><td>Inimigos, obstáculos e itens de cada fase de um jogo</td><td>3 — família escolhida em tempo de execução</td></tr>
+                <tr><td>Escolher um único objeto pela configuração</td><td>Factory Method, ou uma função fábrica; não há família</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Abstract Factory, mas não é: um módulo <code>fabricas.py</code> com funções soltas (<code>criar_botao()</code>, <code>criar_campo()</code>), sem uma interface que garanta que as peças vêm do mesmo conjunto. Agrupa criadores, mas não impede a mistura — que é a única coisa que o padrão acrescenta. A seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação mostra a diferença para o Factory Method.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

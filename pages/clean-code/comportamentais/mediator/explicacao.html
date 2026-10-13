@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Mediator · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/mediator/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Mediator</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como deixar um grupo de objetos trabalhar junto sem que cada um precise conhecer todos os outros, concentrando a conversa entre eles em um único lugar.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>O formulário de checkout tem campos que se afetam. Escolher "Pessoa jurídica" mostra o CNPJ e esconde o CPF. Digitar o CEP preenche a rua e a cidade. E o botão Finalizar só habilita quando tudo estiver preenchido, o que depende de todos os campos.</p>
+          <p>A saída preguiçosa é cada campo guardar uma referência aos outros que ele afeta:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — cada campo conhece os que ele mexe</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">TipoPessoa</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, cpf, cnpj, botao):
+        self.cpf, self.cnpj, self.botao = cpf, cnpj, botao
+
+    <span class="t-k">def</span> <span class="t-f">escolher</span>(self, tipo):
+        self.valor = tipo
+        self.cpf.visivel = tipo == <span class="t-s">"pf"</span>
+        self.cnpj.visivel = tipo == <span class="t-s">"pj"</span>
+        self.botao.habilitado = <span class="t-k">False</span>          <span class="t-c"># precisa revalidar tudo</span>
+
+<span class="t-k">class</span> <span class="t-f">Cep</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, rua, cidade, botao):
+        self.rua, self.cidade, self.botao = rua, cidade, botao
+
+    <span class="t-k">def</span> <span class="t-f">digitar</span>(self, cep):
+        self.valor = cep
+        endereco = <span class="t-f">buscar_cep</span>(cep)
+        self.rua.valor = endereco.rua
+        self.cidade.valor = endereco.cidade
+        self.botao.habilitado = <span class="t-f">bool</span>(self.rua.valor)   <span class="t-c"># e o documento? o campo não sabe</span></code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram daqui a pouco. Cada campo novo (telefone, inscrição estadual) exige mexer em vários campos antigos, para que eles avisem o novo. A regra do botão está espalhada: cada campo decide uma parte, e ninguém tem a visão completa. E nenhum campo serve em outro formulário, porque o <code>Cep</code> só funciona se alguém lhe entregar uma rua, uma cidade e um botão.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Tire a conversa de dentro dos campos e ponha-a em um objeto no meio. Cada campo passa a conhecer só esse objeto: ele avisa "mudei" e não sabe o que acontece depois. O objeto do meio conhece todos os campos e decide a reação. São quatro papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Mediador</td><td>A interface que os colegas conhecem</td><td><code>mudou(origem)</code></td></tr>
+                <tr><td>Mediador concreto</td><td>Conhece todos os colegas e concentra as regras de interação</td><td><code>FormularioCheckout</code></td></tr>
+                <tr><td>Colegas</td><td>Os objetos que se afetam; só sabem avisar o mediador</td><td>Os campos e o botão</td></tr>
+                <tr><td>Cliente</td><td>Cria o mediador, que cria e liga os colegas</td><td>A tela de checkout</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é o que cada lado precisa saber. Os colegas ficam <strong>simples e reutilizáveis</strong>: um campo de CEP não sabe que existe um botão. O custo foi para o mediador, que agora sabe de todos. Em troca, as regras de interação, que antes estavam espalhadas, ficam em um lugar onde podem ser lidas e mudadas.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># 1. os colegas: só sabem avisar o mediador, nunca falam entre si</span>
+<span class="t-k">class</span> <span class="t-f">Componente</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, mediador):
+        self._mediador = mediador
+        self.valor = <span class="t-s">""</span>
+        self.visivel = <span class="t-k">True</span>
+        self.habilitado = <span class="t-k">True</span>
+
+    <span class="t-k">def</span> <span class="t-f">alterar</span>(self, valor):
+        self.valor = valor
+        self._mediador.<span class="t-f">mudou</span>(self)
+
+<span class="t-c"># 2. o mediador concreto: conhece todos e concentra as regras</span>
+<span class="t-k">class</span> <span class="t-f">FormularioCheckout</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self.tipo = <span class="t-f">Componente</span>(self)
+        self.cpf = <span class="t-f">Componente</span>(self)
+        self.cnpj = <span class="t-f">Componente</span>(self)
+        self.cep = <span class="t-f">Componente</span>(self)
+        self.rua = <span class="t-f">Componente</span>(self)
+        self.cidade = <span class="t-f">Componente</span>(self)
+        self.finalizar = <span class="t-f">Componente</span>(self)
+
+    <span class="t-k">def</span> <span class="t-f">mudou</span>(self, origem):
+        <span class="t-k">if</span> origem <span class="t-k">is</span> self.tipo:
+            self.cpf.visivel = self.tipo.valor == <span class="t-s">"pf"</span>
+            self.cnpj.visivel = self.tipo.valor == <span class="t-s">"pj"</span>
+        <span class="t-k">elif</span> origem <span class="t-k">is</span> self.cep:
+            endereco = <span class="t-f">buscar_cep</span>(self.cep.valor)
+            self.rua.valor = endereco.rua
+            self.cidade.valor = endereco.cidade
+        self.finalizar.habilitado = self.<span class="t-f">_valido</span>()
+
+    <span class="t-k">def</span> <span class="t-f">_valido</span>(self):
+        documento = self.cpf <span class="t-k">if</span> self.tipo.valor == <span class="t-s">"pf"</span> <span class="t-k">else</span> self.cnpj
+        <span class="t-k">return</span> <span class="t-f">bool</span>(documento.valor <span class="t-k">and</span> self.rua.valor <span class="t-k">and</span> self.cidade.valor)
+
+<span class="t-c"># 3. o cliente: usa o formulário, sem saber quem afeta quem</span>
+form = <span class="t-f">FormularioCheckout</span>()
+form.tipo.<span class="t-f">alterar</span>(<span class="t-s">"pj"</span>)       <span class="t-c"># o CNPJ aparece e o CPF some, sem ninguém ter chamado ninguém</span></code></pre>
+              <pre><code><span class="t-c">// 1. o mediador: a interface que os colegas conhecem</span>
+<span class="t-k">interface</span> <span class="t-f">Mediador</span> {
+  <span class="t-f">mudou</span>(origem: <span class="t-f">Componente</span>): <span class="t-f">void</span>;
+}
+
+<span class="t-c">// 2. os colegas: só sabem avisar o mediador, nunca falam entre si</span>
+<span class="t-k">class</span> <span class="t-f">Componente</span> {
+  valor = <span class="t-s">""</span>;
+  visivel = <span class="t-k">true</span>;
+  habilitado = <span class="t-k">true</span>;
+
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> mediador: <span class="t-f">Mediador</span>) {}
+
+  <span class="t-f">alterar</span>(valor: <span class="t-f">string</span>) {
+    <span class="t-k">this</span>.valor = valor;
+    <span class="t-k">this</span>.mediador.<span class="t-f">mudou</span>(<span class="t-k">this</span>);
+  }
+}
+
+<span class="t-c">// 3. o mediador concreto: conhece todos e concentra as regras</span>
+<span class="t-k">class</span> <span class="t-f">FormularioCheckout</span> <span class="t-k">implements</span> <span class="t-f">Mediador</span> {
+  <span class="t-k">readonly</span> tipo = <span class="t-k">new</span> <span class="t-f">Componente</span>(<span class="t-k">this</span>);
+  <span class="t-k">readonly</span> cpf = <span class="t-k">new</span> <span class="t-f">Componente</span>(<span class="t-k">this</span>);
+  <span class="t-k">readonly</span> cnpj = <span class="t-k">new</span> <span class="t-f">Componente</span>(<span class="t-k">this</span>);
+  <span class="t-k">readonly</span> cep = <span class="t-k">new</span> <span class="t-f">Componente</span>(<span class="t-k">this</span>);
+  <span class="t-k">readonly</span> rua = <span class="t-k">new</span> <span class="t-f">Componente</span>(<span class="t-k">this</span>);
+  <span class="t-k">readonly</span> cidade = <span class="t-k">new</span> <span class="t-f">Componente</span>(<span class="t-k">this</span>);
+  <span class="t-k">readonly</span> finalizar = <span class="t-k">new</span> <span class="t-f">Componente</span>(<span class="t-k">this</span>);
+
+  <span class="t-f">mudou</span>(origem: <span class="t-f">Componente</span>) {
+    <span class="t-k">if</span> (origem === <span class="t-k">this</span>.tipo) {
+      <span class="t-k">this</span>.cpf.visivel = <span class="t-k">this</span>.tipo.valor === <span class="t-s">"pf"</span>;
+      <span class="t-k">this</span>.cnpj.visivel = <span class="t-k">this</span>.tipo.valor === <span class="t-s">"pj"</span>;
+    } <span class="t-k">else</span> <span class="t-k">if</span> (origem === <span class="t-k">this</span>.cep) {
+      <span class="t-k">const</span> endereco = <span class="t-f">buscarCep</span>(<span class="t-k">this</span>.cep.valor);
+      <span class="t-k">this</span>.rua.valor = endereco.rua;
+      <span class="t-k">this</span>.cidade.valor = endereco.cidade;
+    }
+    <span class="t-k">this</span>.finalizar.habilitado = <span class="t-k">this</span>.<span class="t-f">valido</span>();
+  }
+
+  <span class="t-k">private</span> <span class="t-f">valido</span>() {
+    <span class="t-k">const</span> documento = <span class="t-k">this</span>.tipo.valor === <span class="t-s">"pf"</span> ? <span class="t-k">this</span>.cpf : <span class="t-k">this</span>.cnpj;
+    <span class="t-k">return</span> !!(documento.valor &amp;&amp; <span class="t-k">this</span>.rua.valor &amp;&amp; <span class="t-k">this</span>.cidade.valor);
+  }
+}
+
+<span class="t-c">// 4. o cliente: usa o formulário, sem saber quem afeta quem</span>
+<span class="t-k">const</span> form = <span class="t-k">new</span> <span class="t-f">FormularioCheckout</span>();
+form.tipo.<span class="t-f">alterar</span>(<span class="t-s">"pj"</span>);   <span class="t-c">// o CNPJ aparece e o CPF some, sem ninguém ter chamado ninguém</span></code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste vira uma tabela: crie o formulário, altere um campo, confira o estado dos outros. E o <code>Componente</code> funciona em qualquer outro formulário, porque tudo o que ele conhece é a interface <code>Mediador</code>, que um teste preenche com uma classe de duas linhas.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Mediator vale quando três coisas acontecem ao mesmo tempo: um <strong>grupo de objetos</strong> precisa se coordenar; hoje cada um <strong>guarda referências</strong> aos outros, ou sabe o bastante sobre eles para reagir; e as regras da conversa <strong>mudam</strong>, ou os próprios objetos ficam <strong>presos ao grupo</strong> e não servem em outro lugar.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Objetos de interface que se mostram, preenchem e habilitam uns aos outros</td><td><code>self.botao.habilitado = …</code> dentro de um campo; um <code>onChange</code> que mexe em três outros elementos</td><td>O exemplo desta página</td></tr>
+                <tr><td>Participantes que trocam mensagens entre si</td><td>Uma lista <code>outros</code> ou <code>contatos</code> em cada objeto; para sair, é preciso se remover de todos</td><td><a href="uso.html#sala-de-chat">Uso #1</a></td></tr>
+                <tr><td>Serviços que chamam o próximo passo do fluxo</td><td><code>self.envio.agendar(...)</code> no fim de outro serviço; imports circulares entre eles</td><td><a href="uso.html#orquestracao-de-pedido">Uso #2</a></td></tr>
+                <tr><td>A regra depende do par de objetos que se encontram</td><td><code>isinstance(outro, X)</code> dentro de cada classe, com a mesma regra escrita dos dois lados</td><td><a href="uso.html#regras-entre-pares">Uso #3</a></td></tr>
+                <tr><td>Uma classe que não dá para usar sozinha</td><td>O construtor pede cinco outros objetos só para funcionar, e o teste monta o grupo inteiro</td><td>O exemplo desta página</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: a conversa entre os objetos está espalhada dentro deles. Procure a regra "quando A muda, B reage" e veja em quantos arquivos você precisa olhar para encontrá-la inteira.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>São mais de dois objetos que se afetam?</strong> Se são só dois, uma chamada direta ou um callback resolve.</li>
+            <li><strong>Eles guardam referências uns aos outros, ou sabem uns dos outros?</strong> Se cada um age só sobre si, não há conversa a mediar.</li>
+            <li><strong>As regras ou os participantes mudam?</strong> Se o grupo é fixo e pequeno, deixe-os se falando.</li>
+            <li><strong>A coordenação cabe em um lugar sem virar um monstro?</strong> Se são dezenas de regras, uma só classe não é a resposta: divida por responsabilidade.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Mediator não elimina a complexidade da conversa: ele a muda de lugar. O custo é um objeto que sabe de todos, e esse objeto tende a crescer até virar o "God Object" do sistema. A leitura também fica indireta: para entender o que acontece quando o campo muda, você lê o <code>mudou</code> do mediador, e não o campo.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Só dois objetos conversam</td><td>O intermediário seria uma classe a mais entre duas peças que já se entendem</td><td>Chamada direta, ou um callback</td></tr>
+                <tr><td>O objetivo é avisar quem estiver interessado, sem regra nenhuma</td><td>Não há lógica de coordenação, só distribuição de avisos</td><td>Observer (um emissor de eventos)</td></tr>
+                <tr><td>Simplificar o uso de um subsistema por quem está de fora</td><td>A comunicação é de mão única, e os objetos de dentro não conversam entre si</td><td>Facade</td></tr>
+                <tr><td>O mediador já tem dezenas de regras</td><td>Ele virou o objeto que sabe tudo, e mudar qualquer coisa o quebra</td><td>Divida por tema (um mediador por tela ou por fluxo) ou use uma máquina de estados</td></tr>
+                <tr><td>Os objetos só precisam ler um dado em comum</td><td>Não há conversa entre eles, só estado compartilhado</td><td>Um objeto de estado único, com funções para alterá-lo</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Mediator saiu do lugar</h3>
+          <ul>
+            <li><strong>O mediador é um God Object.</strong> Centenas de linhas e as regras de negócio de todo mundo. O acoplamento não sumiu: mudou de endereço e ganhou um ponto único de risco.</li>
+            <li><strong>Os colegas ainda se falam.</strong> Metade das interações passa pelo mediador, e a outra metade continua por referência direta. Ninguém sabe qual vale onde.</li>
+            <li><strong>O mediador testa tipos.</strong> Uma cadeia de <code>isinstance</code> sobre as classes concretas de todos os colegas mostra que ele depende de cada detalhe deles.</li>
+            <li><strong>Um mediador global para o sistema.</strong> Um "barramento de tudo", ao qual todo módulo se conecta, é uma variável global com outro nome.</li>
+            <li><strong>O mediador só repassa.</strong> Sem regra nenhuma, ele é um Observer, e fica mais barato escrito como um.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: o mediador acumula as regras de todo o sistema. Nenhum colega ficou mais simples; só o acoplamento trocou de lugar, e agora qualquer alteração passa por um arquivo que ninguém quer abrir.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, deixe os dois objetos conversarem direto. Extraia o mediador quando o terceiro objeto entrar na conversa. Nesse ponto a refatoração ainda é pequena, e o emaranhado ainda não tem forma.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Observer</td><td>O emissor não sabe quem escuta e não coordena nada. O Mediator conhece os colegas e tem regras sobre quem reage a quê; nele, a comunicação é nos dois sentidos</td></tr>
+                <tr><td>Facade</td><td>Simplifica o uso de um subsistema para quem está de fora, em um sentido só. No Mediator, os objetos de dentro conhecem o mediador e conversam por ele</td></tr>
+                <tr><td><a href="../command/explicacao.html">Command</a></td><td>É o pedido transformado em objeto. Combina com o Mediator: o que o mediador recebe e despacha costuma ser um Command</td></tr>
+                <tr><td><a href="../chain-of-responsibility/explicacao.html">Chain of Responsibility</a></td><td>Passa o pedido adiante até alguém tratar, sem saber quem. O Mediator conhece todos os colegas e decide diretamente quem é afetado</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se os objetos precisam se conhecer um pouco para trabalhar juntos e você os faz conhecer só o intermediário, é Mediator. Se quem avisa não sabe e não se importa com quem recebe, é Observer.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

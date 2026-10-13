@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Composite · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/composite/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Composite</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como tratar um item e um grupo de itens do mesmo jeito, para que o código que usa a estrutura não precise saber em que profundidade está.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>A loja vende produtos soltos e <strong>kits</strong>: o "Combo Home Office" tem teclado, mouse e um segundo kit, o "Brinde", com mais dois produtos. Cada kit tem um desconto próprio. O carrinho precisa saber o preço total e o peso para o frete.</p>
+          <p>A primeira versão resolve com o que existe: um laço, um <code>isinstance</code> e outro laço por dentro.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — uma escada de if e for, com o número de degraus fixado</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">preco_do_carrinho</span>(itens):
+    total = <span class="t-n">0</span>
+    <span class="t-k">for</span> item <span class="t-k">in</span> itens:
+        <span class="t-k">if</span> <span class="t-f">isinstance</span>(item, Kit):
+            parcial = <span class="t-n">0</span>
+            <span class="t-k">for</span> sub <span class="t-k">in</span> item.itens:
+                <span class="t-k">if</span> <span class="t-f">isinstance</span>(sub, Kit):
+                    <span class="t-c"># kit dentro de kit: vale só até aqui</span>
+                    parcial += <span class="t-f">sum</span>(p.preco <span class="t-k">for</span> p <span class="t-k">in</span> sub.itens) * (<span class="t-n">1</span> - sub.desconto)
+                <span class="t-k">else</span>:
+                    parcial += sub.preco
+            total += parcial * (<span class="t-n">1</span> - item.desconto)
+        <span class="t-k">else</span>:
+            total += item.preco
+    <span class="t-k">return</span> total
+
+<span class="t-k">def</span> <span class="t-f">peso_do_carrinho</span>(itens):
+    <span class="t-c"># a mesma escada, de novo, com outro campo</span>
+    ...</code></pre>
+            </div>
+          </div>
+          <p>Funciona até alguém montar um kit dentro de um kit dentro de um kit: aí <code>p.preco</code> cai em um <code>Kit</code> e dá <code>AttributeError</code>, ou pior, passa sem erro e soma errado. Cada operação nova (peso, lista de itens para a nota, estoque a reservar) reescreve a escada inteira, e o desconto do kit precisa ser lembrado em todas. A regra do "o que é um kit" está espalhada por todos os chamadores.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Faça produto e kit responderem às mesmas perguntas. O kit guarda uma lista de itens <em>do mesmo tipo comum</em>, e responde pedindo a cada um deles. Os papéis são quatro:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Componente</td><td>A interface comum a folhas e grupos</td><td><code>Item</code>, com <code>preco()</code> e <code>peso_kg()</code></td></tr>
+                <tr><td>Folha</td><td>Um nó que não contém outros; faz o trabalho de verdade</td><td><code>Produto</code></td></tr>
+                <tr><td>Composto</td><td>Um nó que guarda componentes e responde combinando as respostas deles</td><td><code>Kit</code></td></tr>
+                <tr><td>Cliente</td><td>Quem usa o componente sem perguntar o que ele é</td><td><code>Carrinho</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é o <strong>tipo dos filhos</strong>: o kit guarda <code>Item</code>, não <code>Produto</code>. Por isso um filho pode ser outro kit, e a recursão acontece sozinha, em qualquer profundidade. O cliente nunca pergunta "é um kit?": o kit é quem sabe o que fazer com os filhos.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+<span class="t-k">from</span> dataclasses <span class="t-k">import</span> dataclass
+<span class="t-k">from</span> decimal <span class="t-k">import</span> Decimal
+
+<span class="t-c"># 1. o componente: o que qualquer item do carrinho sabe responder</span>
+<span class="t-k">class</span> <span class="t-f">Item</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">preco</span>(self) -&gt; <span class="t-f">Decimal</span>: ...
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">peso_kg</span>(self) -&gt; <span class="t-f">float</span>: ...
+
+<span class="t-c"># 2. a folha: responde sozinha</span>
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">Produto</span>(Item):
+    nome: <span class="t-f">str</span>
+    valor: <span class="t-f">Decimal</span>
+    peso: <span class="t-f">float</span>
+
+    <span class="t-k">def</span> <span class="t-f">preco</span>(self):
+        <span class="t-k">return</span> self.valor
+
+    <span class="t-k">def</span> <span class="t-f">peso_kg</span>(self):
+        <span class="t-k">return</span> self.peso
+
+<span class="t-c"># 3. o composto: guarda Item, e por isso aceita outro Kit</span>
+<span class="t-k">class</span> <span class="t-f">Kit</span>(Item):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, nome: <span class="t-f">str</span>, itens: <span class="t-f">list</span>[Item], desconto: <span class="t-f">Decimal</span> = <span class="t-f">Decimal</span>(<span class="t-s">"0"</span>)):
+        self.nome, self._itens, self._desconto = nome, itens, desconto
+
+    <span class="t-k">def</span> <span class="t-f">preco</span>(self):
+        soma = <span class="t-f">sum</span>((i.<span class="t-f">preco</span>() <span class="t-k">for</span> i <span class="t-k">in</span> self._itens), <span class="t-f">Decimal</span>(<span class="t-n">0</span>))
+        <span class="t-k">return</span> soma * (<span class="t-n">1</span> - self._desconto)
+
+    <span class="t-k">def</span> <span class="t-f">peso_kg</span>(self):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(i.<span class="t-f">peso_kg</span>() <span class="t-k">for</span> i <span class="t-k">in</span> self._itens)
+
+<span class="t-c"># 4. o cliente: não pergunta o que é cada item</span>
+<span class="t-k">class</span> <span class="t-f">Carrinho</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, itens: <span class="t-f">list</span>[Item]):
+        self._itens = itens
+
+    <span class="t-k">def</span> <span class="t-f">total</span>(self):
+        <span class="t-k">return</span> <span class="t-f">sum</span>((i.<span class="t-f">preco</span>() <span class="t-k">for</span> i <span class="t-k">in</span> self._itens), <span class="t-f">Decimal</span>(<span class="t-n">0</span>))
+
+combo = <span class="t-f">Kit</span>(<span class="t-s">"Combo Home Office"</span>, [
+    <span class="t-f">Produto</span>(<span class="t-s">"Teclado"</span>, <span class="t-f">Decimal</span>(<span class="t-s">"250"</span>), <span class="t-n">0.9</span>),
+    <span class="t-f">Kit</span>(<span class="t-s">"Brinde"</span>, [<span class="t-f">Produto</span>(<span class="t-s">"Mousepad"</span>, <span class="t-f">Decimal</span>(<span class="t-s">"30"</span>), <span class="t-n">0.2</span>)], <span class="t-f">Decimal</span>(<span class="t-s">"0.5"</span>)),
+], <span class="t-f">Decimal</span>(<span class="t-s">"0.1"</span>))</code></pre>
+              <pre><code><span class="t-c">// 1. o componente: o que qualquer item do carrinho sabe responder</span>
+<span class="t-k">interface</span> <span class="t-f">Item</span> {
+  <span class="t-f">preco</span>(): <span class="t-f">number</span>;   <span class="t-c">// em centavos</span>
+  <span class="t-f">pesoKg</span>(): <span class="t-f">number</span>;
+}
+
+<span class="t-c">// 2. a folha: responde sozinha</span>
+<span class="t-k">class</span> <span class="t-f">Produto</span> <span class="t-k">implements</span> <span class="t-f">Item</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">readonly</span> nome: <span class="t-f">string</span>, <span class="t-k">private</span> valor: <span class="t-f">number</span>, <span class="t-k">private</span> peso: <span class="t-f">number</span>) {}
+
+  <span class="t-f">preco</span>() { <span class="t-k">return</span> <span class="t-k">this</span>.valor; }
+  <span class="t-f">pesoKg</span>() { <span class="t-k">return</span> <span class="t-k">this</span>.peso; }
+}
+
+<span class="t-c">// 3. o composto: guarda Item, e por isso aceita outro Kit</span>
+<span class="t-k">class</span> <span class="t-f">Kit</span> <span class="t-k">implements</span> <span class="t-f">Item</span> {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">readonly</span> nome: <span class="t-f">string</span>,
+    <span class="t-k">private</span> itens: <span class="t-f">Item</span>[],
+    <span class="t-k">private</span> desconto = <span class="t-n">0</span>,
+  ) {}
+
+  <span class="t-f">preco</span>() {
+    <span class="t-k">const</span> soma = <span class="t-k">this</span>.itens.<span class="t-f">reduce</span>((s, i) =&gt; s + i.<span class="t-f">preco</span>(), <span class="t-n">0</span>);
+    <span class="t-k">return</span> Math.<span class="t-f">round</span>(soma * (<span class="t-n">1</span> - <span class="t-k">this</span>.desconto));
+  }
+
+  <span class="t-f">pesoKg</span>() {
+    <span class="t-k">return</span> <span class="t-k">this</span>.itens.<span class="t-f">reduce</span>((s, i) =&gt; s + i.<span class="t-f">pesoKg</span>(), <span class="t-n">0</span>);
+  }
+}
+
+<span class="t-c">// 4. o cliente: não pergunta o que é cada item</span>
+<span class="t-k">class</span> <span class="t-f">Carrinho</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> itens: <span class="t-f">Item</span>[]) {}
+
+  <span class="t-f">total</span>() {
+    <span class="t-k">return</span> <span class="t-k">this</span>.itens.<span class="t-f">reduce</span>((s, i) =&gt; s + i.<span class="t-f">preco</span>(), <span class="t-n">0</span>);
+  }
+}
+
+<span class="t-k">const</span> combo = <span class="t-k">new</span> <span class="t-f">Kit</span>(<span class="t-s">"Combo Home Office"</span>, [
+  <span class="t-k">new</span> <span class="t-f">Produto</span>(<span class="t-s">"Teclado"</span>, <span class="t-n">25000</span>, <span class="t-n">0.9</span>),
+  <span class="t-k">new</span> <span class="t-f">Kit</span>(<span class="t-s">"Brinde"</span>, [<span class="t-k">new</span> <span class="t-f">Produto</span>(<span class="t-s">"Mousepad"</span>, <span class="t-n">3000</span>, <span class="t-n">0.2</span>)], <span class="t-n">0.5</span>),
+], <span class="t-n">0.1</span>);</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste de <code>Kit</code> não precisa de catálogo nem de banco: uma árvore de três níveis cabe em quatro linhas, e dá para usar um <code>Item</code> falso que devolve valores fixos. Um kit com profundidade arbitrária é testado pelo mesmo caminho que um kit simples.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Composite vale quando três coisas acontecem ao mesmo tempo: os dados formam uma <strong>árvore</strong> (um todo que contém partes), os grupos podem conter outros grupos em uma <strong>profundidade que você não controla</strong>, e quem usa a estrutura quer <strong>tratar um nó e um grupo da mesma forma</strong>.</p>
+          <p>No código, isso aparece de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Quem usa a estrutura pergunta o tipo antes de agir</td><td><code>isinstance(no, Pasta)</code> ou <code>instanceof</code> no começo de cada função que percorre a árvore</td><td><a href="uso.html#pastas-e-arquivos">Uso #1</a></td></tr>
+                <tr><td>Várias operações percorrem a mesma árvore</td><td>A mesma escada de <code>for</code> + <code>if</code> reescrita para tamanho, busca, contagem</td><td><a href="uso.html#pastas-e-arquivos">Uso #1</a></td></tr>
+                <tr><td>Condições que se combinam com E, OU e NÃO</td><td>Tipos como <code>"primeira_compra_e_valor_minimo"</code>; um <code>if</code> novo por combinação pedida</td><td><a href="uso.html#regras-combinaveis">Uso #2</a></td></tr>
+                <tr><td>Uma função que atende "uma pessoa ou várias"</td><td><code>if isinstance(destino, list)</code>; pares <code>enviar_para_um</code> e <code>enviar_para_varios</code></td><td><a href="uso.html#um-ou-varios-destinatarios">Uso #3</a></td></tr>
+                <tr><td>Filtrar uma árvore e depois limpar os pais vazios</td><td>Uma segunda passada para remover "grupos sem nada dentro"</td><td><a href="uso.html#menu-com-permissoes">Uso #4</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: o cliente faz uma pergunta de tipo ("isto é um grupo?") antes de poder agir. O Composite move essa pergunta para dentro dos nós, onde cada um responde com o que sabe.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Um item contém outros itens do mesmo tipo?</strong> Se é uma lista simples de coisas diferentes (um carrinho com produtos), não é parte-todo. Pare.</li>
+            <li><strong>A profundidade pode variar?</strong> Se são sempre dois níveis (categoria e produto), duas classes com tipos diferentes dizem mais que uma interface comum.</li>
+            <li><strong>Folha e grupo respondem à mesma operação?</strong> Se a pergunta só faz sentido em um deles, não há interface comum honesta.</li>
+            <li><strong>Mais de uma operação percorre a árvore, ou ela vem de dados?</strong> Se é uma única função em um único lugar, uma recursão com <code>isinstance</code> é mais simples. Se são várias, ou a árvore é montada em tempo de execução, é Composite.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Composite tem um custo que não aparece de início: folha e grupo passam a compartilhar uma interface, e essa interface tende a engordar para caber nos dois. O tipo "tudo é um <code>Item</code>" também afrouxa o sistema de tipos: o compilador deixa de ajudar a separar o que é grupo do que é folha. E a recursão esconde o custo: um <code>preco()</code> na raiz percorre a árvore toda, e se for chamado em um laço, percorre de novo a cada volta.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Dois níveis fixos (categoria → produto)</td><td>Uma interface comum esconde uma diferença que o domínio tem de verdade</td><td>Duas classes e um laço dentro de outro</td></tr>
+                <tr><td>Uma única operação, em um único lugar</td><td>Uma função recursiva curta é mais fácil de ler que três classes</td><td>Recursão com <code>isinstance</code>. Extraia quando a segunda operação aparecer</td></tr>
+                <tr><td>Folha e grupo são muito diferentes</td><td>A interface comum vira uma lista de métodos que lançam <code>NotImplementedError</code> em um dos lados</td><td>Tipos separados; um Visitor, se as operações são muitas e a estrutura é estável</td></tr>
+                <tr><td>Os dados são um grafo (nó com dois pais, ciclos)</td><td>O Composite pressupõe árvore; a recursão conta duas vezes ou não termina</td><td>Modele o grafo, com um conjunto de visitados na travessia</td></tr>
+                <tr><td>Só precisa percorrer, sem operação nos nós</td><td>Não há comportamento para distribuir pelos nós</td><td>Um gerador (<code>yield from</code>) que devolve os nós em ordem</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Composite saiu do lugar</h3>
+          <ul>
+            <li><strong>A interface base ganhou <code>adicionar</code> e <code>remover</code>.</strong> A folha agora tem métodos que lançam erro. Quem monta a árvore trabalha com <code>Kit</code>; quem a usa vê só <code>Item</code>.</li>
+            <li><strong>O cliente pergunta o tipo mesmo assim.</strong> Um <code>isinstance(item, Kit)</code> depois do pattern mostra que a interface não cobre o que o cliente precisa.</li>
+            <li><strong>Todo nó aponta para o pai.</strong> O ponteiro "por garantia" cria ciclos, impede de compartilhar nós entre árvores e obriga a manter dois lados consistentes.</li>
+            <li><strong>Uma operação cara na raiz, chamada em laço.</strong> Calcular <code>preco()</code> do carrinho inteiro a cada renderização, sem guardar o resultado.</li>
+            <li><strong>O composto tem regra de negócio que depende de qual filho está dentro.</strong> Se o kit precisa saber que um filho é um produto específico, a abstração não está segurando.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: <code>Produto.adicionar()</code> existindo só para lançar uma exceção. A interface comum foi ampliada para que o código "fique uniforme", e a folha passou a mentir sobre o que sabe fazer.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com uma função recursiva. Ela é pequena, e promovê-la a Composite é uma refatoração mecânica quando a segunda operação precisar percorrer a mesma árvore.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Decorator</td><td>Tem a mesma estrutura (um objeto que guarda outro da mesma interface), mas embrulha <em>um só</em>, para acrescentar comportamento. O Composite guarda vários e combina as respostas deles</td></tr>
+                <tr><td>Iterator</td><td>Percorre a estrutura sem expor como ela é feita. O Composite é a própria estrutura, e os dois costumam andar juntos</td></tr>
+                <tr><td>Visitor</td><td>Tira as operações de dentro dos nós e as põe em um objeto separado. Serve ao Composite quando as operações mudam mais que os tipos de nó</td></tr>
+                <tr><td><a href="../../comportamentais/chain-of-responsibility/explicacao.html">Chain of Responsibility</a></td><td>Passa o pedido adiante até alguém tratar. No Composite o pedido vai para <em>todos</em> os filhos, e o resultado é a combinação das respostas</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o grupo guarda vários do mesmo tipo que ele e a resposta é a combinação das respostas dos filhos, é Composite; se o objeto embrulha um só para mudar o que ele faz, é Decorator.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

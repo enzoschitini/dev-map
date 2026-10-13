@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Chain of Responsibility · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/chain-of-responsibility/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Chain of Responsibility</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como deixar um pedido percorrer uma sequência de candidatos até alguém tratá-lo, sem que quem pede precise saber quem são eles nem quantos existem.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Na loja, o atendente pode dar desconto de até 5%. Acima disso, só o supervisor, até 15%. Acima disso, só o gerente, até 30%. Mais que isso, ninguém: o pedido é recusado.</p>
+          <p>A saída preguiçosa é uma escada de <code>if</code> que sabe todos os níveis:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — uma escada que conhece todos os níveis</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">aprovar_desconto</span>(pedido, percentual):
+    <span class="t-k">if</span> percentual &lt;= <span class="t-n">5</span>:
+        <span class="t-k">return</span> <span class="t-f">Aprovacao</span>(<span class="t-s">"atendente"</span>, percentual)
+    <span class="t-k">elif</span> percentual &lt;= <span class="t-n">15</span>:
+        <span class="t-f">notificar</span>(<span class="t-s">"supervisor"</span>, pedido)
+        <span class="t-k">return</span> <span class="t-f">Aprovacao</span>(<span class="t-s">"supervisor"</span>, percentual)
+    <span class="t-k">elif</span> percentual &lt;= <span class="t-n">30</span>:
+        <span class="t-f">notificar</span>(<span class="t-s">"gerente"</span>, pedido)
+        <span class="t-k">return</span> <span class="t-f">Aprovacao</span>(<span class="t-s">"gerente"</span>, percentual)
+    <span class="t-k">else</span>:
+        <span class="t-k">raise</span> <span class="t-f">DescontoRecusado</span>(percentual)</code></pre>
+            </div>
+          </div>
+          <p>Não é um código ruim, e é isso que o torna perigoso: funciona. O problema aparece quando a regra muda. Criar o cargo de coordenador, entre o atendente e o supervisor, significa abrir a escada no meio e torcer para não trocar um <code>&lt;=</code> por <code>&lt;</code>. A tela que mostra "quem precisa aprovar este desconto" precisa repetir os mesmos limites, e as duas cópias começam a divergir. E todo cargo novo é um motivo a mais para esta função mudar, o que o Open/Closed pede para evitar.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Transforme cada nível em um elo que sabe uma coisa só: se o pedido é dele e, se não for, a quem entregar em seguida. Quem pede fala com o primeiro elo e espera. São quatro papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Pedido</td><td>O que viaja pela cadeia</td><td>O <code>percentual</code> solicitado</td></tr>
+                <tr><td>Elo</td><td>Decide se trata; se não, passa ao próximo</td><td><code>Alcada</code></td></tr>
+                <tr><td>Fim da cadeia</td><td>O último elo, sem próximo: precisa tratar ou falhar de forma explícita</td><td>O gerente, que recusa o que passa de 30%</td></tr>
+                <tr><td>Cliente</td><td>Monta a cadeia e entrega o pedido ao primeiro elo</td><td><code>cadeia.aprovar(12)</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é quem sabe o quê. Quem pede conhece só o primeiro elo; cada elo conhece só o próximo; e a pergunta "é comigo?" mora no elo, e não numa escada central. Acrescentar um nível é encaixar um elo na montagem, sem mexer em nenhum dos outros.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> dataclasses <span class="t-k">import</span> dataclass
+
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">Aprovacao</span>:
+    quem: <span class="t-f">str</span>
+    percentual: <span class="t-f">float</span>
+
+<span class="t-c"># 1. o elo: decide se é com ele e, se não for, passa adiante</span>
+<span class="t-f">@dataclass</span>
+<span class="t-k">class</span> <span class="t-f">Alcada</span>:
+    cargo: <span class="t-f">str</span>
+    limite: <span class="t-f">float</span>                       <span class="t-c"># percentual máximo que este cargo aprova</span>
+    proximo: <span class="t-s">"Alcada | None"</span> = <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">aprovar</span>(self, percentual: <span class="t-f">float</span>) -&gt; <span class="t-f">Aprovacao</span>:
+        <span class="t-k">if</span> percentual &lt;= self.limite:
+            <span class="t-k">return</span> <span class="t-f">Aprovacao</span>(quem=self.cargo, percentual=percentual)
+        <span class="t-k">if</span> self.proximo <span class="t-k">is</span> <span class="t-k">None</span>:        <span class="t-c"># 2. o fim da cadeia: ninguém aprova, e isso é dito</span>
+            <span class="t-k">raise</span> <span class="t-f">DescontoRecusado</span>(percentual)
+        <span class="t-k">return</span> self.proximo.<span class="t-f">aprovar</span>(percentual)
+
+<span class="t-c"># 3. o cliente monta a cadeia uma vez e entrega ao primeiro elo</span>
+cadeia = <span class="t-f">Alcada</span>(<span class="t-s">"atendente"</span>, <span class="t-n">5</span>,
+    <span class="t-f">Alcada</span>(<span class="t-s">"supervisor"</span>, <span class="t-n">15</span>,
+        <span class="t-f">Alcada</span>(<span class="t-s">"gerente"</span>, <span class="t-n">30</span>)))
+
+cadeia.<span class="t-f">aprovar</span>(<span class="t-n">12</span>)   <span class="t-c"># Aprovacao(quem="supervisor", percentual=12)</span>
+cadeia.<span class="t-f">aprovar</span>(<span class="t-n">45</span>)   <span class="t-c"># DescontoRecusado</span></code></pre>
+              <pre><code><span class="t-k">interface</span> <span class="t-f">Aprovacao</span> { quem: <span class="t-f">string</span>; percentual: <span class="t-f">number</span> }
+
+<span class="t-c">// 1. o elo: decide se é com ele e, se não for, passa adiante</span>
+<span class="t-k">class</span> <span class="t-f">Alcada</span> {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">private</span> cargo: <span class="t-f">string</span>,
+    <span class="t-k">private</span> limite: <span class="t-f">number</span>,       <span class="t-c">// percentual máximo que este cargo aprova</span>
+    <span class="t-k">private</span> proximo?: <span class="t-f">Alcada</span>,
+  ) {}
+
+  <span class="t-f">aprovar</span>(percentual: <span class="t-f">number</span>): <span class="t-f">Aprovacao</span> {
+    <span class="t-k">if</span> (percentual &lt;= <span class="t-k">this</span>.limite) <span class="t-k">return</span> { quem: <span class="t-k">this</span>.cargo, percentual };
+    <span class="t-c">// 2. o fim da cadeia: ninguém aprova, e isso é dito</span>
+    <span class="t-k">if</span> (!<span class="t-k">this</span>.proximo) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">DescontoRecusado</span>(percentual);
+    <span class="t-k">return</span> <span class="t-k">this</span>.proximo.<span class="t-f">aprovar</span>(percentual);
+  }
+}
+
+<span class="t-c">// 3. o cliente monta a cadeia uma vez e entrega ao primeiro elo</span>
+<span class="t-k">const</span> cadeia = <span class="t-k">new</span> <span class="t-f">Alcada</span>(<span class="t-s">"atendente"</span>, <span class="t-n">5</span>,
+  <span class="t-k">new</span> <span class="t-f">Alcada</span>(<span class="t-s">"supervisor"</span>, <span class="t-n">15</span>,
+    <span class="t-k">new</span> <span class="t-f">Alcada</span>(<span class="t-s">"gerente"</span>, <span class="t-n">30</span>)));
+
+cadeia.<span class="t-f">aprovar</span>(<span class="t-n">12</span>);   <span class="t-c">// { quem: "supervisor", percentual: 12 }</span>
+cadeia.<span class="t-f">aprovar</span>(<span class="t-n">45</span>);   <span class="t-c">// DescontoRecusado</span></code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>Cada elo se testa sozinho: <code>Alcada("teste", 10)</code> sem próximo aprova até 10 e recusa o resto, sem precisar dos outros níveis. E o coordenador do exemplo acima vira uma linha na montagem, sem tocar em <code>Alcada</code>.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Chain of Responsibility vale quando três coisas acontecem ao mesmo tempo: <strong>mais de um</strong> objeto pode tratar o pedido, <strong>qual deles trata</strong> só se sabe na hora, e quem pede <strong>não deve conhecer</strong> os candidatos, ou a lista e a ordem deles mudam.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Uma escada decide quem trata o pedido</td><td><code>if valor &lt;= X</code> … <code>elif valor &lt;= Y</code> …, ou a mesma escada copiada em dois lugares</td><td><a href="uso.html#alcada-por-valor">Uso #1</a></td></tr>
+                <tr><td>As mesmas verificações no começo de cada handler</td><td>Autenticação, limite de requisições e validação repetidos no topo de toda rota, com pequenas diferenças</td><td><a href="uso.html#middleware">Uso #2</a></td></tr>
+                <tr><td>O evento deve ser tratado por quem estiver mais perto</td><td><code>closest()</code>, <code>parent</code>, ou um <code>if</code> global que testa de qual componente o evento veio</td><td><a href="uso.html#evento-que-sobe">Uso #3</a></td></tr>
+                <tr><td>Fontes com custos diferentes, tentadas em ordem</td><td><code>if x is None: x = outra_fonte()</code> aninhado, ou <code>try</code> dentro de <code>except</code></td><td><a href="uso.html#fontes-em-camadas">Uso #4</a></td></tr>
+                <tr><td>A ordem ou o conjunto de candidatos muda por ambiente</td><td>Flags como <code>if settings.USA_CACHE</code> espalhadas pelo caminho da chamada</td><td><a href="uso.html#fontes-em-camadas">Uso #4</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>Repare no que os sinais têm em comum: quem pede está sabendo demais sobre quem responde. A escada, a repetição no topo e o <code>if</code> global são o mesmo conhecimento, escrito no lugar errado.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Mais de um objeto pode tratar o pedido?</strong> Se só um pode, chame esse direto.</li>
+            <li><strong>Quem trata depende de algo que só se sabe na hora?</strong> Se você sabe a chave de antemão (um tipo, um nome), escolha por ela com um dicionário.</li>
+            <li><strong>Os candidatos ou a ordem mudam, ou a escada aparece em mais de um lugar?</strong> Se a lista é fixa, pequena e vive em um lugar só, um <code>if/elif</code> basta.</li>
+            <li><strong>Só o primeiro que pode deve tratar, ou qualquer um pode barrar?</strong> Se sim, é Chain of Responsibility. Se todos devem receber o pedido, é Observer.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O custo do Chain of Responsibility é a leitura. O fluxo deixa de estar em um lugar: para saber quem trata um pedido, é preciso achar onde a cadeia é montada e seguir os elos na ordem. Na depuração, a pilha de chamadas fica um degrau mais longa por elo. E existe um risco que a escada não tem: o pedido pode atravessar a cadeia inteira e ninguém tratá-lo.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Dois ou três casos fixos, em um lugar só</td><td>A escada inteira cabe na tela, e a cadeia só acrescenta classes e montagem</td><td>Escreva o <code>if/elif</code></td></tr>
+                <tr><td>Você já sabe qual objeto trata</td><td>Percorrer a cadeia procurando algo que você conhece é trabalho à toa</td><td>Um dicionário de chave para tratador, ou Strategy</td></tr>
+                <tr><td>Todos os interessados precisam ser avisados</td><td>A cadeia para no primeiro que trata; o aviso não chega aos demais</td><td>Observer</td></tr>
+                <tr><td>Etapas fixas, cada uma transformando o dado da anterior</td><td>Não há "é comigo?", só uma sequência; o pedido nunca para no meio</td><td>Uma lista de funções chamadas em ordem</td></tr>
+                <tr><td>Um pedido que não pode ficar sem resposta, e não há fim definido</td><td>O silêncio no fim da cadeia vira um bug que ninguém vê</td><td>Um último elo que trata o que sobrou, ou que falha com a mensagem clara</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que a cadeia saiu do lugar</h3>
+          <ul>
+            <li><strong>Ninguém sabe a ordem.</strong> Se para entender o fluxo é preciso procurar em cinco arquivos onde os elos foram encaixados, a montagem deveria estar em um lugar só.</li>
+            <li><strong>Um elo assume que outro já rodou.</strong> Quando o elo C só funciona porque o A preencheu algo, a ordem virou parte do contrato sem ninguém ter escrito isso. Ou o dado viaja no pedido, ou os dois são um elo só.</li>
+            <li><strong>O elo escolhe o próximo.</strong> Um elo que chama "o elo de pagamento" por nome deixou de ser parte de uma cadeia: virou um grafo, com todos os problemas de um.</li>
+            <li><strong>O pedido some.</strong> Nenhuma resposta, nenhum erro, nenhum log: o pedido percorreu tudo e ninguém o tratou.</li>
+            <li><strong>Uma cadeia de dois elos "por flexibilidade".</strong> Dois casos fixos são um <code>if</code> com <code>else</code>. A flexibilidade que ninguém pediu tem o mesmo custo da que alguém pediu.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: o último elo retorna <code>None</code> e o chamador segue em frente como se algo tivesse sido feito. Toda cadeia precisa de um fim que trate ou que grite.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com o <code>if/elif</code>. Extrair a cadeia é uma refatoração pequena quando a escada aparece pela segunda vez ou quando o quarto nível chega. Montar a cadeia antes disso é pagar o custo de leitura por uma flexibilidade que talvez nunca seja usada.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Decorator</td><td>Também encadeia objetos com a mesma interface, mas todos participam e cada um acrescenta algo; na cadeia, cada elo decide se trata e pode encerrar o caminho</td></tr>
+                <tr><td>Observer</td><td>Todos os interessados recebem o aviso, e nenhum deles impede os outros; na cadeia, o pedido tem um destino só</td></tr>
+                <tr><td>Strategy</td><td>Você escolhe um algoritmo de antemão e o chama; na cadeia, você não sabe qual elo vai tratar</td></tr>
+                <tr><td>Command</td><td>Transforma o pedido em um objeto, para guardar, desfazer ou enfileirar; a cadeia decide quem recebe o pedido. Os dois combinam: o pedido que viaja pela cadeia costuma ser um Command</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o pedido percorre os candidatos e o primeiro que pode tratar encerra o caminho, é Chain of Responsibility. Se todos recebem, é Observer.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

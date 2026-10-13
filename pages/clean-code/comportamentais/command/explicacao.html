@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Command · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/command/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Command</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como transformar um pedido de ação em um objeto, para poder guardá-lo, desfazê-lo, enfileirá-lo ou repeti-lo, em vez de apenas executá-lo na hora.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>A tela do carrinho tem os botões Adicionar e Remover, e agora pediram um terceiro: <strong>Desfazer</strong>. Chamar <code>carrinho.adicionar(produto)</code> é fácil; voltar atrás exige lembrar o que foi feito, com quê e como se reverte.</p>
+          <p>A saída preguiçosa é anotar a última ação na própria tela e deixar o "desfazer" decidir o que fazer:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — o desfazer adivinha o que aconteceu</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">TelaCarrinho</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, carrinho):
+        self.carrinho = carrinho
+        self._ultima = <span class="t-k">None</span>              <span class="t-c"># (tipo, dado) da última ação</span>
+
+    <span class="t-k">def</span> <span class="t-f">adicionar</span>(self, produto):
+        self.carrinho.<span class="t-f">adicionar</span>(produto)
+        self._ultima = (<span class="t-s">"adicionar"</span>, produto)
+
+    <span class="t-k">def</span> <span class="t-f">remover</span>(self, produto):
+        self.carrinho.<span class="t-f">remover</span>(produto)
+        self._ultima = (<span class="t-s">"remover"</span>, produto)
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        tipo, produto = self._ultima
+        <span class="t-k">if</span> tipo == <span class="t-s">"adicionar"</span>:
+            self.carrinho.<span class="t-f">remover</span>(produto)
+        <span class="t-k">elif</span> tipo == <span class="t-s">"remover"</span>:
+            self.carrinho.<span class="t-f">adicionar</span>(produto)  <span class="t-c"># volta para o fim da lista, não para o lugar de onde saiu</span></code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram daqui a pouco. Só dá para desfazer a última ação, porque há um único campo para lembrá-la. Cada ação nova (aplicar cupom, trocar quantidade) exige mexer em dois lugares: no método que a faz e no <code>if</code> que a desfaz. E o conhecimento de "como voltar" mora longe do conhecimento de "como fazer", então os dois divergem sem ninguém notar.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Faça cada ação virar um objeto que guarda o que é preciso para executá-la <strong>e</strong> para desfazê-la. A tela deixa de saber o que cada botão faz: ela cria o comando e o entrega a quem executa e lembra. São cinco papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Comando</td><td>A interface: sabe executar e desfazer</td><td><code>Comando</code></td></tr>
+                <tr><td>Comando concreto</td><td>Um pedido específico, com os dados dele</td><td><code>AdicionarItem</code>, <code>RemoverItem</code></td></tr>
+                <tr><td>Receptor</td><td>Quem faz o trabalho de verdade</td><td><code>Carrinho</code></td></tr>
+                <tr><td>Invocador</td><td>Executa comandos e guarda o que foi feito</td><td><code>Historico</code></td></tr>
+                <tr><td>Cliente</td><td>Cria o comando certo e o entrega ao invocador</td><td>A tela do carrinho</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é que o pedido virou <strong>uma coisa</strong>: dá para guardá-la em uma lista, passá-la adiante e usá-la de novo mais tarde. O histórico é só uma pilha de comandos, e não precisa saber o que nenhum deles faz.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+
+<span class="t-c"># 1. o comando: um pedido que sabe se executar e se desfazer</span>
+<span class="t-k">class</span> <span class="t-f">Comando</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self) -&gt; <span class="t-k">None</span>: ...
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self) -&gt; <span class="t-k">None</span>: ...
+
+<span class="t-c"># 2. os comandos concretos: o receptor e os dados do pedido</span>
+<span class="t-k">class</span> <span class="t-f">AdicionarItem</span>(Comando):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, carrinho, produto):
+        self._carrinho, self._produto = carrinho, produto
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self):
+        self._carrinho.<span class="t-f">adicionar</span>(self._produto)
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        self._carrinho.<span class="t-f">remover</span>(self._produto)
+
+<span class="t-k">class</span> <span class="t-f">RemoverItem</span>(Comando):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, carrinho, produto):
+        self._carrinho, self._produto = carrinho, produto
+        self._posicao = <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self):
+        self._posicao = self._carrinho.<span class="t-f">remover</span>(self._produto)   <span class="t-c"># devolve de onde saiu</span>
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        self._carrinho.<span class="t-f">inserir</span>(self._posicao, self._produto)
+
+<span class="t-c"># 3. o invocador: executa e lembra, sem saber o que cada comando faz</span>
+<span class="t-k">class</span> <span class="t-f">Historico</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._feitos: <span class="t-f">list</span>[Comando] = []
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self, comando: Comando):
+        comando.<span class="t-f">executar</span>()
+        self._feitos.<span class="t-f">append</span>(comando)
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        <span class="t-k">if</span> self._feitos:
+            self._feitos.<span class="t-f">pop</span>().<span class="t-f">desfazer</span>()
+
+<span class="t-c"># 4. o cliente: só cria comandos e os entrega</span>
+historico.<span class="t-f">executar</span>(<span class="t-f">AdicionarItem</span>(carrinho, camiseta))
+historico.<span class="t-f">desfazer</span>()</code></pre>
+              <pre><code><span class="t-c">// 1. o comando: um pedido que sabe se executar e se desfazer</span>
+<span class="t-k">interface</span> <span class="t-f">Comando</span> {
+  <span class="t-f">executar</span>(): <span class="t-f">void</span>;
+  <span class="t-f">desfazer</span>(): <span class="t-f">void</span>;
+}
+
+<span class="t-c">// 2. os comandos concretos: o receptor e os dados do pedido</span>
+<span class="t-k">class</span> <span class="t-f">AdicionarItem</span> <span class="t-k">implements</span> <span class="t-f">Comando</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> carrinho: <span class="t-f">Carrinho</span>, <span class="t-k">private</span> produto: <span class="t-f">Produto</span>) {}
+
+  <span class="t-f">executar</span>() { <span class="t-k">this</span>.carrinho.<span class="t-f">adicionar</span>(<span class="t-k">this</span>.produto); }
+  <span class="t-f">desfazer</span>() { <span class="t-k">this</span>.carrinho.<span class="t-f">remover</span>(<span class="t-k">this</span>.produto); }
+}
+
+<span class="t-k">class</span> <span class="t-f">RemoverItem</span> <span class="t-k">implements</span> <span class="t-f">Comando</span> {
+  <span class="t-k">private</span> posicao = -<span class="t-n">1</span>;
+
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> carrinho: <span class="t-f">Carrinho</span>, <span class="t-k">private</span> produto: <span class="t-f">Produto</span>) {}
+
+  <span class="t-f">executar</span>() { <span class="t-k">this</span>.posicao = <span class="t-k">this</span>.carrinho.<span class="t-f">remover</span>(<span class="t-k">this</span>.produto); }  <span class="t-c">// devolve de onde saiu</span>
+  <span class="t-f">desfazer</span>() { <span class="t-k">this</span>.carrinho.<span class="t-f">inserir</span>(<span class="t-k">this</span>.posicao, <span class="t-k">this</span>.produto); }
+}
+
+<span class="t-c">// 3. o invocador: executa e lembra, sem saber o que cada comando faz</span>
+<span class="t-k">class</span> <span class="t-f">Historico</span> {
+  <span class="t-k">private</span> feitos: <span class="t-f">Comando</span>[] = [];
+
+  <span class="t-f">executar</span>(comando: <span class="t-f">Comando</span>) {
+    comando.<span class="t-f">executar</span>();
+    <span class="t-k">this</span>.feitos.<span class="t-f">push</span>(comando);
+  }
+
+  <span class="t-f">desfazer</span>() {
+    <span class="t-k">this</span>.feitos.<span class="t-f">pop</span>()?.<span class="t-f">desfazer</span>();
+  }
+}
+
+<span class="t-c">// 4. o cliente: só cria comandos e os entrega</span>
+historico.<span class="t-f">executar</span>(<span class="t-k">new</span> <span class="t-f">AdicionarItem</span>(carrinho, camiseta));
+historico.<span class="t-f">desfazer</span>();</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>Cada comando se testa sem tela nenhuma: execute, confira o carrinho, desfaça, confira de novo. E o <code>Historico</code> se testa com um comando falso que só conta chamadas. Uma ação nova é uma classe nova; nem a tela nem o histórico mudam.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Command vale quando três coisas acontecem ao mesmo tempo: o pedido precisa existir <strong>separado</strong> de quem o dispara e de quando ele roda; alguém precisa fazer <strong>algo com o pedido</strong> além de executá-lo (guardar, desfazer, enfileirar, repetir, mostrar o nome); e existem <strong>várias ações</strong> desse tipo, ou várias origens para a mesma.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Desfazer e refazer</td><td>Um campo como <code>_ultima_acao</code> e um <code>if tipo == …</code> dentro do <code>desfazer</code>; ou uma cópia da tela inteira a cada alteração</td><td><a href="uso.html#desfazer-refazer">Uso #1</a></td></tr>
+                <tr><td>A ação precisa rodar depois, ou em outro processo</td><td>Um dicionário com <code>"tipo"</code> e <code>"dados"</code> despachado por <code>if</code>; ou uma <code>Thread</code> com meia dúzia de argumentos que se perde quando o servidor reinicia</td><td><a href="uso.html#fila-de-tarefas">Uso #2</a></td></tr>
+                <tr><td>O histórico de "o que aconteceu" não pode ser reaplicado</td><td>Uma lista de textos de log que ninguém consegue transformar de volta na ação</td><td><a href="uso.html#fila-de-tarefas">Uso #2</a></td></tr>
+                <tr><td>A mesma ação, vários gatilhos</td><td><code>salvar(doc)</code> escrito no botão, no menu e no atalho; a regra de "desabilitado" repetida em cada um</td><td><a href="uso.html#varios-gatilhos">Uso #3</a></td></tr>
+                <tr><td>Passos que valem por inteiro ou nada</td><td>Uma lista "o que já fiz" dentro de um <code>except</code>, para desfazer à mão na ordem inversa</td><td><a href="uso.html#lote-tudo-ou-nada">Uso #4</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: alguém precisa tratar a ação como um <em>dado</em>, e hoje ela só existe como uma chamada que já aconteceu. Se nada precisa olhar a ação depois que ela roda, ela pode continuar sendo só uma chamada.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Você só precisa chamar a ação agora?</strong> Chame o método. Não há pedido a representar.</li>
+            <li><strong>Precisa fazer algo com a ação além de executá-la?</strong> Desfazer, guardar, enfileirar, repetir, mostrar o nome. Se não, basta passar uma função.</li>
+            <li><strong>Há mais de uma ação, ou mais de uma origem para a mesma?</strong> Se é uma ação só, com um gatilho só, um método resolve.</li>
+            <li><strong>O pedido consegue levar tudo de que precisa?</strong> Se ele depende de estado global ou de um objeto vivo que não viaja, resolva isso primeiro; senão o comando guardado já nasce quebrado.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O custo do Command é uma classe a mais por ação, e, quando há desfazer, um segundo método que precisa ser mantido em sincronia com o primeiro. O <code>desfazer</code> é código que ninguém exercita no dia a dia, e por isso é onde os bugs ficam escondidos.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Só passar uma ação para ser chamada depois (um callback)</td><td>Uma classe com um método <code>executar</code> é uma função com cerimônia</td><td>Passe uma função ou um <code>lambda</code></td></tr>
+                <tr><td>Desfazer significa "restaurar o objeto inteiro", e ele é pequeno</td><td>Escrever o inverso de cada ação é mais código, e mais chance de divergir, que copiar o estado</td><td>Guarde um snapshot (Memento)</td></tr>
+                <tr><td>A ação não tem volta e não precisa de fila (cobrar, enviar e-mail)</td><td>O <code>desfazer</code> não existe de verdade; sem ele, o objeto só repassa uma chamada</td><td>Chame direto. Se precisa de "compensação", ela é outro comando, com outro nome</td></tr>
+                <tr><td>Uma ação, um gatilho</td><td>Não há o que desacoplar</td><td>Um método</td></tr>
+                <tr><td>Escolher entre jeitos de fazer a mesma coisa</td><td>O que varia é o algoritmo, não o pedido</td><td>Strategy</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Command saiu do lugar</h3>
+          <ul>
+            <li><strong>O comando só repassa.</strong> Se o <code>executar</code> é uma linha que chama outro método, sem desfazer, sem fila e sem nome, ele é só uma camada.</li>
+            <li><strong>O <code>desfazer</code> não desfaz.</strong> Ele reverte o que está na memória e deixa de fora o e-mail enviado, o estoque reservado, a nota emitida. O usuário confia no botão e o botão mente.</li>
+            <li><strong>O comando guarda o mundo.</strong> Ele aponta para um objeto global ou para uma sessão em vez de guardar os dados do pedido. Serializado, ou executado de novo mais tarde, ele já não encontra o que precisava.</li>
+            <li><strong>A regra de negócio mora no comando.</strong> O comando deveria chamar o receptor; se ele calcula desconto, valida estoque e decide, virou um serviço com outro nome.</li>
+            <li><strong>O histórico não tem fim.</strong> Uma pilha de comandos sem limite guarda para sempre os objetos que cada um segura.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: o botão Desfazer restaura o carrinho, mas o cupom, a reserva de estoque e o e-mail continuam valendo. Um desfazer parcial é pior que nenhum, porque o sistema passa a ficar em um estado que ninguém pediu.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com uma função. O primeiro "desfazer" ou "enfileirar" é o sinal para extrair a classe: nesse ponto a refatoração é pequena, porque a ação já está concentrada em um lugar.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../chain-of-responsibility/explicacao.html">Chain of Responsibility</a></td><td>Decide <em>quem</em> recebe o pedido; o Command é o próprio pedido. Combinam bem: o que viaja pela cadeia costuma ser um Command</td></tr>
+                <tr><td>Strategy</td><td>É um jeito intercambiável de fazer algo, usado na hora. O Command é uma ação concreta, com seus dados, que pode ser guardada e executada depois</td></tr>
+                <tr><td>Memento</td><td>Guarda o <em>estado</em> para voltar a ele; o Command guarda a <em>operação</em> e como revertê-la. Aparecem juntos quando o comando precisa lembrar o valor anterior</td></tr>
+                <tr><td>Observer</td><td>Avisa quem estiver interessado de que algo aconteceu; o Command pede que algo aconteça</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o objeto significa "faça isto", com dados e talvez um inverso, é Command. Se significa "este é o jeito de fazer", é Strategy.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

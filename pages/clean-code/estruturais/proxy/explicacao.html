@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Proxy · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/proxy/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Proxy</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como pôr um representante no lugar de um objeto, para decidir se, quando ou onde o objeto de verdade é usado, sem que quem o usa perceba a troca.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>A tela de clientes lista 200 nomes por página. Cada <code>Cliente</code> tem um histórico de pedidos, e o histórico é pesado: uma consulta que junta pedidos, itens e pagamentos. A tela, porém, só mostra o histórico de <em>um</em> cliente, quando alguém clica nele.</p>
+          <p>O jeito direto de escrever é carregar o que o objeto tem, no construtor:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — a consulta pesada roda para todos, sempre</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Cliente</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, id, nome, repo):
+        self.id, self.nome = id, nome
+        self.historico = repo.<span class="t-f">carregar_historico</span>(id)   <span class="t-c"># o SELECT pesado, no construtor</span>
+
+<span class="t-k">def</span> <span class="t-f">listar_clientes</span>(repo):
+    <span class="t-k">return</span> [<span class="t-f">Cliente</span>(r.id, r.nome, repo) <span class="t-k">for</span> r <span class="t-k">in</span> repo.<span class="t-f">todos</span>()]  <span class="t-c"># 200 consultas pesadas</span></code></pre>
+            </div>
+          </div>
+          <p>A tela que só mostra nomes dispara 200 consultas pesadas, e 199 delas são jogadas fora. A correção "rápida" costuma piorar: um parâmetro <code>carregar_historico=False</code>, e a partir daí todo uso de <code>cliente.historico</code> precisa lembrar de um <code>if cliente.historico is None</code>. A pergunta "já foi carregado?" se espalha por todo o código que usa o cliente, que nem devia saber que existe um carregamento.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Ponha, no lugar do histórico, um objeto com <strong>a mesma interface</strong> que só vai buscar o histórico de verdade quando alguém pedir pela primeira vez. Para o <code>Cliente</code> e para a tela, é um histórico como outro qualquer. Os papéis são quatro:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Sujeito</td><td>A interface que o cliente usa e que real e proxy implementam</td><td><code>Historico</code></td></tr>
+                <tr><td>Sujeito real</td><td>O objeto que faz o trabalho de verdade</td><td><code>HistoricoDoBanco</code></td></tr>
+                <tr><td>Proxy</td><td>Tem a mesma interface, guarda o que precisa para criar ou alcançar o real e controla quando isso acontece</td><td><code>HistoricoPreguicoso</code></td></tr>
+                <tr><td>Cliente</td><td>Quem usa o sujeito sem saber qual dos dois recebeu</td><td><code>Cliente</code> e a tela</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é que o proxy <strong>é</strong> o objeto, do ponto de vista de quem o usa, e <strong>decide</strong> o que fazer com cada chamada: criar o real agora, recusar, mandar para outro processo. O real não sabe que existe um proxy na frente dele. Isso é o que o separa do Decorator, que acrescenta algo em <em>toda</em> chamada; o proxy controla o <em>alcance</em>.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+
+<span class="t-c"># 1. o sujeito: o que o cliente usa</span>
+<span class="t-k">class</span> <span class="t-f">Historico</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">pedidos</span>(self) -&gt; <span class="t-f">list</span>[Pedido]: ...
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">total_gasto</span>(self) -&gt; <span class="t-f">Decimal</span>: ...
+
+<span class="t-c"># 2. o sujeito real: a consulta pesada acontece ao criar</span>
+<span class="t-k">class</span> <span class="t-f">HistoricoDoBanco</span>(Historico):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, repo, cliente_id):
+        self._pedidos = repo.<span class="t-f">pedidos_do_cliente</span>(cliente_id)
+
+    <span class="t-k">def</span> <span class="t-f">pedidos</span>(self):
+        <span class="t-k">return</span> self._pedidos
+
+    <span class="t-k">def</span> <span class="t-f">total_gasto</span>(self):
+        <span class="t-k">return</span> <span class="t-f">sum</span>((p.total <span class="t-k">for</span> p <span class="t-k">in</span> self._pedidos), <span class="t-f">Decimal</span>(<span class="t-n">0</span>))
+
+<span class="t-c"># 3. o proxy: mesma interface, cria o real só na primeira chamada</span>
+<span class="t-k">class</span> <span class="t-f">HistoricoPreguicoso</span>(Historico):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, repo, cliente_id):
+        self._repo, self._cliente_id = repo, cliente_id
+        self._real: HistoricoDoBanco | <span class="t-k">None</span> = <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">_carregado</span>(self) -&gt; HistoricoDoBanco:
+        <span class="t-k">if</span> self._real <span class="t-k">is</span> <span class="t-k">None</span>:
+            self._real = <span class="t-f">HistoricoDoBanco</span>(self._repo, self._cliente_id)
+        <span class="t-k">return</span> self._real
+
+    <span class="t-k">def</span> <span class="t-f">pedidos</span>(self):
+        <span class="t-k">return</span> self.<span class="t-f">_carregado</span>().<span class="t-f">pedidos</span>()
+
+    <span class="t-k">def</span> <span class="t-f">total_gasto</span>(self):
+        <span class="t-k">return</span> self.<span class="t-f">_carregado</span>().<span class="t-f">total_gasto</span>()
+
+<span class="t-c"># 4. o cliente: recebe um Historico e não sabe qual</span>
+<span class="t-k">class</span> <span class="t-f">Cliente</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, id, nome, historico: Historico):
+        self.id, self.nome, self.historico = id, nome, historico
+
+<span class="t-k">def</span> <span class="t-f">listar_clientes</span>(repo):
+    <span class="t-k">return</span> [
+        <span class="t-f">Cliente</span>(r.id, r.nome, <span class="t-f">HistoricoPreguicoso</span>(repo, r.id))   <span class="t-c"># nenhuma consulta ainda</span>
+        <span class="t-k">for</span> r <span class="t-k">in</span> repo.<span class="t-f">todos</span>()
+    ]</code></pre>
+              <pre><code><span class="t-c">// 1. o sujeito: o que o cliente usa</span>
+<span class="t-k">interface</span> <span class="t-f">Historico</span> {
+  <span class="t-f">pedidos</span>(): <span class="t-f">Promise</span>&lt;<span class="t-f">Pedido</span>[]&gt;;
+  <span class="t-f">totalGasto</span>(): <span class="t-f">Promise</span>&lt;<span class="t-f">number</span>&gt;;
+}
+
+<span class="t-c">// 2. o sujeito real: a consulta pesada acontece ao carregar</span>
+<span class="t-k">class</span> <span class="t-f">HistoricoDoBanco</span> <span class="t-k">implements</span> <span class="t-f">Historico</span> {
+  <span class="t-k">private</span> <span class="t-k">constructor</span>(<span class="t-k">private</span> lista: <span class="t-f">Pedido</span>[]) {}
+
+  <span class="t-k">static</span> <span class="t-k">async</span> <span class="t-f">carregar</span>(repo: <span class="t-f">Repositorio</span>, clienteId: <span class="t-f">string</span>) {
+    <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">HistoricoDoBanco</span>(<span class="t-k">await</span> repo.<span class="t-f">pedidosDoCliente</span>(clienteId));
+  }
+
+  <span class="t-k">async</span> <span class="t-f">pedidos</span>() { <span class="t-k">return</span> <span class="t-k">this</span>.lista; }
+  <span class="t-k">async</span> <span class="t-f">totalGasto</span>() { <span class="t-k">return</span> <span class="t-k">this</span>.lista.<span class="t-f">reduce</span>((s, p) =&gt; s + p.total, <span class="t-n">0</span>); }
+}
+
+<span class="t-c">// 3. o proxy: mesma interface, cria o real só na primeira chamada</span>
+<span class="t-k">class</span> <span class="t-f">HistoricoPreguicoso</span> <span class="t-k">implements</span> <span class="t-f">Historico</span> {
+  <span class="t-k">private</span> real?: <span class="t-f">Promise</span>&lt;<span class="t-f">HistoricoDoBanco</span>&gt;;
+
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> repo: <span class="t-f">Repositorio</span>, <span class="t-k">private</span> clienteId: <span class="t-f">string</span>) {}
+
+  <span class="t-k">private</span> <span class="t-f">carregado</span>() {
+    <span class="t-k">return</span> (<span class="t-k">this</span>.real ??= <span class="t-f">HistoricoDoBanco</span>.<span class="t-f">carregar</span>(<span class="t-k">this</span>.repo, <span class="t-k">this</span>.clienteId));
+  }
+
+  <span class="t-k">async</span> <span class="t-f">pedidos</span>() { <span class="t-k">return</span> (<span class="t-k">await</span> <span class="t-k">this</span>.<span class="t-f">carregado</span>()).<span class="t-f">pedidos</span>(); }
+  <span class="t-k">async</span> <span class="t-f">totalGasto</span>() { <span class="t-k">return</span> (<span class="t-k">await</span> <span class="t-k">this</span>.<span class="t-f">carregado</span>()).<span class="t-f">totalGasto</span>(); }
+}
+
+<span class="t-c">// 4. o cliente: recebe um Historico e não sabe qual</span>
+<span class="t-k">class</span> <span class="t-f">Cliente</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">readonly</span> id: <span class="t-f">string</span>, <span class="t-k">readonly</span> nome: <span class="t-f">string</span>, <span class="t-k">readonly</span> historico: <span class="t-f">Historico</span>) {}
+}
+
+<span class="t-k">const</span> clientes = (<span class="t-k">await</span> repo.<span class="t-f">todos</span>()).<span class="t-f">map</span>(
+  (r) =&gt; <span class="t-k">new</span> <span class="t-f">Cliente</span>(r.id, r.nome, <span class="t-k">new</span> <span class="t-f">HistoricoPreguicoso</span>(repo, r.id)),   <span class="t-c">// nenhuma consulta ainda</span>
+);</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste do <code>Cliente</code> e da tela usa um <code>Historico</code> falso com a lista pronta, como com qualquer outra implementação. E o teste do proxy conta chamadas no repositório: zero ao listar, uma ao pedir <code>pedidos()</code>, e ainda uma só ao pedir <code>total_gasto()</code> logo depois.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Proxy vale quando três coisas acontecem ao mesmo tempo: já existe (ou vai existir) um objeto real com uma interface estável, você precisa controlar <strong>se, quando ou onde</strong> ele é alcançado, e quem o usa <strong>não deve precisar saber</strong> disso.</p>
+          <p>No código, isso aparece de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Um objeto caro criado antes de saber se será usado</td><td>Consulta, leitura de arquivo ou chamada de rede no <code>__init__</code>; N consultas para uma tela que usa uma</td><td><a href="#implementacao">Implementação, acima</a></td></tr>
+                <tr><td>A mesma checagem de permissão antes de cada chamada ao mesmo objeto</td><td><code>if usuario.papel in (...)</code> repetido em controllers e relatórios; um deles esqueceu</td><td><a href="uso.html#acesso-por-papel">Uso #1</a></td></tr>
+                <tr><td>Um serviço foi para outro processo, e o código continua chamando como se fosse local</td><td><code>requests.get(...)</code> com URL, <em>timeout</em> e parse copiados onde antes havia <code>estoque.disponivel(sku)</code></td><td><a href="uso.html#servico-extraido">Uso #2</a></td></tr>
+                <tr><td>Observar o que acontece com um objeto sem mexer na classe dele</td><td><code>copy.deepcopy</code> antes e comparação depois; <code>UPDATE</code> com todas as colunas</td><td><a href="uso.html#mudancas-de-campos">Uso #3</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>Os sinais têm uma coisa em comum: alguém está fazendo trabalho de porteiro (checar, adiar, localizar, observar) no meio do código que devia só usar o objeto. O Proxy põe o porteiro entre os dois, com a cara do objeto, e nenhum lado muda.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Você quer controlar <em>se, quando ou onde</em> o objeto real é alcançado?</strong> Se o que você quer é acrescentar algo que roda em toda chamada (log, cache, métrica), é Decorator. Pare.</li>
+            <li><strong>A interface do proxy pode ser exatamente a do real?</strong> Se o chamador precisaria de um método novo para usá-lo, é uma API nova, e o nome do que você quer é Facade ou Adapter.</li>
+            <li><strong>Há um motivo concreto?</strong> Custo de criar medido, uma regra de acesso ou uma fronteira de processo. Sem isso, o proxy é só uma indireção.</li>
+            <li><strong>Quem usa o proxy só consegue chegar ao real por ele?</strong> Se o real continua acessível por outro caminho, um proxy de proteção não protege nada.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Proxy tem custos que aparecem na depuração. É um objeto a mais, e uma pilha a mais para atravessar. O proxy <em>mente</em> sobre o objeto: um proxy remoto parece local, mas tem latência e falhas que o real não tem. E o carregamento preguiçoso adianta o prazer e atrasa o erro: se a consulta falhar, a exceção aparece na primeira leitura, longe do ponto onde o objeto foi criado.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>O objeto é barato de criar</td><td>Adiar não economiza nada e atrasa os erros</td><td>Crie direto</td></tr>
+                <tr><td>Você quer acrescentar cache, log ou métrica em toda chamada</td><td>Não controla o alcance do real; só acrescenta comportamento</td><td>Decorator</td></tr>
+                <tr><td>A interface do que existe não é a que o código espera</td><td>O problema é conversão, não controle</td><td>Adapter</td></tr>
+                <tr><td>A chamada remota vai ser feita em laço, ou o chamador precisa decidir o que fazer em caso de falha</td><td>A interface "local" esconde custo e falha que o chamador precisa ver</td><td>Uma interface explícita para o remoto (assíncrona, com erro e <em>timeout</em> à vista)</td></tr>
+                <tr><td>A regra de permissão é complexa, com muita lógica de negócio</td><td>O proxy deve aplicar a regra, e não calculá-la</td><td>Um serviço de autorização que o proxy só consulta</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Proxy saiu do lugar</h3>
+          <ul>
+            <li><strong>O proxy decide regra de negócio.</strong> Se ele calcula quem pode ver o quê, virou o lugar onde a regra mora, sem nome nem teste próprio.</li>
+            <li><strong>O proxy conhece o interior do real.</strong> Se ele acessa campos privados ou depende da ordem em que o real é montado, os dois mudam juntos.</li>
+            <li><strong>O proxy tem métodos que o real não tem.</strong> Quem chama <code>proxy.recarregar()</code> precisa saber que é um proxy, e a transparência acabou.</li>
+            <li><strong>Falha remota disfarçada de valor.</strong> Um proxy que engole o <em>timeout</em> e devolve <code>0</code> faz o chamador decidir com um dado falso.</li>
+            <li><strong>O real vaza por outro caminho.</strong> Um atributo <code>proxy.real</code> público, ou o real injetado diretamente em alguns lugares, desfaz o controle.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: um proxy remoto que parece local e esconde o custo. O chamador faz 200 chamadas a <code>estoque.disponivel(sku)</code> em um laço, como se cada uma fosse uma leitura de memória, e cada uma é uma viagem de rede.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com o objeto real e a chamada direta. O Proxy entra quando o motivo aparece medido: a consulta que deixa a tela lenta, o incidente de acesso, o serviço que foi extraído. Como a interface não muda, introduzi-lo depois é barato.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../decorator/explicacao.html">Decorator</a></td><td>Tem a mesma forma, mas acrescenta algo em <em>toda</em> chamada (log, cache) e é empilhado por quem usa. O Proxy controla se, quando e onde o real é alcançado, e costuma criar ou localizar o real sozinho</td></tr>
+                <tr><td><a href="../adapter/explicacao.html">Adapter</a></td><td>Muda a interface de um objeto existente para outra. O Proxy mantém a interface idêntica</td></tr>
+                <tr><td><a href="../facade/explicacao.html">Facade</a></td><td>Cria uma interface nova e menor sobre várias peças. O Proxy tem a interface de <em>um</em> objeto e fala por ele</td></tr>
+                <tr><td><a href="../flyweight/explicacao.html">Flyweight</a></td><td>Compartilha objetos imutáveis entre muitos contextos para poupar memória. O Proxy (virtual) adia a criação de <em>um</em> objeto até que ele seja necessário</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o objeto intermediário existe para decidir se, quando ou onde o real é usado, é Proxy; se existe para acrescentar algo a cada chamada, é Decorator.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Flyweight · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/flyweight/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Flyweight</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o Flyweight resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o flyweight compartilha em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Flyweight. Marcadores de mapa, glifos de um editor e partículas de um jogo são o mesmo raciocínio do exemplo da <a href="explicacao.html#implementacao">explicação</a> (muitos objetos com o mesmo estado pesado por tipo), então ele não se repete aqui. Sobraram três motivos que ela não cobre. Os casos que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o flyweight compartilha</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#valores-repetidos">Milhões de linhas com os mesmos poucos textos</a></td><td>Cada valor repetido, em uma única cópia</td></tr>
+                <tr><td>2</td><td><a href="#objeto-caro-de-criar">Um objeto imutável caro, criado a cada requisição</a></td><td>O objeto, uma vez por chave</td></tr>
+                <tr><td>3</td><td><a href="#grade-de-tiles">Uma grade de milhões de células</a></td><td>A descrição de cada tipo; a grade guarda só um número</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="valores-repetidos">1. Milhões de linhas com os mesmos poucos textos</h2>
+          <p><strong>Situação.</strong> O time de análise carrega em memória um CSV de 2 milhões de entregas para calcular indicadores. As colunas <code>cidade</code>, <code>status</code> e <code>transportadora</code> têm centenas de valores diferentes no total, repetidos milhões de vezes.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada linha traz a própria cópia do texto</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-f">@dataclass</span>
+<span class="t-k">class</span> <span class="t-f">Entrega</span>:
+    id: <span class="t-f">int</span>
+    cidade: <span class="t-f">str</span>
+    status: <span class="t-f">str</span>
+    transportadora: <span class="t-f">str</span>
+    valor: <span class="t-f">float</span>
+
+<span class="t-k">def</span> <span class="t-f">carregar</span>(caminho):
+    <span class="t-k">with</span> <span class="t-f">open</span>(caminho, newline=<span class="t-s">""</span>) <span class="t-k">as</span> f:
+        <span class="t-k">return</span> [
+            <span class="t-f">Entrega</span>(<span class="t-f">int</span>(l[<span class="t-s">"id"</span>]), l[<span class="t-s">"cidade"</span>], l[<span class="t-s">"status"</span>], l[<span class="t-s">"transportadora"</span>], <span class="t-f">float</span>(l[<span class="t-s">"valor"</span>]))
+            <span class="t-k">for</span> l <span class="t-k">in</span> csv.<span class="t-f">DictReader</span>(f)
+        ]</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O leitor de CSV cria um objeto <code>str</code> novo para cada célula. Seis milhões de textos de uns 50 bytes cada são algo da ordem de 300 MB para guardar umas poucas centenas de valores diferentes. Comparar <code>e.status == "entregue"</code> compara caractere por caractere, em cada uma das 2 milhões de linhas.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — cada valor existe uma vez; as linhas apontam para ele</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> sys
+
+<span class="t-k">def</span> <span class="t-f">carregar</span>(caminho):
+    internar = sys.intern     <span class="t-c"># a "fábrica": devolve sempre o mesmo objeto para o mesmo texto</span>
+    <span class="t-k">with</span> <span class="t-f">open</span>(caminho, newline=<span class="t-s">""</span>) <span class="t-k">as</span> f:
+        <span class="t-k">return</span> [
+            <span class="t-f">Entrega</span>(
+                <span class="t-f">int</span>(l[<span class="t-s">"id"</span>]),
+                <span class="t-f">internar</span>(l[<span class="t-s">"cidade"</span>]),
+                <span class="t-f">internar</span>(l[<span class="t-s">"status"</span>]),
+                <span class="t-f">internar</span>(l[<span class="t-s">"transportadora"</span>]),
+                <span class="t-f">float</span>(l[<span class="t-s">"valor"</span>]),
+            )
+            <span class="t-k">for</span> l <span class="t-k">in</span> csv.<span class="t-f">DictReader</span>(f)
+        ]</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o flyweight compartilha.</strong> O próprio valor. Aqui <strong>não existe classe de flyweight</strong>: o texto é o flyweight, e <code>sys.intern</code> é a fábrica. Isso só é possível porque <code>str</code> é imutável, o mesmo requisito do exemplo da explicação, em escala mínima. Um benefício extra aparece na comparação: com a mesma instância, o Python resolve <code>==</code> por identidade antes de olhar os caracteres.</p>
+          <div class="callout" data-kind="warn"><p>Só vale para campos de <strong>baixa cardinalidade</strong>. Internar o <code>id</code> ou um comentário em texto livre enche a tabela de internamento com valores que nunca se repetem, e a memória sobe em vez de descer. Confira com <code>len(set(coluna))</code> antes.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="objeto-caro-de-criar">2. Um objeto imutável caro, criado a cada requisição</h2>
+          <p><strong>Situação.</strong> O cadastro valida o documento de cada pessoa conforme o país: cada país tem um arquivo de regras (padrão e dígitos verificadores). O serviço recebe 50 cadastros por segundo, de uns 200 países, e o problema aqui não é a memória: é o <strong>tempo</strong> de criar o validador.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o validador é lido e compilado a cada chamada</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ValidadorDeDocumento</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, pais: <span class="t-f">str</span>):
+        regras = json.<span class="t-f">loads</span>(<span class="t-f">Path</span>(<span class="t-s">f"regras/{pais}.json"</span>).<span class="t-f">read_text</span>())   <span class="t-c"># disco</span>
+        self._padrao = re.<span class="t-f">compile</span>(regras[<span class="t-s">"padrao"</span>])
+        self._dv = regras[<span class="t-s">"digitos_verificadores"</span>]
+
+    <span class="t-k">def</span> <span class="t-f">valido</span>(self, documento: <span class="t-f">str</span>) -&gt; <span class="t-f">bool</span>: ...
+
+<span class="t-k">def</span> <span class="t-f">cadastrar</span>(pessoa):
+    <span class="t-k">if</span> <span class="t-k">not</span> <span class="t-f">ValidadorDeDocumento</span>(pessoa.pais).<span class="t-f">valido</span>(pessoa.documento):
+        <span class="t-k">raise</span> <span class="t-f">DocumentoInvalido</span>(pessoa.documento)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada cadastro lê um arquivo e compila uma expressão regular, para jogar fora o resultado logo depois. A 50 por segundo, são 50 leituras de disco e 50 compilações por segundo, com o mesmo resultado, e a latência do cadastro inclui esse trabalho. O teste tem que falsificar o sistema de arquivos para exercitar a validação.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — uma fábrica entrega o mesmo validador para o mesmo país</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> functools
+
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">ValidadorDeDocumento</span>:
+    padrao: re.Pattern
+    digitos_verificadores: <span class="t-f">tuple</span>
+
+    <span class="t-k">def</span> <span class="t-f">valido</span>(self, documento: <span class="t-f">str</span>) -&gt; <span class="t-f">bool</span>: ...
+
+<span class="t-f">@functools.cache</span>
+<span class="t-k">def</span> <span class="t-f">validador_para</span>(pais: <span class="t-f">str</span>) -&gt; ValidadorDeDocumento:
+    regras = json.<span class="t-f">loads</span>(<span class="t-f">Path</span>(<span class="t-s">f"regras/{pais}.json"</span>).<span class="t-f">read_text</span>())
+    <span class="t-k">return</span> <span class="t-f">ValidadorDeDocumento</span>(
+        re.<span class="t-f">compile</span>(regras[<span class="t-s">"padrao"</span>]),
+        <span class="t-f">tuple</span>(regras[<span class="t-s">"digitos_verificadores"</span>]),
+    )
+
+<span class="t-k">def</span> <span class="t-f">cadastrar</span>(pessoa):
+    <span class="t-k">if</span> <span class="t-k">not</span> <span class="t-f">validador_para</span>(pessoa.pais).<span class="t-f">valido</span>(pessoa.documento):
+        <span class="t-k">raise</span> <span class="t-f">DocumentoInvalido</span>(pessoa.documento)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o flyweight compartilha.</strong> O objeto inteiro, uma vez por chave. O motivo aqui é o <strong>custo de criação</strong>, não a memória: 200 validadores ocupam pouco, o que pesa é lê-los e compilá-los de novo. O chamador não mudou de interface; mudou o <code>ValidadorDeDocumento(pais)</code> por <code>validador_para(pais)</code>. A biblioteca padrão tem exemplos da mesma forma: <code>zoneinfo.ZoneInfo("America/Sao_Paulo")</code> devolve a mesma instância para a mesma chave, e o módulo <code>re</code> guarda as expressões já compiladas.</p>
+          <div class="callout" data-kind="warn"><p>Compartilhar objeto entre requisições, e entre <em>threads</em>, só é seguro porque o validador é imutável (<code>frozen=True</code>, tupla em vez de lista). Se ele guardasse "o último documento validado", duas requisições simultâneas se atropelariam. E <code>functools.cache</code> não tem limite: com chaves abertas, use <code>lru_cache(maxsize=…)</code>.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="grade-de-tiles">3. Uma grade de milhões de células</h2>
+          <p><strong>Situação.</strong> O editor de mapas de um jogo trabalha com uma grade de 2.000 × 2.000 células, 4 milhões no total. Cada célula é de um tipo (grama, água, pedra), e cada tipo define textura, se é transitável e quanto custa atravessar. O mapa é salvo e carregado inteiro.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — um objeto por célula, com campos copiados do tipo</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Tile</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, tipo: <span class="t-f">str</span>):
+        self.tipo = tipo
+        self.textura = TEXTURAS[tipo]
+        self.passavel = tipo != <span class="t-s">"agua"</span>
+        self.custo = CUSTOS[tipo]
+
+mapa = [[<span class="t-f">Tile</span>(<span class="t-f">tipo_em</span>(x, y)) <span class="t-k">for</span> x <span class="t-k">in</span> <span class="t-f">range</span>(<span class="t-n">2000</span>)] <span class="t-k">for</span> y <span class="t-k">in</span> <span class="t-f">range</span>(<span class="t-n">2000</span>)]
+
+<span class="t-c"># no editor, ao pintar uma célula de água:</span>
+mapa[y][x].tipo = <span class="t-s">"agua"</span>      <span class="t-c"># e o passavel? e o custo? esqueceram</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Quatro milhões de objetos Python, cada um com o próprio dicionário de atributos, passam de <strong>1 GB</strong> e demoram segundos para ser criados. Salvar e carregar o mapa percorre todos eles. E os campos derivados do tipo (<code>passavel</code>, <code>custo</code>) ficam desatualizados quando alguém troca só o <code>tipo</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a grade guarda um número, o tipo guarda o resto</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">TipoDeTile</span>:          <span class="t-c"># o flyweight: um por tipo</span>
+    nome: <span class="t-f">str</span>
+    textura: Textura
+    passavel: <span class="t-f">bool</span>
+    custo: <span class="t-f">int</span>
+
+TIPOS = [
+    <span class="t-f">TipoDeTile</span>(<span class="t-s">"grama"</span>, TEXTURAS[<span class="t-s">"grama"</span>], passavel=<span class="t-k">True</span>, custo=<span class="t-n">1</span>),
+    <span class="t-f">TipoDeTile</span>(<span class="t-s">"agua"</span>, TEXTURAS[<span class="t-s">"agua"</span>], passavel=<span class="t-k">False</span>, custo=<span class="t-n">0</span>),
+    <span class="t-f">TipoDeTile</span>(<span class="t-s">"pedra"</span>, TEXTURAS[<span class="t-s">"pedra"</span>], passavel=<span class="t-k">True</span>, custo=<span class="t-n">3</span>),
+]
+
+<span class="t-k">class</span> <span class="t-f">Mapa</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, largura: <span class="t-f">int</span>, altura: <span class="t-f">int</span>):
+        self._largura = largura
+        self._tiles = <span class="t-f">bytearray</span>(largura * altura)   <span class="t-c"># um byte por célula: o índice em TIPOS</span>
+
+    <span class="t-k">def</span> <span class="t-f">tipo_em</span>(self, x: <span class="t-f">int</span>, y: <span class="t-f">int</span>) -&gt; TipoDeTile:
+        <span class="t-k">return</span> TIPOS[self._tiles[y * self._largura + x]]
+
+    <span class="t-k">def</span> <span class="t-f">pintar</span>(self, x: <span class="t-f">int</span>, y: <span class="t-f">int</span>, indice: <span class="t-f">int</span>):
+        self._tiles[y * self._largura + x] = indice</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o flyweight compartilha.</strong> A descrição do tipo, e o que este exemplo ensina é o outro lado: o <strong>contexto pode ser mínimo</strong>. A célula não é um objeto; é um byte, e a sua posição nem é guardada, porque sai do índice no array. O estado extrínseco (<code>x</code>, <code>y</code>) é <em>calculado</em>, não armazenado. Os 4 milhões de objetos viram 4 MB, e salvar o mapa é gravar o <code>bytearray</code>.</p>
+          <div class="callout" data-kind="tip"><p>Como o tipo mora em um lugar só, <code>pintar</code> não pode deixar <code>passavel</code> inconsistente: não existe campo para esquecer. E mudar o custo da pedra para 4 é uma linha em <code>TIPOS</code>, que vale para as milhões de células de pedra.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três (ou na explicação):</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Ícones e estilos de marcadores em um mapa</td><td>Explicação — o exemplo condutor</td></tr>
+                <tr><td>Glifos e estilos de caractere em um editor de texto</td><td>Explicação — o mesmo raciocínio: estado do tipo compartilhado, posição por argumento</td></tr>
+                <tr><td>Partículas de um jogo com a mesma textura e a mesma física</td><td>Explicação — o mesmo raciocínio</td></tr>
+                <tr><td>Categorias e países repetidos em uma tabela de milhões de linhas</td><td>1 — valores repetidos</td></tr>
+                <tr><td>Fusos horários, expressões regulares, formatadores caros de construir</td><td>2 — objeto imutável caro de criar</td></tr>
+                <tr><td>Tabuleiro de xadrez ou de jogo de estratégia</td><td>3 — a grade guarda índices</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E dois casos que parecem Flyweight, mas não são. Um <em>pool</em> de conexões também reaproveita objetos caros, mas empresta cada um a um chamador por vez e o recebe de volta: os objetos são mutáveis, e não se compartilham ao mesmo tempo. E um Singleton garante <em>uma</em> instância para a classe toda, enquanto o Flyweight tem uma por valor da chave. Veja a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

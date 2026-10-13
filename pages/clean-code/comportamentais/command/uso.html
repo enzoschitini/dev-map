@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Command · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/command/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Command</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Quatro situações em que o Command resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que o comando carrega além de "executar".</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que quatro</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Command. Quando dois casos se resolvem com o mesmo raciocínio — o histórico de auditoria e a fila de tarefas, por exemplo — só um fica. Seguindo essa regra, sobraram quatro motivos. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o comando carrega</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#desfazer-refazer">Desfazer e refazer em um editor</a></td><td>O valor antigo: o mínimo para voltar</td></tr>
+                <tr><td>2</td><td><a href="#fila-de-tarefas">Trabalho que roda depois, em outro processo</a></td><td>Os dados do pedido, sem nenhum objeto vivo</td></tr>
+                <tr><td>3</td><td><a href="#varios-gatilhos">A mesma ação em botão, menu e atalho</a></td><td>Nome, atalho e se está habilitada</td></tr>
+                <tr><td>4</td><td><a href="#lote-tudo-ou-nada">Passos que valem por inteiro ou nada</a></td><td>Os passos e a ordem para desfazê-los</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="desfazer-refazer">1. Desfazer e refazer em um editor</h2>
+          <p><strong>Situação.</strong> Um editor de planilhas. Quem edita usa Ctrl+Z e Ctrl+Y o tempo todo, em planilhas de cem mil células. A Explicação mostrou o desfazer simples; aqui entram o <em>refazer</em> e a restrição de memória.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — uma cópia da planilha a cada edição</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Editor</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, planilha):
+        self.planilha = planilha
+        self._passado, self._futuro = [], []
+
+    <span class="t-k">def</span> <span class="t-f">editar_celula</span>(self, ref, valor):
+        self._passado.<span class="t-f">append</span>(copy.<span class="t-f">deepcopy</span>(self.planilha))   <span class="t-c"># 100 mil células, a cada tecla</span>
+        self._futuro.<span class="t-f">clear</span>()
+        self.planilha[ref] = valor
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        <span class="t-k">if</span> self._passado:
+            self._futuro.<span class="t-f">append</span>(self.planilha)
+            self.planilha = self._passado.<span class="t-f">pop</span>()          <span class="t-c"># troca o objeto inteiro</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A memória cresce com o tamanho da planilha multiplicado pelo número de edições, para guardar a mudança de uma célula. O desfazer troca o objeto inteiro, então o gráfico e a seleção, que seguravam a planilha antiga, ficam apontando para a versão errada. E o menu não consegue dizer "Desfazer: editar B4", porque a cópia não sabe o que mudou.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o comando guarda só a célula e o valor antigo</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">EditarCelula</span>(Comando):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, planilha, ref, novo):
+        self._planilha, self._ref, self._novo = planilha, ref, novo
+        self._antigo = <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self):
+        self._antigo = self._planilha[self._ref]   <span class="t-c"># captura na hora de executar</span>
+        self._planilha[self._ref] = self._novo
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        self._planilha[self._ref] = self._antigo
+
+    <span class="t-f">@property</span>
+    <span class="t-k">def</span> <span class="t-f">nome</span>(self):
+        <span class="t-k">return</span> <span class="t-s">f"editar {self._ref}"</span>
+
+<span class="t-k">class</span> <span class="t-f">Historico</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._passado, self._futuro = [], []
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self, comando):
+        comando.<span class="t-f">executar</span>()
+        self._passado.<span class="t-f">append</span>(comando)
+        self._futuro.<span class="t-f">clear</span>()                 <span class="t-c"># uma ação nova invalida o "refazer"</span>
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        <span class="t-k">if</span> self._passado:
+            comando = self._passado.<span class="t-f">pop</span>()
+            comando.<span class="t-f">desfazer</span>()
+            self._futuro.<span class="t-f">append</span>(comando)
+
+    <span class="t-k">def</span> <span class="t-f">refazer</span>(self):
+        <span class="t-k">if</span> self._futuro:
+            comando = self._futuro.<span class="t-f">pop</span>()
+            comando.<span class="t-f">executar</span>()
+            self._passado.<span class="t-f">append</span>(comando)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o comando carrega.</strong> O menor pedaço de estado que basta para voltar: uma referência e um valor, e não a planilha inteira. A mudança de uma célula custa o que uma célula custa. Refazer é executar o mesmo objeto de novo, sem reconstruir nada, e o <code>nome</code> alimenta o texto do menu.</p>
+          <div class="callout" data-kind="warn"><p>O valor antigo é capturado em <code>executar</code>, não no construtor. Se dois comandos para a mesma célula forem criados antes de qualquer um rodar, o segundo guardaria um "antigo" que já não é o antigo na hora em que ele executa.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="fila-de-tarefas">2. Trabalho que roda depois, em outro processo</h2>
+          <p><strong>Situação.</strong> Ao fechar um pedido, o sistema envia o e-mail de confirmação, emite a nota fiscal e baixa o estoque. Hoje tudo isso acontece dentro da requisição. O objetivo é responder ao cliente na hora e deixar o resto para um worker, com nova tentativa quando um serviço estiver fora.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — tudo dentro da requisição</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">fechar_pedido</span>(pedido):
+    pedido.<span class="t-f">confirmar</span>()
+    <span class="t-f">enviar_email</span>(pedido.cliente.email, <span class="t-s">f"Pedido {pedido.id} confirmado"</span>)   <span class="t-c"># 1,5 s; se cair, o pedido falha</span>
+    <span class="t-f">emitir_nota_fiscal</span>(pedido)                                            <span class="t-c"># 3 s</span>
+    estoque.<span class="t-f">baixar</span>(pedido.itens)
+
+<span class="t-c"># a "melhoria" mais comum: jogar em uma Thread com os argumentos soltos.</span>
+<span class="t-c"># se o servidor reiniciar agora, o e-mail e a nota nunca saem.</span>
+threading.<span class="t-f">Thread</span>(target=enviar_email, args=(pedido.cliente.email, <span class="t-s">f"Pedido {pedido.id} confirmado"</span>)).<span class="t-f">start</span>()</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O cliente espera cinco segundos, e uma falha no servidor de e-mail derruba um pedido que já foi pago. A thread resolve a espera, mas a tarefa existe só na memória daquele processo: uma reinicialização a apaga, e não há como tentar de novo, porque a "tarefa" é uma chamada que já saiu.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o pedido vira um dado que atravessa a fila</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-f">@dataclass</span>
+<span class="t-k">class</span> <span class="t-f">EnviarEmailDeConfirmacao</span>:
+    pedido_id: <span class="t-f">int</span>                       <span class="t-c"># o id, não o objeto Pedido</span>
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self, servicos):
+        pedido = servicos.pedidos.<span class="t-f">obter</span>(self.pedido_id)
+        servicos.email.<span class="t-f">enviar</span>(pedido.cliente.email, <span class="t-s">f"Pedido {pedido.id} confirmado"</span>)
+
+<span class="t-c"># EmitirNotaFiscal e BaixarEstoque seguem o mesmo formato</span>
+COMANDOS = {c.__name__: c <span class="t-k">for</span> c <span class="t-k">in</span> (EnviarEmailDeConfirmacao, EmitirNotaFiscal, BaixarEstoque)}
+
+<span class="t-k">def</span> <span class="t-f">publicar</span>(comando):
+    fila.<span class="t-f">publicar</span>({<span class="t-s">"tipo"</span>: <span class="t-f">type</span>(comando).__name__, <span class="t-s">"dados"</span>: <span class="t-f">asdict</span>(comando)})
+
+<span class="t-k">def</span> <span class="t-f">fechar_pedido</span>(pedido):
+    pedido.<span class="t-f">confirmar</span>()
+    <span class="t-k">for</span> comando <span class="t-k">in</span> (<span class="t-f">EnviarEmailDeConfirmacao</span>(pedido.id), <span class="t-f">EmitirNotaFiscal</span>(pedido.id), <span class="t-f">BaixarEstoque</span>(pedido.id)):
+        <span class="t-f">publicar</span>(comando)
+
+<span class="t-c"># em outro processo</span>
+<span class="t-k">def</span> <span class="t-f">worker</span>(servicos):
+    <span class="t-k">for</span> msg <span class="t-k">in</span> fila.<span class="t-f">consumir</span>():
+        comando = COMANDOS[msg[<span class="t-s">"tipo"</span>]](**msg[<span class="t-s">"dados"</span>])
+        <span class="t-k">try</span>:
+            comando.<span class="t-f">executar</span>(servicos)
+        <span class="t-k">except</span> <span class="t-f">ErroTemporario</span>:
+            fila.<span class="t-f">devolver</span>(msg)             <span class="t-c"># tentar de novo é reenfileirar</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que o comando carrega.</strong> Dados, e só dados: um id e o nome da classe. Por isso ele cabe em JSON, atravessa processos, sobrevive a uma reinicialização e pode ser reenviado. Quem fecha o pedido não espera e não sabe quem executará; o worker não sabe de onde o comando veio. Aqui o comando é a <strong>mensagem</strong>.</p>
+          <div class="callout" data-kind="warn"><p>Com nova tentativa, um comando pode rodar duas vezes: o worker cai depois de enviar o e-mail e antes de confirmar na fila. Cada comando precisa ser idempotente, ou guardar uma marca de "já feito", ou o cliente recebe dois e-mails.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="varios-gatilhos">3. A mesma ação em botão, menu e atalho</h2>
+          <p><strong>Situação.</strong> Um editor de documentos na web. "Salvar" está no botão da barra, no menu Arquivo e no atalho Ctrl+S. Uma paleta de comandos (Ctrl+K) precisa listar todas as ações pelo nome e mostrar só as que estão habilitadas naquele momento.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — a ação escrita em cada gatilho</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code>btnSalvar.<span class="t-f">addEventListener</span>(<span class="t-s">"click"</span>, () =&gt; <span class="t-f">salvar</span>(doc));
+menuSalvar.<span class="t-f">addEventListener</span>(<span class="t-s">"click"</span>, () =&gt; <span class="t-f">salvar</span>(doc));
+
+document.<span class="t-f">addEventListener</span>(<span class="t-s">"keydown"</span>, (ev) =&gt; {
+  <span class="t-k">if</span> (ev.ctrlKey &amp;&amp; ev.key === <span class="t-s">"s"</span>) { ev.<span class="t-f">preventDefault</span>(); <span class="t-f">salvar</span>(doc); }
+  <span class="t-k">if</span> (ev.ctrlKey &amp;&amp; ev.key === <span class="t-s">"p"</span>) { ev.<span class="t-f">preventDefault</span>(); <span class="t-f">exportarPdf</span>(doc); }
+});
+
+<span class="t-c">// "só habilita se há alterações" — em cada lugar que mostra a ação</span>
+btnSalvar.disabled = !doc.sujo;
+menuSalvar.classList.<span class="t-f">toggle</span>(<span class="t-s">"desabilitado"</span>, !doc.sujo);
+<span class="t-c">// e a paleta? ela teria que ter a própria lista de nomes e de regras</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada ação é repetida em tantos lugares quantos são os gatilhos, e a regra de "quando está habilitada" é copiada em cada um, e esquecida em algum. A paleta não consegue existir sem uma lista paralela de ações, que vai divergir da real.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a ação é um valor com nome, atalho e regra</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">interface</span> <span class="t-f">Comando</span> {
+  id: <span class="t-f">string</span>;
+  rotulo: <span class="t-f">string</span>;
+  atalho?: <span class="t-f">string</span>;                  <span class="t-c">// "CTRL+S"</span>
+  <span class="t-f">habilitado</span>(): <span class="t-f">boolean</span>;
+  <span class="t-f">executar</span>(): <span class="t-f">void</span>;
+}
+
+<span class="t-k">const</span> comandos: <span class="t-f">Comando</span>[] = [
+  { id: <span class="t-s">"salvar"</span>, rotulo: <span class="t-s">"Salvar"</span>, atalho: <span class="t-s">"CTRL+S"</span>,
+    habilitado: () =&gt; doc.sujo, executar: () =&gt; <span class="t-f">salvar</span>(doc) },
+  { id: <span class="t-s">"exportar-pdf"</span>, rotulo: <span class="t-s">"Exportar como PDF"</span>, atalho: <span class="t-s">"CTRL+P"</span>,
+    habilitado: () =&gt; <span class="t-k">true</span>, executar: () =&gt; <span class="t-f">exportarPdf</span>(doc) },
+];
+
+<span class="t-c">// cada gatilho conhece só "um comando"</span>
+<span class="t-k">function</span> <span class="t-f">ligar</span>(el: <span class="t-f">HTMLElement</span>, cmd: <span class="t-f">Comando</span>) {
+  el.<span class="t-f">addEventListener</span>(<span class="t-s">"click"</span>, () =&gt; cmd.<span class="t-f">habilitado</span>() &amp;&amp; cmd.<span class="t-f">executar</span>());
+}
+
+document.<span class="t-f">addEventListener</span>(<span class="t-s">"keydown"</span>, (ev) =&gt; {
+  <span class="t-k">const</span> chave = (ev.ctrlKey ? <span class="t-s">"CTRL+"</span> : <span class="t-s">""</span>) + ev.key.<span class="t-f">toUpperCase</span>();
+  <span class="t-k">const</span> cmd = comandos.<span class="t-f">find</span>((c) =&gt; c.atalho === chave);
+  <span class="t-k">if</span> (cmd?.<span class="t-f">habilitado</span>()) { ev.<span class="t-f">preventDefault</span>(); cmd.<span class="t-f">executar</span>(); }
+});
+
+<span class="t-c">// a paleta é só um filtro sobre a mesma lista</span>
+<span class="t-k">const</span> naPaleta = comandos.<span class="t-f">filter</span>((c) =&gt; c.<span class="t-f">habilitado</span>()).<span class="t-f">map</span>((c) =&gt; c.rotulo);</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o comando carrega.</strong> A ação, mais o que a interface precisa saber sobre ela: o nome, o atalho e a condição de estar habilitada. A origem do clique deixa de importar. Uma ação nova é uma entrada na lista, e ela aparece no menu, no atalho e na paleta sem que ninguém ligue nada.</p>
+          <div class="callout" data-kind="tip"><p>É o desenho por trás da paleta de comandos de editores como o VS Code: toda ação é registrada com um id, e a interface é gerada a partir desse registro.</p></div>
+
+          <!-- 4 ─────────────────────────────────────────────── -->
+          <h2 id="lote-tudo-ou-nada">4. Passos que valem por inteiro ou nada</h2>
+          <p><strong>Situação.</strong> Transferir estoque entre dois depósitos tem quatro passos: baixar na origem, creditar no destino, registrar a movimentação e recalcular o custo médio. Os depósitos moram em sistemas diferentes, então não há uma transação de banco única que cubra tudo. Se o terceiro passo falha, os dois primeiros já aconteceram.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o desfazer escrito à mão, em cada fluxo</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">transferir</span>(origem, destino, sku, qtd):
+    origem.<span class="t-f">baixar</span>(sku, qtd)
+    destino.<span class="t-f">creditar</span>(sku, qtd)
+    <span class="t-k">try</span>:
+        auditoria.<span class="t-f">registrar</span>(origem, destino, sku, qtd)
+    <span class="t-k">except</span> <span class="t-f">Exception</span>:
+        destino.<span class="t-f">debitar</span>(sku, qtd)       <span class="t-c"># desfaz na ordem certa... espero</span>
+        origem.<span class="t-f">creditar</span>(sku, qtd)
+        <span class="t-k">raise</span>
+    custos.<span class="t-f">recalcular</span>(sku)              <span class="t-c"># e se falhar aqui? outro try, com outro desfazer</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada passo novo muda a estrutura dos <code>try</code>: o código de "voltar" fica aninhado e cresce com os passos. Esquecer um passo no <code>except</code> deixa o estoque inconsistente, e esse erro só aparece quando a falha acontece de verdade. E o mesmo fluxo, em outra tela, teria a própria cópia.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a macro é um comando feito de comandos</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Macro</span>(Comando):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, *passos: Comando):
+        self._passos = passos
+        self._feitos: <span class="t-f">list</span>[Comando] = []
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self):
+        <span class="t-k">try</span>:
+            <span class="t-k">for</span> passo <span class="t-k">in</span> self._passos:
+                passo.<span class="t-f">executar</span>()
+                self._feitos.<span class="t-f">append</span>(passo)
+        <span class="t-k">except</span> <span class="t-f">Exception</span>:
+            self.<span class="t-f">desfazer</span>()               <span class="t-c"># volta o que já foi, do último para o primeiro</span>
+            <span class="t-k">raise</span>
+
+    <span class="t-k">def</span> <span class="t-f">desfazer</span>(self):
+        <span class="t-k">while</span> self._feitos:
+            self._feitos.<span class="t-f">pop</span>().<span class="t-f">desfazer</span>()
+
+transferencia = <span class="t-f">Macro</span>(
+    <span class="t-f">BaixarEstoque</span>(origem, sku, qtd),
+    <span class="t-f">CreditarEstoque</span>(destino, sku, qtd),
+    <span class="t-f">RegistrarMovimentacao</span>(origem, destino, sku, qtd),
+    <span class="t-f">RecalcularCusto</span>(sku),
+)
+historico.<span class="t-f">executar</span>(transferencia)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o comando carrega.</strong> Os próprios passos e a ordem de desfazê-los. Como a <code>Macro</code> também é um <code>Comando</code>, ela se compõe: o histórico vê a transferência inteira como uma ação, e um Ctrl+Z reverte os quatro passos de uma vez. A regra "do último para o primeiro" vive em um lugar só, e um passo novo é mais uma linha na lista.</p>
+          <div class="callout" data-kind="warn"><p>A macro só é tão boa quanto o <code>desfazer</code> de cada passo. Um passo sem volta, como enviar e-mail, não pode ficar no meio da lista: ponha-o no fim, depois que tudo deu certo, ou fora da macro.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos quatro:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Nova tentativa com espera crescente de uma chamada externa</td><td>2 — o pedido guardado como dado é reenviado</td></tr>
+                <tr><td>Log de auditoria que pode ser reaplicado para reconstruir um estado</td><td>2 — a ação serializada, em vez de um texto de log</td></tr>
+                <tr><td>Gravar uma sequência de ações do usuário e reproduzi-la depois</td><td>4 — uma lista de comandos que se executa como um só</td></tr>
+                <tr><td>Esmaecer um botão quando a ação não faz sentido</td><td>3 — a condição de "habilitado" mora no comando</td></tr>
+                <tr><td>Desfazer em um formulário, restaurando os campos</td><td>1 — mas, se o estado é pequeno, o snapshot basta (veja <a href="explicacao.html#quando-nao-usar">Quando não usar</a>)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Command, mas não é: passar uma função de callback para <code>onClick</code> ou para <code>setTimeout</code>. A ação é um valor, mas ninguém vai desfazê-la, guardá-la ou nomeá-la. Uma função basta, e o objeto só acrescentaria cerimônia. Veja também <a href="explicacao.html#parecidos">Parecidos</a>.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Chain of Responsibility · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/chain-of-responsibility/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Chain of Responsibility</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Quatro situações em que o Chain of Responsibility resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que a cadeia esconde de quem faz o pedido.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que quatro</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Chain of Responsibility. Quando dois casos se resolvem com o mesmo raciocínio — o escalonamento do suporte e a aprovação de despesas, por exemplo — só um fica. Seguindo essa regra, sobraram quatro motivos. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que a cadeia esconde de quem pede</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#alcada-por-valor">Quem aprova depende do valor e do organograma</a></td><td>Quantos níveis existem e o limite de cada um</td></tr>
+                <tr><td>2</td><td><a href="#middleware">As mesmas verificações antes de toda rota</a></td><td>Quais verificações existem e em que ordem</td></tr>
+                <tr><td>3</td><td><a href="#evento-que-sobe">O clique precisa ser tratado por quem está mais perto</a></td><td>Qual componente, entre os da tela, cuida do evento</td></tr>
+                <tr><td>4</td><td><a href="#fontes-em-camadas">Fontes de dado com custos diferentes</a></td><td>Quantas camadas de leitura existem, e quais</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="note"><p>As chamadas de biblioteca estão simplificadas para caber na página. O formato do Express e do cliente Redis é o real; configuração e parâmetros opcionais foram omitidos. Funções como <code>verificarToken</code> e <code>excedeuLimite</code> são fictícias.</p></div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="alcada-por-valor">1. Quem aprova depende do valor e do organograma</h2>
+          <p><strong>Situação.</strong> Despesas de viagem sobem para aprovação. Até R$ 500, o gestor direto; até R$ 5.000, o gestor dele; acima disso, o financeiro. Os limites variam por cargo, e a hierarquia vem do cadastro de pessoas: cada uma tem um <code>gestor</code>. Na Explicação a cadeia era montada em código; aqui ela já existe, nos dados.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o código presume a profundidade do organograma</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">encaminhar</span>(despesa):
+    gestor = despesa.autor.gestor
+    <span class="t-k">if</span> despesa.valor &lt;= <span class="t-n">500</span>:
+        gestor.<span class="t-f">notificar</span>(despesa)
+    <span class="t-k">elif</span> despesa.valor &lt;= <span class="t-n">5000</span>:
+        gestor.gestor.<span class="t-f">notificar</span>(despesa)         <span class="t-c"># e se o gestor estiver de férias?</span>
+    <span class="t-k">else</span>:
+        gestor.gestor.gestor.<span class="t-f">notificar</span>(despesa)  <span class="t-c"># e se só houver dois níveis?</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O código presume que há três níveis acima de todo mundo; em um time pequeno, <code>gestor.gestor.gestor</code> é <code>None</code> e vira um <code>AttributeError</code>. Os limites são os mesmos para todos, embora o limite do diretor seja diferente do de um líder. E cada exceção (delegação, férias) vira outro <code>if</code> nesta função.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o organograma é a cadeia</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-f">@dataclass</span>
+<span class="t-k">class</span> <span class="t-f">Pessoa</span>:
+    nome: <span class="t-f">str</span>
+    limite: <span class="t-f">Decimal</span>                 <span class="t-c"># quanto este cargo aprova</span>
+    gestor: <span class="t-s">"Pessoa | None"</span> = <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">aprovador_de</span>(self, despesa) -&gt; <span class="t-s">"Pessoa"</span>:
+        <span class="t-k">if</span> despesa.valor &lt;= self.limite:
+            <span class="t-k">return</span> self
+        <span class="t-k">if</span> self.gestor <span class="t-k">is</span> <span class="t-k">None</span>:
+            <span class="t-k">raise</span> <span class="t-f">SemAlcada</span>(despesa)   <span class="t-c"># topo do organograma e ainda não basta</span>
+        <span class="t-k">return</span> self.gestor.<span class="t-f">aprovador_de</span>(despesa)
+
+<span class="t-k">def</span> <span class="t-f">encaminhar</span>(despesa):
+    despesa.autor.gestor.<span class="t-f">aprovador_de</span>(despesa).<span class="t-f">notificar</span>(despesa)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a cadeia esconde.</strong> A profundidade do organograma e o limite de cada pessoa. A função <code>encaminhar</code> não sabe se há dois ou sete níveis, e não precisa saber: ela entrega ao primeiro gestor e recebe de volta quem aprova. Mudar a hierarquia é editar o cadastro, sem tocar em código.</p>
+          <p>Uma delegação, como "o gestor está de férias, passe para o diretor", é um elo que se comporta diferente — por exemplo, um que sempre repassa — e não mais um <code>if</code> na escada.</p>
+          <div class="callout" data-kind="warn"><p>O fim da cadeia é decisão de design, e aqui é uma exceção explícita: <code>SemAlcada</code>. Retornar <code>None</code> daria uma despesa que "foi encaminhada" para ninguém, e nada avisaria que ela está parada.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="middleware">2. As mesmas verificações antes de toda rota</h2>
+          <p><strong>Situação.</strong> A API de pedidos, em Node com Express, tem uma dúzia de rotas. Toda rota precisa autenticar, limitar requisições por usuário e validar o corpo. Cada verificação pode encerrar a resposta com um erro, e uma delas depende do resultado da anterior: o limite é por usuário, então só dá para aplicá-lo depois de saber quem é.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o mesmo prólogo copiado em cada rota</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code>app.<span class="t-f">post</span>(<span class="t-s">"/pedidos"</span>, <span class="t-k">async</span> (req, res) =&gt; {
+  <span class="t-k">const</span> token = req.headers.authorization?.<span class="t-f">replace</span>(<span class="t-s">"Bearer "</span>, <span class="t-s">""</span>);
+  <span class="t-k">if</span> (!token) <span class="t-k">return</span> res.<span class="t-f">status</span>(<span class="t-n">401</span>).<span class="t-f">json</span>({ erro: <span class="t-s">"sem token"</span> });
+  <span class="t-k">const</span> usuario = <span class="t-k">await</span> <span class="t-f">verificarToken</span>(token);
+  <span class="t-k">if</span> (!usuario) <span class="t-k">return</span> res.<span class="t-f">status</span>(<span class="t-n">401</span>).<span class="t-f">json</span>({ erro: <span class="t-s">"token inválido"</span> });
+  <span class="t-k">if</span> (<span class="t-k">await</span> <span class="t-f">excedeuLimite</span>(usuario.id)) <span class="t-k">return</span> res.<span class="t-f">status</span>(<span class="t-n">429</span>).<span class="t-f">json</span>({ erro: <span class="t-s">"muitas requisições"</span> });
+  <span class="t-k">if</span> (!req.body.itens?.length) <span class="t-k">return</span> res.<span class="t-f">status</span>(<span class="t-n">400</span>).<span class="t-f">json</span>({ erro: <span class="t-s">"sem itens"</span> });
+
+  res.<span class="t-f">status</span>(<span class="t-n">201</span>).<span class="t-f">json</span>(<span class="t-k">await</span> <span class="t-f">criarPedido</span>(usuario, req.body));
+});
+
+app.<span class="t-f">get</span>(<span class="t-s">"/pedidos/:id"</span>, <span class="t-k">async</span> (req, res) =&gt; {
+  <span class="t-c">// mesmos três blocos — só que aqui alguém esqueceu o limite de requisições</span>
+});</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Para saber quais rotas exigem autenticação é preciso ler todas. Uma verificação esquecida não dá erro nenhum: a rota funciona, só que sem a proteção. E trocar o limite de requisições é uma caça por todas as cópias.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — cada verificação é um elo, a rota só declara a fila</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">const</span> autenticar: <span class="t-f">RequestHandler</span> = <span class="t-k">async</span> (req, res, next) =&gt; {
+  <span class="t-k">const</span> token = req.headers.authorization?.<span class="t-f">replace</span>(<span class="t-s">"Bearer "</span>, <span class="t-s">""</span>);
+  <span class="t-k">const</span> usuario = token &amp;&amp; (<span class="t-k">await</span> <span class="t-f">verificarToken</span>(token));
+  <span class="t-k">if</span> (!usuario) <span class="t-k">return</span> res.<span class="t-f">status</span>(<span class="t-n">401</span>).<span class="t-f">json</span>({ erro: <span class="t-s">"não autenticado"</span> });  <span class="t-c">// encerra a cadeia</span>
+  res.locals.usuario = usuario;
+  <span class="t-f">next</span>();                                                            <span class="t-c">// passa ao próximo elo</span>
+};
+
+<span class="t-k">const</span> limitar: <span class="t-f">RequestHandler</span> = <span class="t-k">async</span> (req, res, next) =&gt; {
+  <span class="t-k">if</span> (<span class="t-k">await</span> <span class="t-f">excedeuLimite</span>(res.locals.usuario.id)) {
+    <span class="t-k">return</span> res.<span class="t-f">status</span>(<span class="t-n">429</span>).<span class="t-f">json</span>({ erro: <span class="t-s">"muitas requisições"</span> });
+  }
+  <span class="t-f">next</span>();
+};
+
+<span class="t-k">const</span> exigirItens: <span class="t-f">RequestHandler</span> = (req, res, next) =&gt; {
+  <span class="t-k">if</span> (!req.body.itens?.length) <span class="t-k">return</span> res.<span class="t-f">status</span>(<span class="t-n">400</span>).<span class="t-f">json</span>({ erro: <span class="t-s">"sem itens"</span> });
+  <span class="t-f">next</span>();
+};
+
+<span class="t-c">// a ordem da fila é a ordem em que as verificações acontecem</span>
+app.<span class="t-f">use</span>(<span class="t-s">"/pedidos"</span>, autenticar, limitar);
+app.<span class="t-f">post</span>(<span class="t-s">"/pedidos"</span>, exigirItens, <span class="t-k">async</span> (req, res) =&gt; {
+  res.<span class="t-f">status</span>(<span class="t-n">201</span>).<span class="t-f">json</span>(<span class="t-k">await</span> <span class="t-f">criarPedido</span>(res.locals.usuario, req.body));
+});</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a cadeia esconde.</strong> A rota não sabe quais verificações existem. Aqui os elos funcionam de um jeito diferente do exemplo anterior: quase todos <em>fazem algo</em> e passam adiante com <code>next()</code>, e qualquer um pode encerrar a resposta e impedir que o resto aconteça. A regra de negócio, no fim da fila, roda só se todos deixaram passar.</p>
+          <p>Uma rota nova ganha autenticação e limite sem que ninguém precise lembrar. Uma verificação nova — log, CORS, idempotência — é mais um elo, em um lugar só.</p>
+          <div class="callout" data-kind="warn"><p>A ordem passa a ser parte do contrato: <code>limitar</code> lê <code>res.locals.usuario</code>, e quem o preenche é <code>autenticar</code>. Invertê-los quebra sem nenhum aviso do compilador. E um elo que não chama <code>next()</code> nem responde deixa a requisição pendurada até o timeout.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="evento-que-sobe">3. O clique precisa ser tratado por quem está mais perto</h2>
+          <p><strong>Situação.</strong> A tela de pedidos tem um menu de ações por linha, e a página pode abrir uma modal sobre um fundo escurecido. Clicar em um item do menu executa a ação e fecha o menu; clicar no fundo fecha a modal; clicar em qualquer lugar fora do menu o fecha. Aqui ninguém precisa montar a cadeia: o navegador já faz isso, porque o evento sobe pela árvore do DOM, do elemento clicado até o <code>document</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — um listener global que conhece todos os componentes</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code>document.<span class="t-f">addEventListener</span>(<span class="t-s">"click"</span>, (ev) =&gt; {
+  <span class="t-k">const</span> alvo = ev.target <span class="t-k">as</span> <span class="t-f">HTMLElement</span>;
+
+  <span class="t-k">if</span> (alvo.<span class="t-f">closest</span>(<span class="t-s">".menu-item"</span>)) {
+    <span class="t-f">executar</span>(alvo.<span class="t-f">closest</span>&lt;<span class="t-f">HTMLElement</span>&gt;(<span class="t-s">".menu-item"</span>)!.dataset.acao!);
+    <span class="t-f">fecharMenus</span>();
+  } <span class="t-k">else</span> <span class="t-k">if</span> (alvo.<span class="t-f">closest</span>(<span class="t-s">".menu-gatilho"</span>)) {
+    <span class="t-f">alternarMenu</span>(alvo.<span class="t-f">closest</span>(<span class="t-s">".menu"</span>)!);
+  } <span class="t-k">else</span> <span class="t-k">if</span> (alvo.<span class="t-f">closest</span>(<span class="t-s">".modal"</span>)) {
+    <span class="t-c">// clique dentro da modal: não fecha nada</span>
+  } <span class="t-k">else</span> <span class="t-k">if</span> (alvo.<span class="t-f">closest</span>(<span class="t-s">".fundo"</span>)) {
+    <span class="t-f">fecharModal</span>();
+  } <span class="t-k">else</span> {
+    <span class="t-f">fecharMenus</span>();
+  }
+});</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O <code>document</code> conhece a estrutura interna de todo componente: cada componente novo é outro <code>else if</code> aqui, em um arquivo que não é o dele. A ordem dos testes importa, porque a modal está dentro do fundo; trocar duas linhas muda o comportamento. E nada impede que dois componentes escolham a mesma classe CSS.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — cada nível trata o que é seu e deixa o resto subir</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c">// o menu cuida dos próprios itens</span>
+menu.<span class="t-f">addEventListener</span>(<span class="t-s">"click"</span>, (ev) =&gt; {
+  <span class="t-k">const</span> item = (ev.target <span class="t-k">as</span> <span class="t-f">HTMLElement</span>).<span class="t-f">closest</span>&lt;<span class="t-f">HTMLElement</span>&gt;(<span class="t-s">"[data-acao]"</span>);
+  <span class="t-k">if</span> (!item) <span class="t-k">return</span>;                 <span class="t-c">// não é comigo: deixa subir</span>
+  <span class="t-f">executar</span>(item.dataset.acao!);
+  <span class="t-f">fecharMenus</span>();
+  ev.<span class="t-f">stopPropagation</span>();            <span class="t-c">// tratei: ninguém acima precisa saber</span>
+});
+
+<span class="t-c">// a modal impede que o clique dentro dela chegue ao fundo</span>
+modal.<span class="t-f">addEventListener</span>(<span class="t-s">"click"</span>, (ev) =&gt; ev.<span class="t-f">stopPropagation</span>());
+
+<span class="t-c">// o fundo trata o clique que chegou até ele</span>
+fundo.<span class="t-f">addEventListener</span>(<span class="t-s">"click"</span>, <span class="t-f">fecharModal</span>);
+
+<span class="t-c">// o último elo: o que ninguém tratou fecha os menus abertos</span>
+document.<span class="t-f">addEventListener</span>(<span class="t-s">"click"</span>, <span class="t-f">fecharMenus</span>);</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a cadeia esconde.</strong> Qual componente cuida de qual clique. Cada listener conhece só o próprio componente, e o <code>document</code> vira o fim natural da cadeia: ele recebe o que sobrou, sem saber o que é um menu ou uma modal. Este é o caso em que a cadeia não é construída por ninguém: é a própria estrutura da página, e o padrão aparece como uma propriedade da plataforma.</p>
+          <div class="callout" data-kind="warn"><p><code>stopPropagation()</code> também esconde o evento de quem não é parte da sua cadeia: a ferramenta de métricas, outro componente que escuta o <code>document</code>. Use só no elo que de fato tratou o pedido, e prefira checar <code>ev.defaultPrevented</code> quando bastar.</p></div>
+
+          <!-- 4 ─────────────────────────────────────────────── -->
+          <h2 id="fontes-em-camadas">4. Fontes de dado com custos diferentes</h2>
+          <p><strong>Situação.</strong> A cotação de moedas vem de quatro lugares, do mais barato ao mais caro: um dicionário em memória, o Redis, o banco e a API do Banco Central, que cobra por chamada. Tentar na ordem e parar na primeira resposta é o óbvio. Quando a resposta vem de longe, é preciso ainda guardá-la nas camadas por onde ela passou. E em dev, onde não há Redis, a camada simplesmente não existe.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — a descida e o preenchimento no mesmo bloco aninhado</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">cotacao</span>(moeda):
+    <span class="t-k">if</span> moeda <span class="t-k">in</span> _memoria:
+        <span class="t-k">return</span> _memoria[moeda]
+
+    valor = redis.<span class="t-f">get</span>(<span class="t-s">f"cotacao:{moeda}"</span>)
+    <span class="t-k">if</span> valor <span class="t-k">is</span> <span class="t-k">None</span>:
+        valor = db.<span class="t-f">buscar_cotacao</span>(moeda)
+        <span class="t-k">if</span> valor <span class="t-k">is</span> <span class="t-k">None</span>:
+            valor = api_bacen.<span class="t-f">cotacao</span>(moeda)
+            db.<span class="t-f">salvar_cotacao</span>(moeda, valor)
+        redis.<span class="t-f">setex</span>(<span class="t-s">f"cotacao:{moeda}"</span>, <span class="t-n">300</span>, valor)
+
+    _memoria[moeda] = valor
+    <span class="t-k">return</span> <span class="t-f">Decimal</span>(valor)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada camada nova é mais um nível de aninhamento. Rodar sem Redis significa comentar linhas, e isso acaba commitado. Para testar a regra "se o banco não tem, vai à API", é preciso ter o Redis e a memória no caminho. E a cotação de moedas não é a única coisa lida assim: o mesmo bloco, com outros nomes, aparece em quatro outros lugares.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — uma camada por elo, montadas por ambiente</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Elo</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, proximo: <span class="t-s">"Elo | None"</span> = <span class="t-k">None</span>):
+        self._proximo = proximo
+
+    <span class="t-k">def</span> <span class="t-f">obter</span>(self, moeda: <span class="t-f">str</span>) -&gt; <span class="t-f">Decimal</span>:
+        valor = self.<span class="t-f">_ler</span>(moeda)
+        <span class="t-k">if</span> valor <span class="t-k">is</span> <span class="t-k">None</span>:
+            <span class="t-k">if</span> self._proximo <span class="t-k">is</span> <span class="t-k">None</span>:
+                <span class="t-k">raise</span> <span class="t-f">CotacaoIndisponivel</span>(moeda)
+            valor = self._proximo.<span class="t-f">obter</span>(moeda)
+            self.<span class="t-f">_guardar</span>(moeda, valor)   <span class="t-c"># a resposta volta preenchendo os elos de trás</span>
+        <span class="t-k">return</span> valor
+
+    <span class="t-k">def</span> <span class="t-f">_ler</span>(self, moeda): <span class="t-k">return</span> <span class="t-k">None</span>
+    <span class="t-k">def</span> <span class="t-f">_guardar</span>(self, moeda, valor): <span class="t-k">pass</span>
+
+<span class="t-k">class</span> <span class="t-f">EloMemoria</span>(Elo):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, proximo=<span class="t-k">None</span>):
+        <span class="t-f">super</span>().<span class="t-f">__init__</span>(proximo)
+        self._itens = {}
+
+    <span class="t-k">def</span> <span class="t-f">_ler</span>(self, moeda):          <span class="t-k">return</span> self._itens.<span class="t-f">get</span>(moeda)
+    <span class="t-k">def</span> <span class="t-f">_guardar</span>(self, moeda, valor): self._itens[moeda] = valor
+
+<span class="t-k">class</span> <span class="t-f">EloRedis</span>(Elo):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, redis, proximo=<span class="t-k">None</span>):
+        <span class="t-f">super</span>().<span class="t-f">__init__</span>(proximo)
+        self._redis = redis
+
+    <span class="t-k">def</span> <span class="t-f">_ler</span>(self, moeda):
+        bruto = self._redis.<span class="t-f">get</span>(<span class="t-s">f"cotacao:{moeda}"</span>)
+        <span class="t-k">return</span> <span class="t-f">Decimal</span>(bruto) <span class="t-k">if</span> bruto <span class="t-k">else</span> <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">_guardar</span>(self, moeda, valor):
+        self._redis.<span class="t-f">setex</span>(<span class="t-s">f"cotacao:{moeda}"</span>, <span class="t-n">300</span>, <span class="t-f">str</span>(valor))
+
+<span class="t-k">class</span> <span class="t-f">EloApi</span>(Elo):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, cliente, proximo=<span class="t-k">None</span>):
+        <span class="t-f">super</span>().<span class="t-f">__init__</span>(proximo)
+        self._cliente = cliente
+
+    <span class="t-k">def</span> <span class="t-f">_ler</span>(self, moeda):
+        <span class="t-k">return</span> self._cliente.<span class="t-f">cotacao</span>(moeda)
+
+<span class="t-c"># a montagem é a única coisa que muda entre ambientes</span>
+cotacoes = <span class="t-f">EloMemoria</span>(<span class="t-f">EloRedis</span>(redis, <span class="t-f">EloApi</span>(bacen)))   <span class="t-c"># produção</span>
+cotacoes = <span class="t-f">EloMemoria</span>(<span class="t-f">EloApi</span>(bacen))                  <span class="t-c"># dev, sem Redis</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que a cadeia esconde.</strong> Quantas camadas existem. Quem chama <code>cotacoes.obter("USD")</code> não sabe se a resposta veio da memória ou do outro lado da internet. Aqui, "não tratei" não é erro: é um <em>miss</em> comum, e a ordem dos elos expressa o custo. A resposta, ao voltar, preenche cada camada por onde passou, o que a escada aninhada fazia misturado com a leitura.</p>
+          <div class="callout" data-kind="tip"><p>Com uma camada só, nada disso se justifica: <code>functools.lru_cache</code> resolve "memória na frente de uma função". A cadeia começa a valer na segunda camada, e principalmente quando a lista muda por ambiente.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos quatro:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Suporte em níveis (N1, N2, N3), cada um resolvendo ou escalando</td><td>1 — o primeiro com alçada trata; os demais não são consultados</td></tr>
+                <tr><td>Importar arquivos por formato: cada elo pergunta "sei ler isto?"</td><td>1 — a escada vira uma fila de candidatos, e um formato novo é um elo novo</td></tr>
+                <tr><td>Filtros de moderação de comentários, cada um rejeitando ou deixando passar</td><td>2 — cada elo pode barrar o pedido</td></tr>
+                <tr><td>Exceção que sobe a pilha até um <code>except</code> que sabe tratá-la</td><td>3 — a cadeia é a estrutura que já existe</td></tr>
+                <tr><td>Loggers hierárquicos: um registro sobe de <code>app.pedidos</code> para <code>app</code> e para a raiz</td><td>3 — mesma propagação, pela hierarquia de nomes</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Chain of Responsibility, mas não é: publicar "pedido criado" para o e-mail, o estoque e a nota fiscal. Os três recebem o aviso, e nenhum decide se o outro recebe. Quando o pedido precisa chegar a todos, o nome é Observer — veja a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

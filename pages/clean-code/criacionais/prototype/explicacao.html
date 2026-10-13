@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Prototype · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="criacionais/prototype/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Prototype</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como criar um objeto novo copiando um que já existe, deixando a regra da cópia dentro do próprio objeto — para quem copia não precisar conhecer a classe nem os campos.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>A ferramenta de marketing permite <strong>duplicar uma campanha</strong>: o usuário parte de uma campanha pronta (assunto, segmentos, anexos) e muda o que precisa. Existem campanhas de e-mail e de SMS, e o botão "Duplicar" aparece nas duas telas.</p>
+          <p>A saída mais curta é uma função que cria uma campanha nova, copiando os campos um a um:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — a função de duplicar reconstrói o objeto à mão</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Campanha</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, nome, assunto, segmentos, anexos):
+        self.id = <span class="t-k">None</span>
+        self.nome = nome
+        self.assunto = assunto
+        self.segmentos = segmentos
+        self.anexos = anexos
+
+<span class="t-k">def</span> <span class="t-f">duplicar</span>(original):
+    <span class="t-k">return</span> <span class="t-f">Campanha</span>(
+        nome=original.nome + <span class="t-s">" (cópia)"</span>,
+        assunto=original.assunto,
+        segmentos=original.segmentos,    <span class="t-c"># a mesma lista do original</span>
+        anexos=original.anexos,          <span class="t-c"># idem</span>
+    )
+
+<span class="t-c"># e a CampanhaDeSms, que tem numero_remetente?</span>
+<span class="t-c"># duplicar() devolve uma Campanha comum e o número se perde</span></code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram, e nenhuma delas dá erro. As listas são <strong>compartilhadas</strong>: quem adiciona um segmento na cópia altera a campanha original, que já estava agendada. Quando alguém acrescenta um campo (<code>remetente</code>), a função de duplicar não o conhece, e a cópia sai sem ele. E a função só conhece <code>Campanha</code>: para <code>CampanhaDeSms</code> é preciso um <code>isinstance</code>, e para cada subclasse futura, outro.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Em vez de uma função de fora que conhece os campos, faça cada objeto saber <strong>copiar a si mesmo</strong>. Quem quer uma cópia só pede <code>clonar()</code> e recebe um objeto independente, do mesmo tipo, sem saber qual é. São quatro papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Protótipo</td><td>A interface (ou classe base) que declara a operação de copiar</td><td><code>Campanha</code></td></tr>
+                <tr><td>Protótipo concreto</td><td>Uma classe que implementa a cópia, ou herda a regra</td><td><code>CampanhaDeEmail</code>, <code>CampanhaDeSms</code></td></tr>
+                <tr><td><code>clonar()</code></td><td>A regra da cópia: o que copiar a fundo, o que zerar</td><td>Um método, em um lugar só</td></tr>
+                <tr><td>Cliente</td><td>Quem precisa de uma cópia e não conhece a classe</td><td><code>duplicar()</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é <strong>quem sabe como copiar</strong>. O objeto conhece os próprios campos, inclusive os que forem acrescentados depois, então a regra "o que é cópia, o que é compartilhado e o que é zerado" mora em um lugar. O cliente só depende da operação.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> copy
+
+<span class="t-c"># 1. o protótipo: qualquer campanha sabe produzir uma cópia independente</span>
+<span class="t-k">class</span> <span class="t-f">Campanha</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, nome, assunto, segmentos, anexos):
+        self.id = <span class="t-k">None</span>
+        self.nome = nome
+        self.assunto = assunto
+        self.segmentos = segmentos
+        self.anexos = anexos
+
+    <span class="t-c"># 2. a regra da cópia, escrita uma vez</span>
+    <span class="t-k">def</span> <span class="t-f">clonar</span>(self):
+        copia = copy.<span class="t-f">deepcopy</span>(self)   <span class="t-c"># listas e objetos internos, a fundo</span>
+        copia.id = <span class="t-k">None</span>                  <span class="t-c"># a cópia é outra campanha</span>
+        copia.nome = <span class="t-s">f"{self.nome} (cópia)"</span>
+        <span class="t-k">return</span> copia
+
+<span class="t-c"># 3. o protótipo concreto: herda a regra; o campo novo vem junto</span>
+<span class="t-k">class</span> <span class="t-f">CampanhaDeSms</span>(Campanha):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, nome, assunto, segmentos, anexos, numero_remetente):
+        <span class="t-f">super</span>().<span class="t-f">__init__</span>(nome, assunto, segmentos, anexos)
+        self.numero_remetente = numero_remetente
+
+<span class="t-c"># 4. o cliente: não sabe qual subclasse tem nas mãos</span>
+<span class="t-k">def</span> <span class="t-f">duplicar</span>(campanha):
+    <span class="t-k">return</span> campanha.<span class="t-f">clonar</span>()</code></pre>
+              <pre><code><span class="t-c">// 1. o protótipo: toda campanha sabe produzir uma cópia independente</span>
+<span class="t-k">abstract</span> <span class="t-k">class</span> <span class="t-f">Campanha</span> {
+  id: <span class="t-f">number</span> | <span class="t-k">null</span> = <span class="t-k">null</span>;
+
+  <span class="t-k">constructor</span>(
+    <span class="t-k">public</span> nome: <span class="t-f">string</span>,
+    <span class="t-k">public</span> segmentos: <span class="t-f">string</span>[],
+    <span class="t-k">public</span> anexos: <span class="t-f">string</span>[],
+  ) {}
+
+  <span class="t-k">abstract</span> <span class="t-f">clonar</span>(): <span class="t-f">Campanha</span>;
+}
+
+<span class="t-c">// 2. e 3. cada protótipo concreto implementa a regra da cópia</span>
+<span class="t-k">class</span> <span class="t-f">CampanhaDeEmail</span> <span class="t-k">extends</span> <span class="t-f">Campanha</span> {
+  <span class="t-k">constructor</span>(nome: <span class="t-f">string</span>, segmentos: <span class="t-f">string</span>[], anexos: <span class="t-f">string</span>[], <span class="t-k">public</span> assunto: <span class="t-f">string</span>) {
+    <span class="t-k">super</span>(nome, segmentos, anexos);
+  }
+
+  <span class="t-f">clonar</span>() {
+    <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">CampanhaDeEmail</span>(
+      <span class="t-s">`${this.nome} (cópia)`</span>,
+      [...<span class="t-k">this</span>.segmentos],   <span class="t-c">// listas novas, não as do original</span>
+      [...<span class="t-k">this</span>.anexos],
+      <span class="t-k">this</span>.assunto,
+    );
+  }
+}
+
+<span class="t-c">// 4. o cliente: não sabe qual subclasse tem nas mãos</span>
+<span class="t-k">function</span> <span class="t-f">duplicar</span>(campanha: <span class="t-f">Campanha</span>) {
+  <span class="t-k">return</span> campanha.<span class="t-f">clonar</span>();
+}</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste é direto: clone uma campanha, adicione um segmento na cópia e confira que o original continua com a lista antiga. Um teste só cobre o erro mais comum do padrão (a cópia rasa) para todas as subclasses.</p></div>
+          <div class="callout" data-kind="note"><p>Em TypeScript, <code>structuredClone(obj)</code> faz a cópia profunda, mas devolve um objeto <strong>simples</strong>: sem protótipo, sem métodos, e <code>instanceof</code> deixa de funcionar. Por isso o exemplo reconstrói a instância. Em Python, <code>copy.deepcopy</code> preserva a classe, e é por isso que basta chamá-lo.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Prototype vale quando as três coisas acontecem ao mesmo tempo: você precisa de uma <strong>cópia independente</strong> de um objeto que já existe, o <strong>cliente não deveria conhecer</strong> a classe nem os campos, e <strong>copiar é melhor</strong> que construir de novo — mais barato, mais fiel, ou a única coisa possível.</p>
+          <p>No código, isso aparece de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Uma função de duplicar que reconstrói campo a campo</td><td><code>Campanha(nome=o.nome, assunto=o.assunto, …)</code>, com a lista de campos copiada à mão</td><td>—</td></tr>
+                <tr><td>Cópia que depende do tipo</td><td><code>if isinstance(x, A): return A(…)</code> só para duplicar</td><td>—</td></tr>
+                <tr><td>A mesma montagem cara, repetida com o mesmo resultado</td><td>A mesma consulta ou o mesmo <code>parse()</code> a cada objeto novo; só o final muda</td><td><a href="uso.html#custo-de-criacao">Uso #1</a></td></tr>
+                <tr><td>Uma subclasse para cada variante de configuração</td><td>Classes que só diferem em valores atribuídos no construtor</td><td><a href="uso.html#modelos-do-usuario">Uso #2</a></td></tr>
+                <tr><td>Guardar o "estado anterior" campo a campo</td><td><code>self._anterior = {"tema": c.tema, …}</code>, para poder cancelar a edição</td><td><a href="uso.html#rascunho-e-desfazer">Uso #3</a></td></tr>
+                <tr><td>"Mexi na cópia e mudou o original"</td><td>Uma lista, um dicionário ou um objeto interno compartilhado entre os dois</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: alguém <strong>fora do objeto</strong> está fazendo o trabalho de copiá-lo. O Prototype leva esse trabalho para dentro, onde a lista de campos está.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Você precisa de uma cópia, ou de um objeto novo com valores novos?</strong> Se é novo, é um construtor.</li>
+            <li><strong>O objeto é simples, com poucos campos de valor?</strong> Então <code>dataclasses.replace(obj, nome="…")</code> (ou o spread <code>{ ...obj, nome }</code>) basta.</li>
+            <li><strong>O objeto guarda algo que não pode ser copiado</strong> — conexão, arquivo, trava, thread? Então a cópia não faz sentido: crie um novo por uma fábrica.</li>
+            <li><strong>Existe uma regra do que a cópia leva, do que compartilha e do que zera?</strong> Se sim, ela precisa morar em um método. É o Prototype.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>Copiar um objeto parece trivial e não é. O Prototype paga com <strong>uma decisão por campo</strong>: copia a fundo ou compartilha? Zera ou mantém? Um campo novo reabre a pergunta, e o erro é silencioso: a cópia "funciona" e divide uma lista com o original. A cópia profunda também carrega tudo o que estiver ligado ao objeto, inclusive o que ninguém lembrou.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>O objeto é simples e de valores (poucos campos, sem listas)</td><td>Uma classe com <code>clonar()</code> para isso é cerimônia</td><td><code>dataclasses.replace</code>, ou o spread</td></tr>
+                <tr><td>O objeto imutável pode ser compartilhado</td><td>Se ninguém altera, não é preciso copiar</td><td>Compartilhe a mesma instância</td></tr>
+                <tr><td>O objeto guarda conexão, arquivo, trava ou thread</td><td>A cópia profunda duplica o recurso, ou falha</td><td>Uma fábrica que crie o recurso novo</td></tr>
+                <tr><td>O objeto está ligado a um grafo grande (cache, ORM, referências cruzadas)</td><td><code>deepcopy</code> leva o grafo todo, e duplica o que devia ser compartilhado</td><td>Copiar só os dados (um DTO) e remontar o resto</td></tr>
+                <tr><td>Você quer "outro do mesmo tipo", sem estado</td><td>Não há o que copiar</td><td>Factory Method, ou o construtor</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Prototype saiu do lugar</h3>
+          <ul>
+            <li><strong>O <code>clonar()</code> faz cópia rasa sem avisar.</strong> Aparece como "o clone funciona", até alguém mexer em uma lista da cópia.</li>
+            <li><strong>Um <code>deepcopy</code> cego em um objeto com ligações para o mundo.</strong> Se ele tem uma referência para o banco, para um cache ou para o objeto pai, a cópia leva tudo isso junto.</li>
+            <li><strong>O clone mantém a identidade.</strong> Duas campanhas com o mesmo <code>id</code> (ou a mesma data de criação) são um bug esperando para acontecer.</li>
+            <li><strong>O protótipo guardado é alterado por quem o usa.</strong> Em um catálogo de modelos, se o modelo é entregue sem cópia, a próxima pessoa clona um modelo "sujo".</li>
+            <li><strong>Copiar para "ganhar desempenho" sem medir.</strong> Se construir do zero é barato, o clone só acrescentou uma decisão.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: clonar sem decidir o que a cópia compartilha com o original. Os testes passam, e em produção alguém edita a cópia e a campanha original muda.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, use <code>copy.deepcopy</code> ou <code>dataclasses.replace</code> direto no ponto de uso. Um método <code>clonar()</code> só se justifica quando a <em>regra</em> (o que zerar, o que compartilhar) precisa viver em um lugar e ser seguida por todos.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../factory-method/explicacao.html">Factory Method</a></td><td>Cria um objeto <em>do zero</em>, pela classe que a subclasse escolhe. O Prototype parte de um objeto pronto e copia</td></tr>
+                <tr><td><a href="../abstract-factory/explicacao.html">Abstract Factory</a></td><td>Entrega uma família de objetos. Uma fábrica pode ser implementada com protótipos — ela guarda um de cada e clona, em vez de instanciar</td></tr>
+                <tr><td><a href="../builder/explicacao.html">Builder</a></td><td>Monta um objeto complexo <em>por etapas</em>, a cada vez. O Prototype parte de um objeto já montado</td></tr>
+                <tr><td>Memento</td><td>Guarda o estado para restaurá-lo depois, e a cópia não é usada como objeto vivo. O Prototype produz um objeto novo e independente</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o objeto novo parte de um molde que já existe, é Prototype. Se parte de uma classe, é uma fábrica.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

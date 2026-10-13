@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Decorator · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/decorator/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Decorator</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como acrescentar comportamento a um objeto sem mexer nele e sem criar uma subclasse para cada combinação de extras.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>O sistema busca produtos em uma API do ERP: <code>catalogo.buscar(sku)</code>. Ela é lenta e, de vez em quando, cai. Então alguém põe um cache. Depois, o time de operações pede o tempo de cada chamada no log. Depois, uma tentativa extra quando a API falha.</p>
+          <p>Cada pedido é pequeno e vai para o mesmo lugar: a classe que já existe, com mais um parâmetro.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — cada extra vira uma flag e um if dentro do mesmo método</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">CatalogoHttp</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, url, usar_cache=<span class="t-k">False</span>, tentativas=<span class="t-n">1</span>, logar=<span class="t-k">False</span>):
+        self._url, self._cache = url, {}
+        self._usar_cache, self._tentativas, self._logar = usar_cache, tentativas, logar
+
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, sku):
+        <span class="t-k">if</span> self._usar_cache <span class="t-k">and</span> sku <span class="t-k">in</span> self._cache:
+            <span class="t-k">return</span> self._cache[sku]
+
+        <span class="t-k">for</span> tentativa <span class="t-k">in</span> <span class="t-f">range</span>(self._tentativas):
+            inicio = time.<span class="t-f">perf_counter</span>()
+            <span class="t-k">try</span>:
+                resp = requests.<span class="t-f">get</span>(<span class="t-s">f"{self._url}/produtos/{sku}"</span>, timeout=<span class="t-n">3</span>)
+                resp.<span class="t-f">raise_for_status</span>()
+                <span class="t-k">break</span>
+            <span class="t-k">except</span> requests.RequestException:
+                <span class="t-k">if</span> tentativa == self._tentativas - <span class="t-n">1</span>:
+                    <span class="t-k">raise</span>
+            <span class="t-k">finally</span>:
+                <span class="t-k">if</span> self._logar:
+                    log.<span class="t-f">info</span>(<span class="t-s">"buscar %s: %.0f ms"</span>, sku, (time.<span class="t-f">perf_counter</span>() - inicio) * <span class="t-n">1000</span>)
+
+        produto = <span class="t-f">Produto</span>(**resp.<span class="t-f">json</span>())
+        <span class="t-k">if</span> self._usar_cache:
+            self._cache[sku] = produto
+        <span class="t-k">return</span> produto</code></pre>
+            </div>
+          </div>
+          <p>Funciona, e o próximo extra (métricas, circuit breaker) cabe em mais um <code>if</code>. O problema está no que a classe virou: <strong>uma</strong> classe que busca na rede, guarda cache, mede tempo e repete tentativa, o que quebra o Single Responsibility e o Open/Closed ao mesmo tempo. O cache só pode ser testado com a rede, ou com a classe inteira falsificada. Quem só quer o log paga a complexidade do resto. E a ordem das camadas, que é uma decisão ("o log mede só a rede ou também o cache?"), ficou enterrada na ordem das linhas.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Uma peça por extra, e todas com a <strong>mesma interface</strong> do objeto original. Cada uma guarda outro objeto dessa interface, faz o seu trabalho e repassa a chamada. O cliente monta a pilha que quiser. Os papéis são quatro:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Componente</td><td>A interface que todos implementam</td><td><code>Catalogo</code></td></tr>
+                <tr><td>Componente concreto</td><td>O objeto de verdade, no fundo da pilha</td><td><code>CatalogoHttp</code></td></tr>
+                <tr><td>Decorador</td><td>Implementa o componente <em>e</em> guarda outro componente; acrescenta algo antes ou depois de repassar</td><td><code>ComCache</code>, <code>ComRetry</code>, <code>ComLog</code></td></tr>
+                <tr><td>Cliente</td><td>Quem monta a pilha e usa o resultado como um <code>Catalogo</code> qualquer</td><td>A montagem da aplicação</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é que o decorador é <strong>um</strong> componente e <strong>tem um</strong> componente. É isso que permite empilhar: quem usa a pilha não sabe quantas camadas existem, e quem escreve uma camada não sabe o que está embaixo dela. A ordem de embrulho é a ordem de execução, e fica visível em uma linha.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+<span class="t-k">import</span> time
+
+<span class="t-c"># 1. o componente: a interface que todas as camadas respeitam</span>
+<span class="t-k">class</span> <span class="t-f">Catalogo</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, sku: <span class="t-f">str</span>) -&gt; <span class="t-f">Produto</span>: ...
+
+<span class="t-c"># 2. o componente concreto: só sabe falar com a API</span>
+<span class="t-k">class</span> <span class="t-f">CatalogoHttp</span>(Catalogo):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, url: <span class="t-f">str</span>):
+        self._url = url
+
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, sku):
+        <span class="t-k">try</span>:
+            resp = requests.<span class="t-f">get</span>(<span class="t-s">f"{self._url}/produtos/{sku}"</span>, timeout=<span class="t-n">3</span>)
+            resp.<span class="t-f">raise_for_status</span>()
+        <span class="t-k">except</span> requests.RequestException <span class="t-k">as</span> e:
+            <span class="t-k">raise</span> <span class="t-f">CatalogoIndisponivel</span>(sku) <span class="t-k">from</span> e
+        <span class="t-k">return</span> <span class="t-f">Produto</span>(**resp.<span class="t-f">json</span>())
+
+<span class="t-c"># 3. os decoradores: cada um faz uma coisa e repassa o resto</span>
+<span class="t-k">class</span> <span class="t-f">ComCache</span>(Catalogo):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, interno: Catalogo):
+        self._interno, self._cache = interno, {}
+
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, sku):
+        <span class="t-k">if</span> sku <span class="t-k">not</span> <span class="t-k">in</span> self._cache:
+            self._cache[sku] = self._interno.<span class="t-f">buscar</span>(sku)
+        <span class="t-k">return</span> self._cache[sku]
+
+<span class="t-k">class</span> <span class="t-f">ComRetry</span>(Catalogo):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, interno: Catalogo, tentativas: <span class="t-f">int</span> = <span class="t-n">3</span>):
+        self._interno, self._tentativas = interno, tentativas
+
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, sku):
+        <span class="t-k">for</span> tentativa <span class="t-k">in</span> <span class="t-f">range</span>(self._tentativas):
+            <span class="t-k">try</span>:
+                <span class="t-k">return</span> self._interno.<span class="t-f">buscar</span>(sku)
+            <span class="t-k">except</span> CatalogoIndisponivel:
+                <span class="t-k">if</span> tentativa == self._tentativas - <span class="t-n">1</span>:
+                    <span class="t-k">raise</span>
+
+<span class="t-k">class</span> <span class="t-f">ComLog</span>(Catalogo):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, interno: Catalogo):
+        self._interno = interno
+
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, sku):
+        inicio = time.<span class="t-f">perf_counter</span>()
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> self._interno.<span class="t-f">buscar</span>(sku)
+        <span class="t-k">finally</span>:
+            log.<span class="t-f">info</span>(<span class="t-s">"buscar %s: %.0f ms"</span>, sku, (time.<span class="t-f">perf_counter</span>() - inicio) * <span class="t-n">1000</span>)
+
+<span class="t-c"># 4. o cliente monta a pilha, de fora para dentro: log, cache, retry, rede</span>
+catalogo = <span class="t-f">ComLog</span>(<span class="t-f">ComCache</span>(<span class="t-f">ComRetry</span>(<span class="t-f">CatalogoHttp</span>(URL_DO_ERP))))</code></pre>
+              <pre><code><span class="t-c">// 1. o componente: a interface que todas as camadas respeitam</span>
+<span class="t-k">interface</span> <span class="t-f">Catalogo</span> {
+  <span class="t-f">buscar</span>(sku: <span class="t-f">string</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">Produto</span>&gt;;
+}
+
+<span class="t-c">// 2. o componente concreto: só sabe falar com a API</span>
+<span class="t-k">class</span> <span class="t-f">CatalogoHttp</span> <span class="t-k">implements</span> <span class="t-f">Catalogo</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> url: <span class="t-f">string</span>) {}
+
+  <span class="t-k">async</span> <span class="t-f">buscar</span>(sku: <span class="t-f">string</span>) {
+    <span class="t-k">try</span> {
+      <span class="t-k">const</span> resp = <span class="t-k">await</span> <span class="t-f">fetch</span>(<span class="t-s">`${this.url}/produtos/${sku}`</span>, { signal: AbortSignal.<span class="t-f">timeout</span>(<span class="t-n">3000</span>) });
+      <span class="t-k">if</span> (!resp.ok) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">Error</span>(<span class="t-s">`HTTP ${resp.status}`</span>);
+      <span class="t-k">return</span> (<span class="t-k">await</span> resp.<span class="t-f">json</span>()) <span class="t-k">as</span> <span class="t-f">Produto</span>;
+    } <span class="t-k">catch</span> (e) {
+      <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">CatalogoIndisponivel</span>(sku, { cause: e });
+    }
+  }
+}
+
+<span class="t-c">// 3. os decoradores: cada um faz uma coisa e repassa o resto</span>
+<span class="t-k">class</span> <span class="t-f">ComCache</span> <span class="t-k">implements</span> <span class="t-f">Catalogo</span> {
+  <span class="t-k">private</span> cache = <span class="t-k">new</span> <span class="t-f">Map</span>&lt;<span class="t-f">string</span>, <span class="t-f">Produto</span>&gt;();
+
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> interno: <span class="t-f">Catalogo</span>) {}
+
+  <span class="t-k">async</span> <span class="t-f">buscar</span>(sku: <span class="t-f">string</span>) {
+    <span class="t-k">if</span> (!<span class="t-k">this</span>.cache.<span class="t-f">has</span>(sku)) {
+      <span class="t-k">this</span>.cache.<span class="t-f">set</span>(sku, <span class="t-k">await</span> <span class="t-k">this</span>.interno.<span class="t-f">buscar</span>(sku));
+    }
+    <span class="t-k">return</span> <span class="t-k">this</span>.cache.<span class="t-f">get</span>(sku)!;
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">ComRetry</span> <span class="t-k">implements</span> <span class="t-f">Catalogo</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> interno: <span class="t-f">Catalogo</span>, <span class="t-k">private</span> tentativas = <span class="t-n">3</span>) {}
+
+  <span class="t-k">async</span> <span class="t-f">buscar</span>(sku: <span class="t-f">string</span>) {
+    <span class="t-k">for</span> (<span class="t-k">let</span> i = <span class="t-n">1</span>; ; i++) {
+      <span class="t-k">try</span> {
+        <span class="t-k">return</span> <span class="t-k">await</span> <span class="t-k">this</span>.interno.<span class="t-f">buscar</span>(sku);
+      } <span class="t-k">catch</span> (e) {
+        <span class="t-k">if</span> (!(e <span class="t-k">instanceof</span> <span class="t-f">CatalogoIndisponivel</span>) || i &gt;= <span class="t-k">this</span>.tentativas) <span class="t-k">throw</span> e;
+      }
+    }
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">ComLog</span> <span class="t-k">implements</span> <span class="t-f">Catalogo</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> interno: <span class="t-f">Catalogo</span>) {}
+
+  <span class="t-k">async</span> <span class="t-f">buscar</span>(sku: <span class="t-f">string</span>) {
+    <span class="t-k">const</span> inicio = performance.<span class="t-f">now</span>();
+    <span class="t-k">try</span> {
+      <span class="t-k">return</span> <span class="t-k">await</span> <span class="t-k">this</span>.interno.<span class="t-f">buscar</span>(sku);
+    } <span class="t-k">finally</span> {
+      console.<span class="t-f">log</span>(<span class="t-s">`buscar ${sku}: ${Math.round(performance.now() - inicio)} ms`</span>);
+    }
+  }
+}
+
+<span class="t-c">// 4. o cliente monta a pilha, de fora para dentro: log, cache, retry, rede</span>
+<span class="t-k">const</span> catalogo: <span class="t-f">Catalogo</span> = <span class="t-k">new</span> <span class="t-f">ComLog</span>(<span class="t-k">new</span> <span class="t-f">ComCache</span>(<span class="t-k">new</span> <span class="t-f">ComRetry</span>(<span class="t-k">new</span> <span class="t-f">CatalogoHttp</span>(URL_DO_ERP))));</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>Cada camada passa a ser testada com um <code>Catalogo</code> falso embaixo dela. O teste do <code>ComCache</code> é um falso que conta quantas vezes foi chamado: duas buscas do mesmo SKU, uma chamada. Nenhuma rede e nenhum mock de biblioteca.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Decorator vale quando três coisas acontecem ao mesmo tempo: você quer <strong>acrescentar</strong> algo a um objeto que já tem uma interface, o acréscimo é <strong>independente</strong> do que está sendo embrulhado (cache vale para qualquer catálogo), e as <strong>combinações variam</strong> conforme o uso, ou você não pode (ou não quer) alterar a classe.</p>
+          <p>No código, isso aparece de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Recursos transversais ligados e desligados por parâmetro</td><td>Um construtor com <code>usar_cache=</code>, <code>logar=</code>, <code>tentativas=</code> e um <code>if self._logar</code> dentro de cada método</td><td><a href="#implementacao">Implementação, acima</a></td></tr>
+                <tr><td>Subclasses cujo nome lista os extras</td><td><code>IngressoMeiaComCombo</code>, <code>IngressoMeiaComComboVip</code>: um "Com" acumulando</td><td><a href="uso.html#adicionais-no-checkout">Uso #1</a></td></tr>
+                <tr><td>Adicionais que o usuário escolhe em tempo de execução</td><td>Booleanos na assinatura (<code>combo=False, vip=False</code>) e um <code>if</code> para cada um, repetido em preço e em descrição</td><td><a href="uso.html#adicionais-no-checkout">Uso #1</a></td></tr>
+                <tr><td>Comportamento a acrescentar a um objeto que passa por vários consumidores</td><td>Contagem, limite ou hash misturados ao laço que lê; <code>.read()</code> chamado duas vezes</td><td><a href="uso.html#upload-com-limite">Uso #2</a></td></tr>
+                <tr><td>O mesmo trecho no início e no fim de dezenas de funções</td><td>O <code>try/finally</code> de métrica ou o <code>if not permitido</code> copiado em cada handler</td><td><a href="uso.html#funcoes-de-handler">Uso #3</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>Os sinais têm uma coisa em comum: "o que a coisa faz" e "o que acontece em volta dela" estão no mesmo corpo. O Decorator move o "em volta" para fora, e o corpo volta a ser só o que a coisa faz.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>O acréscimo é independente do que está embrulhado?</strong> Se ele precisa de campos privados ou de detalhes internos, não dá para fazer de fora: é subclasse, ou uma mudança na própria classe. Pare.</li>
+            <li><strong>A interface pode continuar a mesma?</strong> Se o acréscimo exige que o cliente chame um método novo, deixou de ser decorador: é outra interface, e o nome do que você quer é Adapter ou Facade.</li>
+            <li><strong>O acréscimo é opcional ou varia por uso?</strong> Se todo uso precisa dele, sempre, e a classe é sua, escreva dentro dela. A camada só custa mais um salto.</li>
+            <li><strong>Existe mais de um acréscimo, ou ele vai ser usado em mais de um lugar?</strong> Se é um só, em um lugar só, deixe no corpo. Se são dois ou mais, ou o mesmo em vários lugares, é Decorator.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Decorator tem um custo que se paga em depuração: cada camada é um salto a mais na pilha de chamadas, e o objeto que você tem na mão deixa de ser o que você criou (<code>isinstance</code> e igualdade por identidade mudam). A ordem das camadas altera o resultado e não aparece no tipo. E, se a interface for grande, cada decorador precisa repassar todos os métodos para mudar um.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>A interface tem dez métodos ou mais</td><td>Cada decorador repassa todos para alterar um; o código é quase todo delegação</td><td>Reduza a interface, ou use um Proxy que repassa o resto automaticamente (<code>__getattr__</code>)</td></tr>
+                <tr><td>O acréscimo é sempre ligado e usado em um lugar só</td><td>A camada só acrescenta um salto na leitura</td><td>Escreva no corpo. Extraia quando o segundo caso aparecer</td></tr>
+                <tr><td>O acréscimo precisa do estado interno do objeto</td><td>O decorador só enxerga a interface pública</td><td>Subclasse, ou mude a própria classe</td></tr>
+                <tr><td>Você precisa mudar a interface</td><td>O Decorator mantém a interface; converter é outro problema</td><td>Adapter</td></tr>
+                <tr><td>Você precisa controlar <em>se e quando</em> o objeto real é usado (criação sob demanda, permissão)</td><td>É a mesma forma, com outra intenção: gerenciar o acesso</td><td>Proxy</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Decorator saiu do lugar</h3>
+          <ul>
+            <li><strong>O decorador conhece o que embrulha.</strong> Um <code>isinstance(self._interno, CatalogoHttp)</code> dentro do cache mostra que a camada depende de um tipo, e a pilha deixou de ser intercambiável.</li>
+            <li><strong>A pilha é montada em cinco lugares, cada um de um jeito.</strong> A ordem passa a ser um acidente. Monte em uma função só, com nome.</li>
+            <li><strong>A ordem foi descoberta por tentativa e erro.</strong> Sem comentário e sem teste, o próximo a mexer inverte duas camadas e o cache passa a guardar erros.</li>
+            <li><strong>O decorador faz o trabalho do componente.</strong> Se <code>ComCache</code> também sabe falar com a API, virou uma subclasse com outro nome.</li>
+            <li><strong>Camada que só repassa.</strong> Um decorador que ficou sem comportamento depois de uma refatoração é uma indireção sem função.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: o cliente faz um <em>cast</em> para o decorador para chamar um método que só ele tem (<code>catalogo.limpar_cache()</code>). A interface deixou de ser a mesma, e o pattern virou uma forma complicada de herança.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com o comportamento dentro do corpo, em um lugar só. A extração é pequena quando o segundo uso ou a segunda combinação aparecem: o trecho vira uma classe que implementa a mesma interface e recebe a original no construtor.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Proxy</td><td>Tem a mesma forma, mas controla o <em>acesso</em>: cria o objeto real sob demanda, checa permissão, fala com algo remoto. O Decorator acrescenta comportamento e é empilhado por quem usa</td></tr>
+                <tr><td><a href="../adapter/explicacao.html">Adapter</a></td><td>Muda a interface e não acrescenta nada. O Decorator mantém a interface e acrescenta</td></tr>
+                <tr><td><a href="../composite/explicacao.html">Composite</a></td><td>Mesma estrutura de "objeto que guarda outro da mesma interface", mas guarda <em>vários</em> e combina as respostas. O Decorator guarda um e o repassa</td></tr>
+                <tr><td><a href="../../comportamentais/chain-of-responsibility/explicacao.html">Chain of Responsibility</a></td><td>Cada elo decide se trata o pedido ou passa adiante, e ele termina em um. No Decorator todas as camadas acrescentam algo e o componente real responde</td></tr>
+                <tr><td>Strategy</td><td>Troca o miolo do algoritmo, por dentro. O Decorator envolve por fora, sem mexer no miolo</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o objeto que embrulha implementa a mesma interface para acrescentar algo, e quem usa escolhe de fora quais embrulhos empilhar, é Decorator; se ele decide se e quando o objeto real é usado, é Proxy.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

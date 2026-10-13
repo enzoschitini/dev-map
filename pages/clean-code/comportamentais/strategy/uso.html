@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Strategy · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/strategy/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Strategy</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Quatro situações em que o Strategy resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que ele isola em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que quatro</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para usar o Strategy. Quando dois casos se resolvem com o mesmo raciocínio — validar documento por país e escolher a ordenação por uma opção da tela, por exemplo — só um fica. Seguindo essa regra, sobraram quatro motivos. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o Strategy isola</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#ordenacao-escolhida">O usuário escolhe como a lista é ordenada</a></td><td>A opção da tela, do algoritmo que a atende</td></tr>
+                <tr><td>2</td><td><a href="#custo-diferente">O mesmo resultado, com custos diferentes</a></td><td>O <em>como</em> do <em>quando</em></td></tr>
+                <tr><td>3</td><td><a href="#politica-de-retentativa">Uma política de espera que o laço consulta</a></td><td>A mecânica do laço, da política dentro dele</td></tr>
+                <tr><td>4</td><td><a href="#regra-do-cadastro">A regra vem do cadastro, não do código</a></td><td>O texto gravado no banco, do objeto que o executa</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="ordenacao-escolhida">1. O usuário escolhe como a lista é ordenada</h2>
+          <p><strong>Situação.</strong> A listagem de produtos tem um seletor "Ordenar por": menor preço, melhor avaliação, mais vendidos, entrega mais rápida. A tela manda uma string, e alguém precisa traduzi-la em uma ordenação. O catálogo cresce uma opção por trimestre.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — um if por opção do seletor</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">function</span> <span class="t-f">ordenar</span>(produtos: <span class="t-f">Produto</span>[], ordem: <span class="t-f">string</span>): <span class="t-f">Produto</span>[] {
+  <span class="t-k">const</span> copia = [...produtos];
+  <span class="t-k">if</span> (ordem === <span class="t-s">"preco"</span>) {
+    <span class="t-k">return</span> copia.<span class="t-f">sort</span>((a, b) =&gt; a.preco - b.preco);
+  } <span class="t-k">else</span> <span class="t-k">if</span> (ordem === <span class="t-s">"avaliacao"</span>) {
+    <span class="t-k">return</span> copia.<span class="t-f">sort</span>((a, b) =&gt; b.nota - a.nota);
+  } <span class="t-k">else</span> <span class="t-k">if</span> (ordem === <span class="t-s">"vendidos"</span>) {
+    <span class="t-k">return</span> copia.<span class="t-f">sort</span>((a, b) =&gt; b.vendas - a.vendas);
+  }
+  <span class="t-k">return</span> copia;  <span class="t-c">// "entrega"? a opção existe na tela, o if nunca foi escrito</span>
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A tela e este <code>if</code> precisam concordar em cada texto, e a única checagem é a memória de quem escreve. Uma opção sem <code>if</code> cai no <code>return</code> do fim, em silêncio, e a lista parece "ordenada". Em empate de nota, o desempate por preço teria que ser lembrado em cada ramo.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a ordem é um comparador em uma tabela</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">type</span> <span class="t-f">Comparador</span> = (a: <span class="t-f">Produto</span>, b: <span class="t-f">Produto</span>) =&gt; <span class="t-f">number</span>;
+
+<span class="t-k">const</span> ordens = {
+  preco:     (a, b) =&gt; a.preco - b.preco,
+  avaliacao: (a, b) =&gt; b.nota - a.nota || a.preco - b.preco,
+  vendidos:  (a, b) =&gt; b.vendas - a.vendas || a.preco - b.preco,
+  entrega:   (a, b) =&gt; a.prazoDias - b.prazoDias || a.preco - b.preco,
+} <span class="t-k">satisfies</span> <span class="t-f">Record</span>&lt;<span class="t-f">string</span>, <span class="t-f">Comparador</span>&gt;;
+
+<span class="t-k">export</span> <span class="t-k">type</span> <span class="t-f">Ordem</span> = <span class="t-k">keyof</span> <span class="t-k">typeof</span> ordens;
+
+<span class="t-k">export</span> <span class="t-k">function</span> <span class="t-f">ordenar</span>(produtos: <span class="t-k">readonly</span> <span class="t-f">Produto</span>[], ordem: <span class="t-f">Ordem</span>): <span class="t-f">Produto</span>[] {
+  <span class="t-k">return</span> [...produtos].<span class="t-f">sort</span>(ordens[ordem]);
+}
+
+<span class="t-c">// o seletor da tela sai da própria tabela</span>
+<span class="t-k">export</span> <span class="t-k">const</span> opcoes = Object.<span class="t-f">keys</span>(ordens) <span class="t-k">as</span> <span class="t-f">Ordem</span>[];</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Strategy isola.</strong> A opção da tela, do algoritmo que a atende. <code>Array.prototype.sort</code> já é um contexto de Strategy: ele não sabe ordenar nada por si, recebe o comparador de fora. A tabela é a única lista de opções, o seletor é gerado a partir dela, e o compilador recusa uma <code>Ordem</code> que não existe. Uma nova opção é uma linha, e o <code>ordenar</code> não é tocado.</p>
+          <div class="callout" data-kind="tip"><p>Aqui a estratégia é uma <em>função</em>, e não uma classe. Em linguagens com funções de primeira classe, essa é a forma normal do Strategy: uma classe com um único método e sem estado é uma função com cerimônia.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="custo-diferente">2. O mesmo resultado, com custos diferentes</h2>
+          <p><strong>Situação.</strong> O sistema comprime dois tipos de dado. Os logs seguem em tempo real para o coletor: precisam sair rápido, e ocupar um pouco mais não importa. O backup noturno tem a madrugada inteira e quer o menor arquivo possível. Nos dois casos, o que se faz com o resultado é o mesmo: gravar em disco e, depois, ler de volta.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — a política e o algoritmo no mesmo if</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">guardar</span>(dados: <span class="t-f">bytes</span>, destino: Path, tempo_real: <span class="t-f">bool</span>):
+    <span class="t-k">if</span> tempo_real:
+        saida = gzip.<span class="t-f">compress</span>(dados, compresslevel=<span class="t-n">1</span>)
+        destino = destino.<span class="t-f">with_suffix</span>(<span class="t-s">".gz"</span>)
+    <span class="t-k">elif</span> <span class="t-f">len</span>(dados) &gt; <span class="t-n">50_000_000</span>:
+        saida = lzma.<span class="t-f">compress</span>(dados, preset=<span class="t-n">9</span>)
+        destino = destino.<span class="t-f">with_suffix</span>(<span class="t-s">".xz"</span>)
+    <span class="t-k">else</span>:
+        saida = bz2.<span class="t-f">compress</span>(dados)
+        destino = destino.<span class="t-f">with_suffix</span>(<span class="t-s">".bz2"</span>)
+    destino.<span class="t-f">write_bytes</span>(saida)
+
+<span class="t-c"># e o mesmo if, de novo, em ler(), para escolher o descompressor</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Quando usar cada algoritmo e como usar cada um estão no mesmo lugar, e a decisão está duplicada em <code>ler</code>. Se alguém mudar o limite de 50 MB em uma das duas pontas, os arquivos gravados ficam sem leitura. O booleano <code>tempo_real</code> já é a versão de bolso do problema: a próxima necessidade vira outro booleano.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — um objeto por algoritmo, e a escolha em um lugar</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Compressor</span>(Protocol):
+    extensao: <span class="t-f">str</span>
+    <span class="t-k">def</span> <span class="t-f">comprimir</span>(self, dados: <span class="t-f">bytes</span>) -&gt; <span class="t-f">bytes</span>: ...
+    <span class="t-k">def</span> <span class="t-f">descomprimir</span>(self, dados: <span class="t-f">bytes</span>) -&gt; <span class="t-f">bytes</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">Gzip</span>:                      <span class="t-c"># rápido</span>
+    extensao = <span class="t-s">".gz"</span>
+    <span class="t-k">def</span> <span class="t-f">comprimir</span>(self, dados):    <span class="t-k">return</span> gzip.<span class="t-f">compress</span>(dados, compresslevel=<span class="t-n">1</span>)
+    <span class="t-k">def</span> <span class="t-f">descomprimir</span>(self, dados): <span class="t-k">return</span> gzip.<span class="t-f">decompress</span>(dados)
+
+<span class="t-k">class</span> <span class="t-f">Bzip2</span>:                     <span class="t-c"># meio-termo</span>
+    extensao = <span class="t-s">".bz2"</span>
+    <span class="t-k">def</span> <span class="t-f">comprimir</span>(self, dados):    <span class="t-k">return</span> bz2.<span class="t-f">compress</span>(dados)
+    <span class="t-k">def</span> <span class="t-f">descomprimir</span>(self, dados): <span class="t-k">return</span> bz2.<span class="t-f">decompress</span>(dados)
+
+<span class="t-k">class</span> <span class="t-f">Lzma</span>:                      <span class="t-c"># menor arquivo, mais lento</span>
+    extensao = <span class="t-s">".xz"</span>
+    <span class="t-k">def</span> <span class="t-f">comprimir</span>(self, dados):    <span class="t-k">return</span> lzma.<span class="t-f">compress</span>(dados, preset=<span class="t-n">9</span>)
+    <span class="t-k">def</span> <span class="t-f">descomprimir</span>(self, dados): <span class="t-k">return</span> lzma.<span class="t-f">decompress</span>(dados)
+
+<span class="t-k">def</span> <span class="t-f">guardar</span>(dados: <span class="t-f">bytes</span>, destino: Path, compressor: Compressor):
+    destino.<span class="t-f">with_suffix</span>(compressor.extensao).<span class="t-f">write_bytes</span>(compressor.<span class="t-f">comprimir</span>(dados))
+
+<span class="t-k">def</span> <span class="t-f">ler</span>(origem: Path, compressor: Compressor) -&gt; <span class="t-f">bytes</span>:
+    <span class="t-k">return</span> compressor.<span class="t-f">descomprimir</span>(origem.<span class="t-f">read_bytes</span>())
+
+<span class="t-c"># a política: o único lugar que fala em "tempo real" e em tamanho</span>
+<span class="t-k">def</span> <span class="t-f">compressor_para</span>(tempo_real: <span class="t-f">bool</span>, tamanho: <span class="t-f">int</span>) -&gt; Compressor:
+    <span class="t-k">if</span> tempo_real:
+        <span class="t-k">return</span> <span class="t-f">Gzip</span>()
+    <span class="t-k">return</span> <span class="t-f">Lzma</span>() <span class="t-k">if</span> tamanho &gt; <span class="t-n">50_000_000</span> <span class="t-k">else</span> <span class="t-f">Bzip2</span>()</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Strategy isola.</strong> O <em>como</em> do <em>quando</em>. Os três algoritmos são equivalentes no que importa para quem grava e lê: bytes entram, bytes comprimidos saem, e voltam iguais. O que muda é o custo (tempo contra tamanho). Por isso a política de escolha cabe em quatro linhas, e pode mudar depois de uma medição sem tocar em nenhuma das três classes.</p>
+          <div class="callout" data-kind="warn"><p>A leitura não pode usar a política de <em>hoje</em>: o arquivo foi gravado com a de ontem. Escolha o descompressor pelo que está no arquivo (a extensão, ou um identificador no cabeçalho), e a política passa a valer só para o que ainda vai ser gravado.</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="politica-de-retentativa">3. Uma política de espera que o laço consulta</h2>
+          <p><strong>Situação.</strong> Três partes do sistema chamam a mesma API de terceiros, que responde com erro temporário de vez em quando. A consulta de cotação tenta três vezes, com meio segundo entre elas, porque a tela está esperando. O relatório diário tenta oito vezes, esperando cada vez o dobro. O envio de webhooks faz o mesmo, mas com um sorteio na espera, para as tentativas não baterem juntas.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o laço copiado, com a política dentro</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">buscar_cotacao</span>(par):
+    <span class="t-k">for</span> tentativa <span class="t-k">in</span> <span class="t-f">range</span>(<span class="t-n">3</span>):
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> api.<span class="t-f">get</span>(<span class="t-s">f"/cotacoes/{par}"</span>)
+        <span class="t-k">except</span> ErroTemporario:
+            time.<span class="t-f">sleep</span>(<span class="t-n">0.5</span>)
+    <span class="t-k">raise</span> <span class="t-f">TentativasEsgotadas</span>(par)
+
+<span class="t-k">def</span> <span class="t-f">baixar_relatorio</span>(dia):
+    <span class="t-k">for</span> tentativa <span class="t-k">in</span> <span class="t-f">range</span>(<span class="t-n">8</span>):
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> api.<span class="t-f">get</span>(<span class="t-s">f"/relatorios/{dia}"</span>)
+        <span class="t-k">except</span> ErroTemporario:
+            time.<span class="t-f">sleep</span>(<span class="t-n">2</span> ** tentativa + random.<span class="t-f">uniform</span>(<span class="t-n">0</span>, <span class="t-n">1</span>))
+    <span class="t-k">raise</span> <span class="t-f">TentativasEsgotadas</span>(dia)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A mecânica de tentar de novo está escrita três vezes, cada uma com um número diferente embutido, então ninguém sabe qual é "a política da empresa". O teste de <code>baixar_relatorio</code>, para chegar ao <code>raise</code>, dorme mais de quatro minutos de verdade. E o sorteio dentro do laço faz o teste falhar de vez em quando.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o laço pergunta quanto esperar e quando desistir</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Espera</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">apos</span>(self, tentativa: <span class="t-f">int</span>) -&gt; <span class="t-f">float</span> | <span class="t-k">None</span>:
+        <span class="t-s">"""Segundos até a próxima tentativa; None para desistir."""</span>
+
+<span class="t-k">class</span> <span class="t-f">Fixa</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, segundos: <span class="t-f">float</span>, tentativas: <span class="t-f">int</span>):
+        self._segundos, self._tentativas = segundos, tentativas
+
+    <span class="t-k">def</span> <span class="t-f">apos</span>(self, tentativa):
+        <span class="t-k">return</span> self._segundos <span class="t-k">if</span> tentativa &lt; self._tentativas - <span class="t-n">1</span> <span class="t-k">else</span> <span class="t-k">None</span>
+
+<span class="t-k">class</span> <span class="t-f">Exponencial</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, tentativas: <span class="t-f">int</span>, sorteio=random.uniform):
+        self._tentativas, self._sorteio = tentativas, sorteio
+
+    <span class="t-k">def</span> <span class="t-f">apos</span>(self, tentativa):
+        <span class="t-k">if</span> tentativa &gt;= self._tentativas - <span class="t-n">1</span>:
+            <span class="t-k">return</span> <span class="t-k">None</span>
+        <span class="t-k">return</span> <span class="t-n">2</span> ** tentativa + self.<span class="t-f">_sorteio</span>(<span class="t-n">0</span>, <span class="t-n">1</span>)
+
+<span class="t-k">def</span> <span class="t-f">com_retentativas</span>(operacao, espera: Espera, dormir=time.sleep):
+    tentativa = <span class="t-n">0</span>
+    <span class="t-k">while</span> <span class="t-k">True</span>:
+        <span class="t-k">try</span>:
+            <span class="t-k">return</span> <span class="t-f">operacao</span>()
+        <span class="t-k">except</span> ErroTemporario:
+            pausa = espera.<span class="t-f">apos</span>(tentativa)
+            <span class="t-k">if</span> pausa <span class="t-k">is</span> <span class="t-k">None</span>:
+                <span class="t-k">raise</span>
+            <span class="t-f">dormir</span>(pausa)
+            tentativa += <span class="t-n">1</span>
+
+cotacao = <span class="t-f">com_retentativas</span>(<span class="t-k">lambda</span>: api.<span class="t-f">get</span>(<span class="t-s">f"/cotacoes/{par}"</span>), <span class="t-f">Fixa</span>(<span class="t-n">0.5</span>, tentativas=<span class="t-n">3</span>))
+relatorio = <span class="t-f">com_retentativas</span>(<span class="t-k">lambda</span>: api.<span class="t-f">get</span>(<span class="t-s">f"/relatorios/{dia}"</span>), <span class="t-f">Exponencial</span>(tentativas=<span class="t-n">8</span>))</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Strategy isola.</strong> A mecânica do laço, da política dentro dele. O laço só sabe perguntar "quanto espero?" e ouvir um número ou <code>None</code>; a estratégia sabe tudo sobre números. O teste troca as duas peças: <code>Fixa(0, 3)</code> e um <code>dormir</code> que não faz nada, e a falha percorre as três tentativas em microssegundos. O sorteio entra pelo construtor da <code>Exponencial</code> pelo mesmo motivo.</p>
+          <div class="callout" data-kind="tip"><p>O sorteio na espera existe para que vários clientes, falhando ao mesmo tempo, não tentem todos no mesmo instante e derrubem a API de novo. É um bom exemplo do que uma estratégia nomeada carrega: um motivo que, no <code>sleep</code> solto, ninguém escreve.</p></div>
+
+          <!-- 4 ─────────────────────────────────────────────── -->
+          <h2 id="regra-do-cadastro">4. A regra vem do cadastro, não do código</h2>
+          <p><strong>Situação.</strong> Clientes corporativos negociam descontos diferentes. Um tem 10% fixo; outro tem 5% a partir de 100 licenças e 12% a partir de 500. O comercial ajusta contratos toda semana, e hoje cada ajuste vira um pedido para o time de desenvolvimento. A regra de cada cliente está gravada em uma linha do cadastro: <code>{"tipo": "faixas", "parametros": {…}}</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o mesmo if em três funções, lendo o dict por dentro</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">desconto_do_pedido</span>(cliente, pedido):
+    regra = cliente.regra_de_desconto            <span class="t-c"># dict vindo do banco</span>
+    <span class="t-k">if</span> regra[<span class="t-s">"tipo"</span>] == <span class="t-s">"fixo"</span>:
+        <span class="t-k">return</span> pedido.subtotal * <span class="t-f">Decimal</span>(regra[<span class="t-s">"parametros"</span>][<span class="t-s">"percentual"</span>]) / <span class="t-n">100</span>
+    <span class="t-k">elif</span> regra[<span class="t-s">"tipo"</span>] == <span class="t-s">"faixas"</span>:
+        <span class="t-k">for</span> faixa <span class="t-k">in</span> regra[<span class="t-s">"parametros"</span>][<span class="t-s">"faixas"</span>]:
+            <span class="t-k">if</span> pedido.licencas &gt;= faixa[<span class="t-s">"a_partir_de"</span>]:
+                pct = faixa[<span class="t-s">"percentual"</span>]
+        <span class="t-k">return</span> pedido.subtotal * <span class="t-f">Decimal</span>(pct) / <span class="t-n">100</span>   <span class="t-c"># e se nenhuma faixa bateu?</span>
+
+<span class="t-c"># descricao_na_fatura(cliente) e simular(cliente, qtd), na tela do comercial,</span>
+<span class="t-c"># repetem o mesmo if regra["tipo"] — cada um com o seu jeito de ler os parâmetros</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Cada operação sobre a regra (calcular, descrever, simular) tem o seu <code>if</code> por tipo, e um tipo novo precisa ser lembrado nas três. Um contrato salvo com parâmetro faltando só explode quando o cliente fizer um pedido, semanas depois, em produção. Se nenhuma faixa bater, <code>pct</code> nem existe.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o cadastro vira objeto em um ponto só</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">RegraDeDesconto</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">valor</span>(self, pedido: Pedido) -&gt; <span class="t-f">Decimal</span>: ...
+    <span class="t-k">def</span> <span class="t-f">descricao</span>(self) -&gt; <span class="t-f">str</span>: ...
+
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">Fixo</span>:
+    percentual: <span class="t-f">Decimal</span>
+
+    <span class="t-k">def</span> <span class="t-f">valor</span>(self, pedido):
+        <span class="t-k">return</span> pedido.subtotal * self.percentual / <span class="t-n">100</span>
+
+    <span class="t-k">def</span> <span class="t-f">descricao</span>(self):
+        <span class="t-k">return</span> <span class="t-s">f"{self.percentual}% fixo"</span>
+
+<span class="t-f">@dataclass</span>(frozen=<span class="t-k">True</span>)
+<span class="t-k">class</span> <span class="t-f">PorFaixa</span>:
+    faixas: <span class="t-f">tuple</span>[<span class="t-f">tuple</span>[<span class="t-f">int</span>, <span class="t-f">Decimal</span>], ...]   <span class="t-c"># (a_partir_de, percentual), em ordem</span>
+
+    <span class="t-k">def</span> <span class="t-f">valor</span>(self, pedido):
+        pct = <span class="t-f">Decimal</span>(<span class="t-n">0</span>)
+        <span class="t-k">for</span> a_partir_de, percentual <span class="t-k">in</span> self.faixas:
+            <span class="t-k">if</span> pedido.licencas &gt;= a_partir_de:
+                pct = percentual
+        <span class="t-k">return</span> pedido.subtotal * pct / <span class="t-n">100</span>
+
+    <span class="t-k">def</span> <span class="t-f">descricao</span>(self):
+        <span class="t-k">return</span> <span class="t-s">"por faixa de licenças"</span>
+
+<span class="t-c"># a única tabela que liga o nome gravado no cadastro à classe</span>
+REGRAS = {
+    <span class="t-s">"fixo"</span>: <span class="t-k">lambda</span> p: <span class="t-f">Fixo</span>(<span class="t-f">Decimal</span>(p[<span class="t-s">"percentual"</span>])),
+    <span class="t-s">"faixas"</span>: <span class="t-k">lambda</span> p: <span class="t-f">PorFaixa</span>(<span class="t-f">tuple</span>(
+        (f[<span class="t-s">"a_partir_de"</span>], <span class="t-f">Decimal</span>(f[<span class="t-s">"percentual"</span>])) <span class="t-k">for</span> f <span class="t-k">in</span> p[<span class="t-s">"faixas"</span>]
+    )),
+}
+
+<span class="t-k">def</span> <span class="t-f">regra_do_cadastro</span>(linha: <span class="t-f">dict</span>) -&gt; RegraDeDesconto:
+    <span class="t-k">try</span>:
+        <span class="t-k">return</span> REGRAS[linha[<span class="t-s">"tipo"</span>]](linha[<span class="t-s">"parametros"</span>])
+    <span class="t-k">except</span> (KeyError, InvalidOperation) <span class="t-k">as</span> e:
+        <span class="t-k">raise</span> <span class="t-f">ContratoInvalido</span>(linha) <span class="t-k">from</span> e
+
+<span class="t-c"># o resto do sistema só conhece valor() e descricao()</span>
+regra = <span class="t-f">regra_do_cadastro</span>(cliente.regra_de_desconto)
+desconto = regra.<span class="t-f">valor</span>(pedido)
+texto_da_fatura = regra.<span class="t-f">descricao</span>()</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Strategy isola.</strong> O texto gravado no banco, do objeto que o executa. A fronteira vira uma função: depois dela, ninguém lê <code>dict</code> nem compara <code>"fixo"</code>. As três operações viraram um método cada, em vez de um <code>if</code> cada. E o erro aparece cedo: a tela do comercial chama <code>regra_do_cadastro</code> ao salvar o contrato, e o <code>ContratoInvalido</code> aparece na hora, não semanas depois no pedido.</p>
+          <div class="callout" data-kind="warn"><p>As chaves de <code>REGRAS</code> estão gravadas no banco. Renomear a classe é seguro; renomear <code>"faixas"</code> deixa todas as linhas existentes sem estratégia. O nome no cadastro é um contrato de dados, e se muda, muda com uma migração.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos quatro:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Validar documento de identidade conforme o país do cliente</td><td>1 — uma tabela de chave para função, escolhida por um valor de fora</td></tr>
+                <tr><td>Modo de reprodução de um player (sequencial, aleatório, repetir uma)</td><td>1 — a escolha vem do usuário, e o objeto só guarda a referência</td></tr>
+                <tr><td>Escolher o algoritmo de busca ou de ordenação conforme o tamanho da lista</td><td>2 — resultados equivalentes, custos diferentes</td></tr>
+                <tr><td>Política de expiração de um cache (por tempo, por uso)</td><td>3 — o mecanismo consulta uma política que decide</td></tr>
+                <tr><td>Fixar relógio e sorteio para o teste ficar determinístico</td><td>3 — a dependência entra pelo construtor</td></tr>
+                <tr><td>Imposto por município, tabela de preço por cliente, regra de frete por contrato</td><td>4 — a regra é um dado, e vira objeto na fronteira</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Strategy, mas não é: o pedido que se comporta de um jeito quando está <em>pendente</em> e de outro quando está <em>pago</em>. A troca de objeto ali acontece sozinha, a cada mudança de estado, e não vem de quem chama — o nome certo é <a href="../state/explicacao.html">State</a>. Veja a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

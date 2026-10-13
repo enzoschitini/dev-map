@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Visitor · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/visitor/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Visitor</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como acrescentar operações novas a uma estrutura de objetos de tipos diferentes, sem abrir cada classe e sem repetir uma escada de <code>isinstance</code> em cada operação.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Um pedido guarda itens de tipos diferentes: <code>Livro</code>, <code>Eletronico</code> e <code>Kit</code>, que agrupa outros itens. A equipe precisa de operações sobre eles: calcular o imposto, somar o peso para o frete, e logo virão a nota fiscal, a etiqueta e o relatório de estoque.</p>
+          <p>Como as classes são só dados, a saída preguiçosa é escrever cada operação como uma função com a escada de <code>isinstance</code>:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — a mesma escada de tipos em cada operação</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">calcular_imposto</span>(item):
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(item, Livro):
+        <span class="t-k">return</span> <span class="t-n">0.0</span>
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(item, Eletronico):
+        <span class="t-k">return</span> item.preco * <span class="t-n">0.18</span>
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(item, Kit):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(<span class="t-f">calcular_imposto</span>(i) <span class="t-k">for</span> i <span class="t-k">in</span> item.itens)
+    <span class="t-k">raise</span> <span class="t-f">TypeError</span>(<span class="t-f">type</span>(item))
+
+<span class="t-k">def</span> <span class="t-f">peso_para_frete</span>(item):
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(item, Livro):
+        <span class="t-k">return</span> <span class="t-n">0.4</span>
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(item, Eletronico):
+        <span class="t-k">return</span> item.peso_kg
+    <span class="t-k">if</span> <span class="t-f">isinstance</span>(item, Kit):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(<span class="t-f">peso_para_frete</span>(i) <span class="t-k">for</span> i <span class="t-k">in</span> item.itens) + <span class="t-n">0.2</span>   <span class="t-c"># a caixa</span>
+    <span class="t-k">raise</span> <span class="t-f">TypeError</span>(<span class="t-f">type</span>(item))</code></pre>
+            </div>
+          </div>
+          <p>A alternativa óbvia, um método por operação dentro de cada classe, também cobra um preço: o <code>Livro</code> passa a saber de imposto, frete, nota fiscal e etiqueta, e cada operação nova é uma edição em <em>todas</em> as classes. Com as escadas, o esqueleto se repete em cada operação, e um tipo esquecido só aparece como <code>TypeError</code> quando ele chega em produção. Em ambos os casos, o Single Responsibility sofre: as classes ou as funções passam a ter um motivo a mais para mudar a cada operação.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Tire a operação de dentro dos elementos e dê a ela uma classe própria, o visitante, com um método por tipo. Cada elemento ganha um único método, <code>aceitar</code>, que diz ao visitante "eu sou um <code>Livro</code>". São cinco papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Elemento</td><td>A interface das peças: aceita um visitante</td><td><code>aceitar(visitante)</code></td></tr>
+                <tr><td>Elementos concretos</td><td>Os tipos da estrutura, que só entregam a si mesmos</td><td><code>Livro</code>, <code>Eletronico</code>, <code>Kit</code></td></tr>
+                <tr><td>Visitante</td><td>A interface da operação: um método por tipo de elemento</td><td><code>visitar_livro</code>, <code>visitar_eletronico</code>, <code>visitar_kit</code></td></tr>
+                <tr><td>Visitantes concretos</td><td>Uma operação inteira, para todos os tipos, em um lugar</td><td><code>Imposto</code>, <code>PesoParaFrete</code></td></tr>
+                <tr><td>Cliente</td><td>Escolhe o visitante e o entrega aos elementos</td><td>O checkout</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é o <strong>duplo despacho</strong>. A escolha do código a executar depende de dois tipos: o do elemento e o do visitante. O elemento resolve o primeiro ao chamar <code>visitar_livro(self)</code>, e o visitante resolve o segundo por ser quem é. Em troca, a ordem dos custos se inverte: uma operação nova é uma classe nova, sem tocar em elemento nenhum; um <em>tipo</em> novo obriga a mexer em todos os visitantes.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> dataclasses <span class="t-k">import</span> dataclass
+
+<span class="t-c"># 1. os elementos: só dados, e um método que entrega o tipo ao visitante</span>
+<span class="t-f">@dataclass</span>
+<span class="t-k">class</span> <span class="t-f">Livro</span>:
+    titulo: <span class="t-f">str</span>
+    preco: <span class="t-f">float</span>
+
+    <span class="t-k">def</span> <span class="t-f">aceitar</span>(self, visitante):
+        <span class="t-k">return</span> visitante.<span class="t-f">visitar_livro</span>(self)
+
+<span class="t-f">@dataclass</span>
+<span class="t-k">class</span> <span class="t-f">Eletronico</span>:
+    nome: <span class="t-f">str</span>
+    preco: <span class="t-f">float</span>
+    peso_kg: <span class="t-f">float</span>
+
+    <span class="t-k">def</span> <span class="t-f">aceitar</span>(self, visitante):
+        <span class="t-k">return</span> visitante.<span class="t-f">visitar_eletronico</span>(self)
+
+<span class="t-f">@dataclass</span>
+<span class="t-k">class</span> <span class="t-f">Kit</span>:
+    itens: <span class="t-f">list</span>
+
+    <span class="t-k">def</span> <span class="t-f">aceitar</span>(self, visitante):
+        <span class="t-k">return</span> visitante.<span class="t-f">visitar_kit</span>(self)
+
+<span class="t-c"># 2. um visitante: uma operação inteira, para todos os tipos, em um lugar</span>
+<span class="t-k">class</span> <span class="t-f">Imposto</span>:
+    <span class="t-k">def</span> <span class="t-f">visitar_livro</span>(self, livro):
+        <span class="t-k">return</span> <span class="t-n">0.0</span>
+
+    <span class="t-k">def</span> <span class="t-f">visitar_eletronico</span>(self, e):
+        <span class="t-k">return</span> e.preco * <span class="t-n">0.18</span>
+
+    <span class="t-k">def</span> <span class="t-f">visitar_kit</span>(self, kit):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(i.<span class="t-f">aceitar</span>(self) <span class="t-k">for</span> i <span class="t-k">in</span> kit.itens)
+
+<span class="t-c"># 3. outra operação: uma classe nova, nenhum elemento tocado</span>
+<span class="t-k">class</span> <span class="t-f">PesoParaFrete</span>:
+    <span class="t-k">def</span> <span class="t-f">visitar_livro</span>(self, livro):
+        <span class="t-k">return</span> <span class="t-n">0.4</span>
+
+    <span class="t-k">def</span> <span class="t-f">visitar_eletronico</span>(self, e):
+        <span class="t-k">return</span> e.peso_kg
+
+    <span class="t-k">def</span> <span class="t-f">visitar_kit</span>(self, kit):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(i.<span class="t-f">aceitar</span>(self) <span class="t-k">for</span> i <span class="t-k">in</span> kit.itens) + <span class="t-n">0.2</span>   <span class="t-c"># a caixa</span>
+
+<span class="t-c"># 4. o cliente: escolhe a operação, sem perguntar o tipo de nada</span>
+imposto = <span class="t-f">sum</span>(item.<span class="t-f">aceitar</span>(<span class="t-f">Imposto</span>()) <span class="t-k">for</span> item <span class="t-k">in</span> pedido.itens)
+peso = <span class="t-f">sum</span>(item.<span class="t-f">aceitar</span>(<span class="t-f">PesoParaFrete</span>()) <span class="t-k">for</span> item <span class="t-k">in</span> pedido.itens)</code></pre>
+              <pre><code><span class="t-c">// 1. os elementos: só dados, e um método que entrega o tipo ao visitante</span>
+<span class="t-k">interface</span> <span class="t-f">Item</span> {
+  <span class="t-f">aceitar</span>&lt;<span class="t-f">R</span>&gt;(v: <span class="t-f">Visitante</span>&lt;<span class="t-f">R</span>&gt;): <span class="t-f">R</span>;
+}
+
+<span class="t-k">class</span> <span class="t-f">Livro</span> <span class="t-k">implements</span> <span class="t-f">Item</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">readonly</span> titulo: <span class="t-f">string</span>, <span class="t-k">readonly</span> preco: <span class="t-f">number</span>) {}
+  <span class="t-f">aceitar</span>&lt;<span class="t-f">R</span>&gt;(v: <span class="t-f">Visitante</span>&lt;<span class="t-f">R</span>&gt;): <span class="t-f">R</span> { <span class="t-k">return</span> v.<span class="t-f">visitarLivro</span>(<span class="t-k">this</span>); }
+}
+
+<span class="t-k">class</span> <span class="t-f">Eletronico</span> <span class="t-k">implements</span> <span class="t-f">Item</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">readonly</span> nome: <span class="t-f">string</span>, <span class="t-k">readonly</span> preco: <span class="t-f">number</span>, <span class="t-k">readonly</span> pesoKg: <span class="t-f">number</span>) {}
+  <span class="t-f">aceitar</span>&lt;<span class="t-f">R</span>&gt;(v: <span class="t-f">Visitante</span>&lt;<span class="t-f">R</span>&gt;): <span class="t-f">R</span> { <span class="t-k">return</span> v.<span class="t-f">visitarEletronico</span>(<span class="t-k">this</span>); }
+}
+
+<span class="t-k">class</span> <span class="t-f">Kit</span> <span class="t-k">implements</span> <span class="t-f">Item</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">readonly</span> itens: <span class="t-f">Item</span>[]) {}
+  <span class="t-f">aceitar</span>&lt;<span class="t-f">R</span>&gt;(v: <span class="t-f">Visitante</span>&lt;<span class="t-f">R</span>&gt;): <span class="t-f">R</span> { <span class="t-k">return</span> v.<span class="t-f">visitarKit</span>(<span class="t-k">this</span>); }
+}
+
+<span class="t-c">// 2. o visitante: um método por tipo de elemento</span>
+<span class="t-k">interface</span> <span class="t-f">Visitante</span>&lt;<span class="t-f">R</span>&gt; {
+  <span class="t-f">visitarLivro</span>(livro: <span class="t-f">Livro</span>): <span class="t-f">R</span>;
+  <span class="t-f">visitarEletronico</span>(e: <span class="t-f">Eletronico</span>): <span class="t-f">R</span>;
+  <span class="t-f">visitarKit</span>(kit: <span class="t-f">Kit</span>): <span class="t-f">R</span>;
+}
+
+<span class="t-c">// 3. as operações: uma classe cada, nenhum elemento tocado</span>
+<span class="t-k">class</span> <span class="t-f">Imposto</span> <span class="t-k">implements</span> <span class="t-f">Visitante</span>&lt;<span class="t-f">number</span>&gt; {
+  <span class="t-f">visitarLivro</span>() { <span class="t-k">return</span> <span class="t-n">0</span>; }
+  <span class="t-f">visitarEletronico</span>(e: <span class="t-f">Eletronico</span>) { <span class="t-k">return</span> e.preco * <span class="t-n">0.18</span>; }
+  <span class="t-f">visitarKit</span>(kit: <span class="t-f">Kit</span>) { <span class="t-k">return</span> kit.itens.<span class="t-f">reduce</span>((s, i) =&gt; s + i.<span class="t-f">aceitar</span>(<span class="t-k">this</span>), <span class="t-n">0</span>); }
+}
+
+<span class="t-k">class</span> <span class="t-f">PesoParaFrete</span> <span class="t-k">implements</span> <span class="t-f">Visitante</span>&lt;<span class="t-f">number</span>&gt; {
+  <span class="t-f">visitarLivro</span>() { <span class="t-k">return</span> <span class="t-n">0.4</span>; }
+  <span class="t-f">visitarEletronico</span>(e: <span class="t-f">Eletronico</span>) { <span class="t-k">return</span> e.pesoKg; }
+  <span class="t-f">visitarKit</span>(kit: <span class="t-f">Kit</span>) { <span class="t-k">return</span> kit.itens.<span class="t-f">reduce</span>((s, i) =&gt; s + i.<span class="t-f">aceitar</span>(<span class="t-k">this</span>), <span class="t-n">0.2</span>); }   <span class="t-c">// a caixa</span>
+}
+
+<span class="t-c">// 4. o cliente: escolhe a operação, sem perguntar o tipo de nada</span>
+<span class="t-k">const</span> imposto = pedido.itens.<span class="t-f">reduce</span>((s, i) =&gt; s + i.<span class="t-f">aceitar</span>(<span class="t-k">new</span> <span class="t-f">Imposto</span>()), <span class="t-n">0</span>);
+<span class="t-k">const</span> peso = pedido.itens.<span class="t-f">reduce</span>((s, i) =&gt; s + i.<span class="t-f">aceitar</span>(<span class="t-k">new</span> <span class="t-f">PesoParaFrete</span>()), <span class="t-n">0</span>);</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>Cada operação se testa inteira, com uma instância de cada tipo: um livro, um eletrônico, um kit com os dois. E quando um tipo novo chega (<code>Alimento</code>), o checador de tipos aponta cada visitante que ainda não sabe lidar com ele, em vez de a falha aparecer só quando o item entra em um pedido.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Visitor vale quando três coisas acontecem ao mesmo tempo: existe uma estrutura de objetos de <strong>tipos diferentes</strong>, em geral uma árvore; as <strong>operações</strong> sobre ela são várias e crescem, ou não pertencem aos objetos; e o conjunto de <strong>tipos muda pouco</strong>. A terceira condição é a que mais se esquece.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>A mesma escada de tipos em cada operação</td><td><code>if isinstance(item, Livro)</code> … <code>if isinstance(item, Kit)</code> repetido em <code>calcular_imposto</code>, <code>peso_para_frete</code> e na próxima</td><td>O exemplo desta página</td></tr>
+                <tr><td>Classes de domínio com métodos que não são do domínio</td><td><code>para_pdf()</code>, <code>para_csv()</code> e <code>validar_fiscal()</code> no mesmo objeto que representa um livro</td><td>O exemplo desta página</td></tr>
+                <tr><td>A operação precisa de antes e depois, ou de estado acumulado</td><td>Contadores e níveis passados como argumento extra por uma recursão, <code>acc=None</code>, <code>nivel=0</code></td><td><a href="uso.html#relatorio-de-arquivos">Uso #1</a></td></tr>
+                <tr><td>A estrutura é de uma biblioteca, e você não pode mudá-la</td><td>Uma análise sobre nós de AST, de XML ou do DOM, em que não há onde pôr um método novo</td><td><a href="uso.html#ast-nodevisitor">Uso #2</a></td></tr>
+                <tr><td>Uma transformação reescreve a árvore</td><td>Uma função recursiva que reconstrói cada nó com os filhos já transformados, e se repete para cada regra de reescrita</td><td><a href="uso.html#simplificar-regras">Uso #3</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: a operação cresce mais depressa que os tipos. Se você consegue listar os tipos de cabeça e não consegue listar as operações que vão chegar, o Visitor está no lado certo do compromisso.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>A estrutura tem tipos diferentes?</strong> Se todos os elementos são do mesmo tipo, um <code>for</code> resolve.</li>
+            <li><strong>Há mais de uma operação, ou ela está crescendo?</strong> Se é uma só, um método polimórfico na própria classe é o mais simples.</li>
+            <li><strong>O conjunto de tipos é estável?</strong> Se tipos novos aparecem toda hora, cada um obriga a mudar todos os visitantes. Use polimorfismo comum.</li>
+            <li><strong>A operação pertence ao domínio, e você controla as classes?</strong> Se sim, ela é um método do elemento. O Visitor vale quando a operação não pertence às classes, ou quando as classes não são suas.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Visitor <strong>inverte</strong> o compromisso do polimorfismo comum. Com métodos nas classes, é fácil acrescentar um tipo e difícil acrescentar uma operação; com o Visitor, é o contrário. Soma-se o custo de leitura: o duplo despacho obriga a seguir <code>aceitar</code> e depois <code>visitar_…</code> para saber o que roda, e cada classe ganha um método de ligação. Em linguagens com <code>match</code> exaustivo ou uniões discriminadas, o compilador já entrega boa parte do que o Visitor oferece.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Os tipos mudam com frequência</td><td>Cada tipo novo obriga a abrir todos os visitantes</td><td>Um método em cada classe (polimorfismo comum)</td></tr>
+                <tr><td>Só existe uma operação</td><td>O Visitor é cerimônia para algo que um método resolve</td><td>O método na própria classe</td></tr>
+                <tr><td>Python 3.10+ ou TypeScript com uniões discriminadas</td><td>O <code>match</code> ou o <code>switch</code> exaustivo já separa por tipo, em um lugar, com checagem</td><td><code>match</code> / <code>switch</code>, ou <code>functools.singledispatch</code></td></tr>
+                <tr><td>Uma estrutura plana, com poucos tipos</td><td>Uma escada de <code>isinstance</code> em um lugar é mais curta</td><td>Um <code>for</code> com <code>isinstance</code></td></tr>
+                <tr><td>A operação precisa de dados privados do elemento</td><td>O Visitor obriga a expô-los, e o encapsulamento se perde</td><td>Um método no elemento, que expõe só o resultado</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Visitor saiu do lugar</h3>
+          <ul>
+            <li><strong>Um visitante só.</strong> Uma interface, cinco <code>aceitar</code> e uma única implementação é um método polimórfico com trabalho extra.</li>
+            <li><strong>Os elementos expõem tudo.</strong> Todos os campos viraram públicos só para os visitantes poderem lê-los, e o encapsulamento foi embora.</li>
+            <li><strong>O <code>isinstance</code> voltou para dentro do visitante.</strong> Se o método <code>visitar_kit</code> testa o tipo dos filhos, o despacho foi feito duas vezes e o ganho sumiu.</li>
+            <li><strong>Os visitantes dependem uns dos outros.</strong> Um que só funciona depois que outro rodou acopla o que deveria ser independente.</li>
+            <li><strong>O visitante guarda estado global.</strong> Um visitante reaproveitado entre execuções, com acumuladores que ninguém zera, dá resultados que dependem do histórico.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: um tipo novo chega e há quatorze visitantes para atualizar. Os tipos mudam mais do que se supunha, e o compromisso do Visitor está do lado errado. Volte para métodos nas classes.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com <code>match</code> ou <code>isinstance</code> em uma função. Extraia o Visitor quando a terceira operação chegar e o mesmo <code>match</code> estiver em três lugares, e quando você puder dizer, com certeza, que os tipos não vão mudar na mesma velocidade.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../iterator/explicacao.html">Iterator</a></td><td>Entrega os elementos um a um, sem se importar com o tipo. O Visitor trata cada tipo de um jeito. Os dois se combinam: o Iterator percorre e o Visitor age</td></tr>
+                <tr><td><a href="../../estruturais/composite/explicacao.html">Composite</a></td><td>É a estrutura em árvore; o Visitor é uma operação sobre ela. É a dupla mais comum do catálogo</td></tr>
+                <tr><td><a href="../interpreter/explicacao.html">Interpreter</a></td><td>Cada nó da árvore sabe se avaliar: a operação está <em>dentro</em> do nó. O Visitor leva a operação para fora, e permite somar leituras sem abrir as classes</td></tr>
+                <tr><td><a href="../strategy/explicacao.html">Strategy</a></td><td>Troca o algoritmo de uma tarefa. O Visitor carrega um algoritmo por <em>tipo</em> de elemento, e é a combinação dos dois que escolhe o código</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o que varia é a operação e os tipos são estáveis, é Visitor. Se são os tipos que variam, o polimorfismo comum é melhor.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

@@ -65,6 +65,92 @@ window.DEVMAP = {
           group: 'Design Pattern',
           pages: [
             {
+              folder: 'criacionais',
+              label: 'Criacionais',
+              pages: [
+                {
+                  folder: 'abstract-factory',
+                  label: 'Abstract Factory',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como criar um conjunto de objetos que combinam entre si, sem misturar peças de famílias diferentes.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois da Abstract Factory.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'builder',
+                  label: 'Builder',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como montar um objeto complexo por partes e só entregá-lo quando estiver completo e válido.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Builder.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'factory-method',
+                  label: 'Factory Method',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como criar um objeto sem saber a classe exata, entregando a escolha às subclasses.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Quatro situações reais, com o código antes e depois do Factory Method.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'prototype',
+                  label: 'Prototype',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como criar um objeto copiando outro que já existe, sem conhecer a classe nem os campos.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Prototype.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'singleton',
+                  label: 'Singleton',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como garantir que um objeto existe uma vez só e que todo mundo chega nele.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Cinco situações reais, com o código antes e depois do Singleton.'
+                    }
+                  ]
+                }
+              ]
+            },
+            {
               folder: 'estruturais',
               label: 'Estruturais',
               pages: [
@@ -81,6 +167,284 @@ window.DEVMAP = {
                       id: 'uso',
                       label: 'Uso',
                       summary: 'Sete situações reais, com o código antes e depois do Adapter.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'bridge',
+                  label: 'Bridge',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como deixar duas coisas que variam por motivos diferentes crescerem separadas, sem uma subclasse para cada combinação.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Bridge.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'composite',
+                  label: 'Composite',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como tratar um item e um grupo de itens do mesmo jeito, em qualquer profundidade.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Quatro situações reais, com o código antes e depois do Composite.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'decorator',
+                  label: 'Decorator',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como acrescentar comportamento a um objeto sem mexer nele e sem uma subclasse para cada combinação.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Decorator.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'facade',
+                  label: 'Facade',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como dar uma porta de entrada simples para um conjunto de peças que só funcionam na ordem certa.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Facade.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'flyweight',
+                  label: 'Flyweight',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como manter centenas de milhares de objetos sem repetir em cada um o que é igual para todos do mesmo tipo.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Flyweight.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'proxy',
+                  label: 'Proxy',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como pôr um representante no lugar de um objeto, para controlar se, quando ou onde o real é usado.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Proxy.'
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              folder: 'comportamentais',
+              label: 'Comportamentais',
+              pages: [
+                {
+                  folder: 'chain-of-responsibility',
+                  label: 'Chain of Responsibility',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como passar um pedido por uma sequência de tratadores, sem quem pede saber qual deles responde.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Quatro situações reais, com o código antes e depois do Chain of Responsibility.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'command',
+                  label: 'Command',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como transformar um pedido de ação em um objeto, para guardar, desfazer, enfileirar ou repetir.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Quatro situações reais, com o código antes e depois do Command.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'interpreter',
+                  label: 'Interpreter',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como representar regras que mudam como uma árvore de objetos que se avalia sozinha.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Interpreter.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'iterator',
+                  label: 'Iterator',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como percorrer uma coleção, ou uma fonte de dados, sem depender de como ela guarda os elementos.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Iterator.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'mediator',
+                  label: 'Mediator',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como deixar um grupo de objetos trabalhar junto sem que cada um conheça todos os outros.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Mediator.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'memento',
+                  label: 'Memento',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como guardar o estado de um objeto para voltar a ele depois, sem expor o que tem dentro.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Quatro situações reais, com o código antes e depois do Memento.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'observer',
+                  label: 'Observer',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como avisar várias partes do sistema de que algo aconteceu, sem quem avisa saber quem são elas.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Cinco situações reais, com o código antes e depois do Observer.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'state',
+                  label: 'State',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como fazer um objeto se comportar de um jeito em cada fase da vida, sem um if sobre a fase em cada método.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do State.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'strategy',
+                  label: 'Strategy',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como trocar o jeito de fazer uma coisa sem mexer em quem a pede, e sem um if novo a cada jeito.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Quatro situações reais, com o código antes e depois do Strategy.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'template-method',
+                  label: 'Template Method',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como escrever uma vez a ordem dos passos de um processo, deixando cada variação preencher só o passo que é diferente.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Template Method.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'visitor',
+                  label: 'Visitor',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como acrescentar operações a uma estrutura de objetos de tipos diferentes sem abrir cada classe.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Três situações reais, com o código antes e depois do Visitor.'
                     }
                   ]
                 }

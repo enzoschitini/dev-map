@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Abstract Factory · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="criacionais/abstract-factory/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Abstract Factory</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como criar um conjunto de objetos que precisam combinar entre si, sem que o código principal escolha cada peça e sem o risco de misturar peças de conjuntos diferentes.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Um serviço recebe uploads: salva o arquivo e publica uma mensagem na fila para um worker processar. Em produção, o arquivo vai para o S3 e a mensagem vai para o SQS. Na máquina de quem desenvolve, o arquivo vai para uma pasta e a mensagem fica em uma fila em memória.</p>
+          <p>A saída mais curta é perguntar o ambiente na hora de criar cada peça:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — cada peça pergunta o ambiente por conta própria</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ProcessadorDeUploads</span>:
+    <span class="t-k">def</span> <span class="t-f">processar</span>(self, nome, dados):
+        <span class="t-k">if</span> AMBIENTE == <span class="t-s">"prod"</span>:
+            armazenamento = <span class="t-f">ArmazenamentoS3</span>(<span class="t-s">"uploads-prod"</span>)
+        <span class="t-k">else</span>:
+            armazenamento = <span class="t-f">ArmazenamentoLocal</span>(<span class="t-s">"./tmp"</span>)
+        caminho = armazenamento.<span class="t-f">salvar</span>(nome, dados)
+
+        <span class="t-k">if</span> AMBIENTE == <span class="t-s">"prod"</span>:
+            fila = <span class="t-f">FilaSqs</span>(<span class="t-s">"uploads"</span>)
+        <span class="t-k">else</span>:
+            fila = <span class="t-f">FilaEmMemoria</span>()
+        fila.<span class="t-f">publicar</span>({<span class="t-s">"arquivo"</span>: caminho})</code></pre>
+            </div>
+          </div>
+          <p>O mesmo critério (<code>AMBIENTE</code>) decide duas coisas em sequência — e vai decidir de novo em cada arquivo que precisar de armazenamento ou de fila. As peças <strong>precisam combinar</strong>: o caminho que o armazenamento devolve é o que o worker vai ler. Basta um <code>if</code> esquecido, ou um ambiente novo (<code>"staging"</code>) tratado em um lugar e não no outro, para a fila de nuvem receber <code>./tmp/relatorio.pdf</code>. O worker não acha o arquivo, e nada falha até alguém olhar.</p>
+          <p>Três coisas aparecem: o critério fica espalhado; é possível montar uma combinação que nunca devia existir; e adicionar um ambiente é caçar cada <code>if</code>.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Em vez de criar cada peça, o código recebe uma <strong>fábrica</strong> que cria todas elas — e que só sabe criar peças de uma família. Escolher o ambiente passa a ser escolher a fábrica, uma vez. São cinco papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Produto abstrato</td><td>A interface de cada tipo de peça</td><td><code>Armazenamento</code>, <code>Fila</code></td></tr>
+                <tr><td>Produto concreto</td><td>A peça de uma família específica</td><td><code>ArmazenamentoS3</code>, <code>FilaSqs</code>, <code>ArmazenamentoLocal</code>, <code>FilaEmMemoria</code></td></tr>
+                <tr><td>Fábrica abstrata</td><td>A interface que cria uma peça de cada tipo</td><td><code>FabricaDeInfra</code></td></tr>
+                <tr><td>Fábrica concreta</td><td>Cria as peças de uma família, e só dela</td><td><code>InfraAws</code>, <code>InfraLocal</code></td></tr>
+                <tr><td>Cliente</td><td>Usa a fábrica e as interfaces, sem conhecer nada concreto</td><td><code>ProcessadorDeUploads</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é que <strong>a combinação passa a ser uma propriedade da fábrica</strong>, não da atenção de quem escreve o código. <code>InfraAws</code> não tem como entregar um <code>ArmazenamentoLocal</code>. A mistura deixa de ser um bug possível e vira algo que o código não consegue expressar.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+
+<span class="t-c"># 1. os produtos abstratos: o que o cliente conhece</span>
+<span class="t-k">class</span> <span class="t-f">Armazenamento</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">salvar</span>(self, nome: <span class="t-f">str</span>, dados: <span class="t-f">bytes</span>) -&gt; <span class="t-f">str</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">Fila</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">publicar</span>(self, mensagem: <span class="t-f">dict</span>) -&gt; <span class="t-k">None</span>: ...
+
+<span class="t-c"># 2. a fábrica abstrata: um método por tipo de produto</span>
+<span class="t-k">class</span> <span class="t-f">FabricaDeInfra</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">criar_armazenamento</span>(self) -&gt; Armazenamento: ...
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">criar_fila</span>(self) -&gt; Fila: ...
+
+<span class="t-c"># 3. as fábricas concretas: cada uma cria uma família inteira</span>
+<span class="t-k">class</span> <span class="t-f">InfraAws</span>(FabricaDeInfra):
+    <span class="t-k">def</span> <span class="t-f">criar_armazenamento</span>(self):
+        <span class="t-k">return</span> <span class="t-f">ArmazenamentoS3</span>(<span class="t-s">"uploads-prod"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">criar_fila</span>(self):
+        <span class="t-k">return</span> <span class="t-f">FilaSqs</span>(<span class="t-s">"uploads"</span>)
+
+<span class="t-k">class</span> <span class="t-f">InfraLocal</span>(FabricaDeInfra):
+    <span class="t-k">def</span> <span class="t-f">criar_armazenamento</span>(self):
+        <span class="t-k">return</span> <span class="t-f">ArmazenamentoLocal</span>(<span class="t-s">"./tmp"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">criar_fila</span>(self):
+        <span class="t-k">return</span> <span class="t-f">FilaEmMemoria</span>()
+
+<span class="t-c"># 4. o cliente: só conhece a fábrica e as interfaces</span>
+<span class="t-k">class</span> <span class="t-f">ProcessadorDeUploads</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, infra: FabricaDeInfra):
+        self._armazenamento = infra.<span class="t-f">criar_armazenamento</span>()
+        self._fila = infra.<span class="t-f">criar_fila</span>()
+
+    <span class="t-k">def</span> <span class="t-f">processar</span>(self, nome, dados):
+        caminho = self._armazenamento.<span class="t-f">salvar</span>(nome, dados)
+        self._fila.<span class="t-f">publicar</span>({<span class="t-s">"arquivo"</span>: caminho})
+
+<span class="t-c"># a única decisão, no ponto de entrada da aplicação</span>
+infra = <span class="t-f">InfraAws</span>() <span class="t-k">if</span> AMBIENTE == <span class="t-s">"prod"</span> <span class="t-k">else</span> <span class="t-f">InfraLocal</span>()
+processador = <span class="t-f">ProcessadorDeUploads</span>(infra)</code></pre>
+              <pre><code><span class="t-c">// 1. os produtos abstratos: o que o cliente conhece</span>
+<span class="t-k">interface</span> <span class="t-f">Armazenamento</span> {
+  <span class="t-f">salvar</span>(nome: <span class="t-f">string</span>, dados: <span class="t-f">Uint8Array</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">string</span>&gt;;
+}
+
+<span class="t-k">interface</span> <span class="t-f">Fila</span> {
+  <span class="t-f">publicar</span>(mensagem: <span class="t-f">object</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">void</span>&gt;;
+}
+
+<span class="t-c">// 2. a fábrica abstrata: um método por tipo de produto</span>
+<span class="t-k">interface</span> <span class="t-f">FabricaDeInfra</span> {
+  <span class="t-f">criarArmazenamento</span>(): <span class="t-f">Armazenamento</span>;
+  <span class="t-f">criarFila</span>(): <span class="t-f">Fila</span>;
+}
+
+<span class="t-c">// 3. as fábricas concretas: cada uma cria uma família inteira</span>
+<span class="t-k">class</span> <span class="t-f">InfraAws</span> <span class="t-k">implements</span> <span class="t-f">FabricaDeInfra</span> {
+  <span class="t-f">criarArmazenamento</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">ArmazenamentoS3</span>(<span class="t-s">"uploads-prod"</span>); }
+  <span class="t-f">criarFila</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">FilaSqs</span>(<span class="t-s">"uploads"</span>); }
+}
+
+<span class="t-k">class</span> <span class="t-f">InfraLocal</span> <span class="t-k">implements</span> <span class="t-f">FabricaDeInfra</span> {
+  <span class="t-f">criarArmazenamento</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">ArmazenamentoLocal</span>(<span class="t-s">"./tmp"</span>); }
+  <span class="t-f">criarFila</span>() { <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">FilaEmMemoria</span>(); }
+}
+
+<span class="t-c">// 4. o cliente: só conhece a fábrica e as interfaces</span>
+<span class="t-k">class</span> <span class="t-f">ProcessadorDeUploads</span> {
+  <span class="t-k">private</span> armazenamento: <span class="t-f">Armazenamento</span>;
+  <span class="t-k">private</span> fila: <span class="t-f">Fila</span>;
+
+  <span class="t-k">constructor</span>(infra: <span class="t-f">FabricaDeInfra</span>) {
+    <span class="t-k">this</span>.armazenamento = infra.<span class="t-f">criarArmazenamento</span>();
+    <span class="t-k">this</span>.fila = infra.<span class="t-f">criarFila</span>();
+  }
+
+  <span class="t-k">async</span> <span class="t-f">processar</span>(nome: <span class="t-f">string</span>, dados: <span class="t-f">Uint8Array</span>) {
+    <span class="t-k">const</span> caminho = <span class="t-k">await</span> <span class="t-k">this</span>.armazenamento.<span class="t-f">salvar</span>(nome, dados);
+    <span class="t-k">await</span> <span class="t-k">this</span>.fila.<span class="t-f">publicar</span>({ arquivo: caminho });
+  }
+}
+
+<span class="t-c">// a única decisão, no ponto de entrada da aplicação</span>
+<span class="t-k">const</span> infra = AMBIENTE === <span class="t-s">"prod"</span> ? <span class="t-k">new</span> <span class="t-f">InfraAws</span>() : <span class="t-k">new</span> <span class="t-f">InfraLocal</span>();
+<span class="t-k">const</span> processador = <span class="t-k">new</span> <span class="t-f">ProcessadorDeUploads</span>(infra);</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste ganha uma terceira família de graça: um <code>InfraDeTeste</code> cujo <code>criar_fila()</code> devolve uma fila que guarda o que recebeu e cujo <code>criar_armazenamento()</code> devolve um armazenamento que guarda o que gravou. O teste confere, com os dois à mão, que o caminho publicado é o que foi salvo.</p></div>
+          <div class="callout" data-kind="note"><p>Em Python, uma "fábrica" às vezes é só uma função ou um módulo com duas funções. A interface formal vale quando existem mesmo duas famílias e você quer que o verificador de tipos garanta que as duas entregam as mesmas peças.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>A Abstract Factory vale quando as três coisas acontecem ao mesmo tempo: existem <strong>várias famílias</strong> de variantes (dois ambientes, dois temas, dois países), as peças de uma família <strong>só funcionam bem juntas</strong>, e o cliente precisa criar <strong>várias peças</strong> sem conhecer a família.</p>
+          <p>No código, isso aparece de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Peças escolhidas pelo mesmo critério, uma depois da outra</td><td>Dois ou três <code>if tema == …</code> ou <code>if AMBIENTE == …</code> em sequência, com a mesma condição</td><td><a href="uso.html#pecas-que-combinam">Uso #1</a></td></tr>
+                <tr><td>Bugs de "peça de um conjunto com peça de outro"</td><td>Texto claro sobre fundo claro; caminho de disco em uma fila de nuvem; um ternário invertido em um dos componentes</td><td><a href="uso.html#pecas-que-combinam">Uso #1</a></td></tr>
+                <tr><td>Objetos que precisam do mesmo contexto, criados em lugares separados</td><td>Cada repositório ou cliente chama <code>connect()</code> por conta própria, e as operações deviam estar na mesma transação</td><td><a href="uso.html#contexto-compartilhado">Uso #2</a></td></tr>
+                <tr><td>O mesmo critério repetido em vários arquivos e funções</td><td><code>if pais == "BR"</code> em <code>emitir()</code>, em <code>cancelar()</code>, em <code>reemitir()</code>…</td><td><a href="uso.html#familia-por-pedido">Uso #3</a></td></tr>
+                <tr><td>Um ambiente novo exige mexer em muitos lugares</td><td>Uma busca por <code>"staging"</code> devolve 15 arquivos</td><td><a href="uso.html#familia-por-pedido">Uso #3</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: o <strong>mesmo critério</strong> decide <strong>vários objetos</strong>. Se você tem um <code>if</code> só, é um problema de Factory Method; se tem o mesmo <code>if</code> várias vezes, é de Abstract Factory.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Você cria mais de um tipo de objeto com o mesmo critério?</strong> Se é um tipo só, use Factory Method ou uma função.</li>
+            <li><strong>Misturar peças de variantes diferentes é um erro, ou só algo estranho?</strong> Se misturar não faz mal, injete cada peça separada.</li>
+            <li><strong>Existem pelo menos duas famílias completas?</strong> Se só existe uma, não há o que escolher: crie direto.</li>
+            <li><strong>A lista de peças é estável?</strong> Se um produto novo aparece toda semana, cada um mexe na interface e em todas as fábricas — pese isso antes de seguir.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>A Abstract Factory troca simplicidade por uma garantia, e o preço tem um formato específico: <strong>adicionar uma família é fácil, adicionar um produto é caro</strong>. Um tipo novo de peça exige um método novo na interface e uma implementação em cada fábrica concreta. Com 3 produtos e 2 famílias, são 1 interface, 2 fábricas e 6 produtos concretos — antes de existir qualquer regra de negócio.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Há um tipo de produto só</td><td>Uma fábrica com um método é um Factory Method com mais um nível</td><td>Factory Method, ou uma função fábrica</td></tr>
+                <tr><td>Só existe uma família (hoje)</td><td>A interface abstrata não protege de nada, só adiciona um nível</td><td>Crie direto; extraia quando a segunda família aparecer</td></tr>
+                <tr><td>As peças não precisam combinar entre si</td><td>A garantia que o padrão vende não é necessária</td><td>Injete cada peça separada</td></tr>
+                <tr><td>Os produtos mudam com frequência</td><td>Cada produto novo altera a interface e toda fábrica concreta</td><td>Injete cada peça, ou agrupe em um objeto de configuração</td></tr>
+                <tr><td>A "fábrica" teria 20 métodos</td><td>Virou uma classe que sabe tudo, e toda família implementa tudo</td><td>Fábricas menores, uma por área</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que a Abstract Factory saiu do lugar</h3>
+          <ul>
+            <li><strong>Uma fábrica com um único produto.</strong> Não há família: é um Factory Method com um nome maior.</li>
+            <li><strong>Uma família de uma única variante.</strong> "Vai que criamos um segundo ambiente" é palpite. Enquanto existe uma só, a interface não protege nada.</li>
+            <li><strong>A fábrica concreta decide com <code>if</code>.</strong> Se <code>InfraAws.criar_fila()</code> escolhe entre duas filas, a família deixou de ser uma família.</li>
+            <li><strong>O cliente pergunta qual fábrica recebeu.</strong> Um <code>isinstance(infra, InfraAws)</code> no meio do fluxo mostra que a abstração não segura a diferença.</li>
+            <li><strong>A interface cresce a cada feature.</strong> Uma <code>FabricaDeTudo</code> acumula métodos que só uma família usa, e as outras devolvem <code>None</code> ou lançam <code>NotImplementedError</code>.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: uma fábrica abstrata com uma só fábrica concreta. O padrão acrescentou duas classes e nenhuma garantia.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, reúna a criação em um lugar só (uma função <code>montar_infra()</code> no ponto de entrada) e passe as peças adiante. Quando a segunda família chegar, essa função já é a fábrica; basta extrair a interface.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../factory-method/explicacao.html">Factory Method</a></td><td>Cria <em>um</em> produto e entrega a escolha à subclasse. A Abstract Factory cria uma <em>família</em> e costuma ser implementada com vários métodos fábrica</td></tr>
+                <tr><td>Builder</td><td>Monta <em>um</em> objeto complexo, passo a passo. A Abstract Factory entrega <em>vários</em> objetos, cada um de uma vez</td></tr>
+                <tr><td>Strategy</td><td>Troca <em>um</em> comportamento por composição. A Abstract Factory troca um <em>conjunto</em> de objetos coerentes</td></tr>
+                <tr><td><a href="../singleton/explicacao.html">Singleton</a></td><td>Decide <em>quantos</em> objetos existem. Uma fábrica concreta costuma ser um Singleton (uma por ambiente), mas os problemas são diferentes</td></tr>
+                <tr><td>Contêiner de injeção de dependência</td><td>Resolve <em>quem recebe</em> cada objeto. Não garante que as peças combinem entre si; uma fábrica garante</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se a pergunta é "qual objeto criar", é Factory Method. Se é "qual conjunto de objetos criar para que combinem", é Abstract Factory.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

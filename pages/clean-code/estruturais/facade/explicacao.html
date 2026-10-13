@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Facade · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="estruturais/facade/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Facade</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como dar uma porta de entrada simples para um conjunto de peças que só funcionam quando chamadas na ordem certa, para que quem usa não precise conhecer cada uma.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Finalizar um pedido não é uma chamada: é uma sequência. Reservar o estoque, autorizar o pagamento, contratar o frete, emitir a nota fiscal, avisar o cliente. Cada passo é um serviço da empresa, com a sua própria interface, e se um deles falha, os anteriores precisam ser desfeitos.</p>
+          <p>Quem precisa finalizar um pedido (a API web, o app, o job de recompra) monta a sequência por conta própria:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — cada chamador conhece as cinco peças, a ordem e o desfazer</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">checkout_web</span>(req):
+    carrinho = carrinhos.<span class="t-f">buscar</span>(req.carrinho_id)
+    reservas = estoque.<span class="t-f">reservar</span>(carrinho.itens)
+    <span class="t-k">try</span>:
+        cobranca = pagamentos.<span class="t-f">autorizar</span>(req.token, carrinho.total)
+    <span class="t-k">except</span> PagamentoRecusado:
+        estoque.<span class="t-f">liberar</span>(reservas)
+        <span class="t-k">raise</span>
+    <span class="t-k">try</span>:
+        envio = frete.<span class="t-f">contratar</span>(carrinho.endereco, carrinho.peso_kg)
+    <span class="t-k">except</span> FreteIndisponivel:
+        pagamentos.<span class="t-f">estornar</span>(cobranca)
+        estoque.<span class="t-f">liberar</span>(reservas)
+        <span class="t-k">raise</span>
+    nota = fiscal.<span class="t-f">emitir</span>(carrinho, cobranca)
+    correio.<span class="t-f">enviar</span>(carrinho.email, <span class="t-s">"Pedido confirmado"</span>, <span class="t-s">f"Nota {nota.numero}"</span>)
+    <span class="t-k">return</span> <span class="t-f">Pedido</span>(carrinho, cobranca, envio, nota)
+
+<span class="t-c"># api_mobile.checkout() e job_recompra.executar() repetem a mesma sequência.</span>
+<span class="t-c"># no job, alguém esqueceu o estornar() do except do frete.</span></code></pre>
+            </div>
+          </div>
+          <p>Cada cópia funciona no dia em que é escrita. O problema aparece depois: quando o fiscal passa a exigir um passo a mais, são três lugares para editar, e o que for esquecido emite pedido sem nota. A regra "o que desfazer quando algo falha" mora em cada chamador, e uma delas já está errada. E testar o checkout web exige falsificar cinco serviços, quando o que ele quer testar é só a tradução de <code>req</code> em uma chamada.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Escreva a sequência <strong>uma vez</strong>, em uma classe com um método nomeado pelo que o chamador quer: <code>finalizar</code>. As peças continuam existindo e continuam acessíveis; a fachada é só o caminho curto para o caso comum. Os papéis são três:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Subsistema</td><td>As peças que já existem, com suas próprias interfaces. Não mudam e não sabem da fachada</td><td><code>Estoque</code>, <code>Pagamentos</code>, <code>Frete</code>, <code>Fiscal</code>, <code>Correio</code></td></tr>
+                <tr><td>Fachada</td><td>Uma interface pequena que conhece as peças, a ordem entre elas e o que desfazer</td><td><code>Checkout</code>, com <code>finalizar()</code></td></tr>
+                <tr><td>Cliente</td><td>Quem usa a fachada no lugar de chamar as peças</td><td>A API web, o app, o job</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é a <strong>direção do conhecimento</strong>: a fachada conhece as peças, e as peças não conhecem a fachada. Por isso ela pode ser acrescentada sem mudar nada que já existe. Ela também não decide regra de negócio: coordena. Quem sabe se um pedido tem direito a frete grátis é outra classe.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># 1. o subsistema: estoque, pagamentos, frete, fiscal e correio já existem</span>
+
+<span class="t-c"># 2. a fachada: a sequência e o desfazer, em um lugar só</span>
+<span class="t-k">class</span> <span class="t-f">Checkout</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, estoque, pagamentos, frete, fiscal, correio):
+        self._estoque, self._pagamentos = estoque, pagamentos
+        self._frete, self._fiscal, self._correio = frete, fiscal, correio
+
+    <span class="t-k">def</span> <span class="t-f">finalizar</span>(self, carrinho, token: <span class="t-f">str</span>) -&gt; <span class="t-f">Pedido</span>:
+        reservas = self._estoque.<span class="t-f">reservar</span>(carrinho.itens)
+        cobranca = <span class="t-k">None</span>
+        <span class="t-k">try</span>:
+            cobranca = self._pagamentos.<span class="t-f">autorizar</span>(token, carrinho.total)
+            envio = self._frete.<span class="t-f">contratar</span>(carrinho.endereco, carrinho.peso_kg)
+        <span class="t-k">except</span> <span class="t-f">Exception</span>:
+            <span class="t-k">if</span> cobranca:
+                self._pagamentos.<span class="t-f">estornar</span>(cobranca)
+            self._estoque.<span class="t-f">liberar</span>(reservas)
+            <span class="t-k">raise</span>
+
+        nota = self._fiscal.<span class="t-f">emitir</span>(carrinho, cobranca)
+        self._correio.<span class="t-f">enviar</span>(carrinho.email, <span class="t-s">"Pedido confirmado"</span>, <span class="t-s">f"Nota {nota.numero}"</span>)
+        <span class="t-k">return</span> <span class="t-f">Pedido</span>(carrinho, cobranca, envio, nota)
+
+<span class="t-c"># 3. o cliente: uma chamada, nenhuma peça à vista</span>
+<span class="t-k">def</span> <span class="t-f">checkout_web</span>(req, checkout: Checkout):
+    carrinho = carrinhos.<span class="t-f">buscar</span>(req.carrinho_id)
+    <span class="t-k">return</span> checkout.<span class="t-f">finalizar</span>(carrinho, req.token)</code></pre>
+              <pre><code><span class="t-c">// 1. o subsistema: estoque, pagamentos, frete, fiscal e correio já existem</span>
+
+<span class="t-c">// 2. a fachada: a sequência e o desfazer, em um lugar só</span>
+<span class="t-k">class</span> <span class="t-f">Checkout</span> {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">private</span> estoque: <span class="t-f">Estoque</span>,
+    <span class="t-k">private</span> pagamentos: <span class="t-f">Pagamentos</span>,
+    <span class="t-k">private</span> frete: <span class="t-f">Frete</span>,
+    <span class="t-k">private</span> fiscal: <span class="t-f">Fiscal</span>,
+    <span class="t-k">private</span> correio: <span class="t-f">Correio</span>,
+  ) {}
+
+  <span class="t-k">async</span> <span class="t-f">finalizar</span>(carrinho: <span class="t-f">Carrinho</span>, token: <span class="t-f">string</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">Pedido</span>&gt; {
+    <span class="t-k">const</span> reservas = <span class="t-k">await</span> <span class="t-k">this</span>.estoque.<span class="t-f">reservar</span>(carrinho.itens);
+    <span class="t-k">let</span> cobranca: <span class="t-f">Cobranca</span> | <span class="t-k">undefined</span>;
+    <span class="t-k">let</span> envio: <span class="t-f">Envio</span>;
+    <span class="t-k">try</span> {
+      cobranca = <span class="t-k">await</span> <span class="t-k">this</span>.pagamentos.<span class="t-f">autorizar</span>(token, carrinho.total);
+      envio = <span class="t-k">await</span> <span class="t-k">this</span>.frete.<span class="t-f">contratar</span>(carrinho.endereco, carrinho.pesoKg);
+    } <span class="t-k">catch</span> (e) {
+      <span class="t-k">if</span> (cobranca) <span class="t-k">await</span> <span class="t-k">this</span>.pagamentos.<span class="t-f">estornar</span>(cobranca);
+      <span class="t-k">await</span> <span class="t-k">this</span>.estoque.<span class="t-f">liberar</span>(reservas);
+      <span class="t-k">throw</span> e;
+    }
+
+    <span class="t-k">const</span> nota = <span class="t-k">await</span> <span class="t-k">this</span>.fiscal.<span class="t-f">emitir</span>(carrinho, cobranca);
+    <span class="t-k">await</span> <span class="t-k">this</span>.correio.<span class="t-f">enviar</span>(carrinho.email, <span class="t-s">"Pedido confirmado"</span>, <span class="t-s">`Nota ${nota.numero}`</span>);
+    <span class="t-k">return</span> { carrinho, cobranca, envio, nota };
+  }
+}
+
+<span class="t-c">// 3. o cliente: uma chamada, nenhuma peça à vista</span>
+<span class="t-k">async</span> <span class="t-k">function</span> <span class="t-f">checkoutWeb</span>(req: <span class="t-f">Requisicao</span>, checkout: <span class="t-f">Checkout</span>) {
+  <span class="t-k">const</span> carrinho = <span class="t-k">await</span> carrinhos.<span class="t-f">buscar</span>(req.carrinhoId);
+  <span class="t-k">return</span> checkout.<span class="t-f">finalizar</span>(carrinho, req.token);
+}</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste muda de dono. O <code>Checkout</code> é testado uma vez, com as peças falsas, inclusive o caminho "o frete falhou, o pagamento foi estornado". Os chamadores passam a ser testados com um <code>Checkout</code> falso de uma linha, que devolve um pedido pronto.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Facade vale quando três coisas acontecem ao mesmo tempo: existe um subsistema com <strong>várias peças</strong>, os chamadores <strong>repetem</strong> a mesma sequência de uso (a ordem, a configuração, o desfazer), e a <strong>maioria</strong> deles só precisa do caminho comum.</p>
+          <p>No código, isso aparece de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Um fluxo de vários passos copiado por vários chamadores</td><td>A mesma sequência <code>reservar → autorizar → contratar → emitir</code> em controller, app e job, com os <code>except</code> copiados junto</td><td><a href="#implementacao">Implementação, acima</a></td></tr>
+                <tr><td>Uma ferramenta ou SDK com muitas opções, e um uso real pequeno</td><td><code>subprocess.run([...flags...])</code> ou um cliente com dez parâmetros, repetido com pequenas variações</td><td><a href="uso.html#ffmpeg-e-ffprobe">Uso #1</a></td></tr>
+                <tr><td>Módulos importando os internos uns dos outros</td><td><code>from pagamentos.gateway.stripe_adapter import …</code> por todo o projeto; refatorar por dentro quebra imports distantes</td><td><a href="uso.html#fronteira-de-modulo">Uso #2</a></td></tr>
+                <tr><td>Subir e derrubar vários componentes em ordem</td><td>Blocos de <em>setup</em> copiados entre testes e scripts; um <code>finally</code> que esquece um dos componentes</td><td><a href="uso.html#ambiente-de-teste">Uso #3</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>Os sinais têm uma coisa em comum: o chamador sabe demais. Ele conhece as peças, a ordem entre elas e as exceções de cada uma. A fachada junta esse conhecimento em um lugar, para que quem usa precise saber apenas o que quer fazer.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>O chamador precisa combinar várias peças?</strong> Se o subsistema é uma classe com um método, não há o que simplificar. Pare.</li>
+            <li><strong>Mais de um chamador repete a mesma combinação?</strong> Se só um usa, uma função com nome já organiza. Se cada um combina de um jeito próprio, uma fachada não serve a nenhum deles.</li>
+            <li><strong>A maioria dos usos é o caminho comum?</strong> Se a maioria precisa de controle fino sobre cada peça, a fachada vira obstáculo, e as pessoas passam a contorná-la.</li>
+            <li><strong>Você consegue nomear o método pelo que o chamador quer?</strong> <code>finalizar</code> é um bom nome. <code>executar_fluxo_de_pedido</code> costuma ser sinal de que o caso de uso ainda não está claro.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Facade tem um custo que se acumula com o tempo: é uma camada a mais que precisa acompanhar o subsistema, e tende a crescer. Cada chamador pede "só mais um método", e a fachada vira um espelho do subsistema, ou um objeto que conhece o sistema inteiro. Esconder demais também custa: quem precisa de algo fora do caminho comum fica preso, ou copia o subsistema inteiro para dentro do próprio código.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>O subsistema é uma classe ou uma função só</td><td>A fachada seria um repasse, só com outro nome</td><td>Chame direto</td></tr>
+                <tr><td>Cada chamador precisa de um controle diferente</td><td>A fachada vira espelho do subsistema, ou não serve a ninguém</td><td>Exponha as peças, e escreva um auxiliar por caso de uso, se ele repetir</td></tr>
+                <tr><td>Você quer encaixar uma interface em outra que já existia</td><td>O problema é compatibilidade, não simplificação</td><td>Adapter</td></tr>
+                <tr><td>Você quer acrescentar cache, log ou retry mantendo a interface</td><td>A interface antes e depois é a mesma</td><td>Decorator</td></tr>
+                <tr><td>O que há no meio é regra de negócio (decide, calcula, tem estados)</td><td>A fachada deve coordenar, e não decidir; a regra fica sem nome e sem teste próprio</td><td>Um serviço de domínio para a regra, e a fachada só o chama</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Facade saiu do lugar</h3>
+          <ul>
+            <li><strong>A fachada espelha o subsistema.</strong> Um método para cada método, só com nomes diferentes. Nada foi simplificado; foi acrescentado um salto.</li>
+            <li><strong>A fachada tem regra de negócio.</strong> Se ela calcula desconto ou decide elegibilidade, virou serviço, sem o nome nem o teste de um.</li>
+            <li><strong>O subsistema importa a fachada.</strong> A dependência circular transforma a fachada em um nó que todo mundo precisa conhecer.</li>
+            <li><strong>Não há saída para o caso raro.</strong> Quem precisa de uma opção que a fachada não expõe copia as peças inteiras, e agora há dois caminhos para manter.</li>
+            <li><strong>Uma fachada para o sistema todo.</strong> <code>Sistema.fazer_tudo()</code> é um <em>God object</em> com nome de pattern. Prefira uma fachada pequena por caso de uso.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: a fachada ganha um método novo para cada necessidade de cada chamador, até ser a soma da API de todas as peças. Quando isso acontece, ela deixou de simplificar, e só concentrou toda a dependência em um arquivo.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com uma função. Uma fachada com um método e sem estado é só <code>finalizar_pedido(carrinho, token)</code>. Vire classe quando precisar guardar as peças injetadas, ou quando ela passar a ter mais de um caso de uso.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../adapter/explicacao.html">Adapter</a></td><td>Converte a interface de <em>uma</em> peça em outra que já era esperada. A fachada cria uma interface <em>nova</em>, mais simples, sobre várias peças</td></tr>
+                <tr><td><a href="../decorator/explicacao.html">Decorator</a></td><td>Mantém a mesma interface e acrescenta comportamento. A fachada muda a interface e não acrescenta comportamento às peças</td></tr>
+                <tr><td>Mediator</td><td>Coordena objetos que conversam entre si, e todos conhecem o mediador. Na fachada as peças não sabem que ela existe, e ela só fala de fora para dentro</td></tr>
+                <tr><td>Proxy</td><td>Tem a interface do objeto que protege e controla o acesso a ele. A fachada tem interface própria e fala por várias peças</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se a interface nova é mais simples e fala por várias peças, é Facade; se só troca a interface de uma peça por outra que o código já esperava, é Adapter.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

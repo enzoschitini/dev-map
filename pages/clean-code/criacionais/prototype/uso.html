@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Prototype · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="criacionais/prototype/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Prototype</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Três situações em que o Prototype resolve o problema, além da duplicação de objetos da Explicação. Cada uma traz o código sem o pattern, o código com ele e o que o Prototype evita em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que três</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para copiar em vez de construir. Duplicar um objeto sem conhecer a classe já é o exemplo da <a href="explicacao.html#o-problema">Explicação</a>, e não se repete aqui. Quando dois casos se resolvem com o mesmo raciocínio — spawn de inimigos e criação de documentos a partir de um modelo carregado, por exemplo —, só um fica. O Prototype tem poucos motivos próprios, e boa parte do que parece servir se resolve com <code>dataclasses.replace</code>, como mostra <a href="explicacao.html#quando-nao-usar">Quando não usar</a>. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que o Prototype evita</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#custo-de-criacao">Criar do zero é caro, copiar é barato</a></td><td>Refazer a montagem cara a cada objeto</td></tr>
+                <tr><td>2</td><td><a href="#modelos-do-usuario">Modelos que o usuário define em tempo de execução</a></td><td>Uma subclasse para cada variante</td></tr>
+                <tr><td>3</td><td><a href="#rascunho-e-desfazer">Um rascunho que pode ser descartado</a></td><td>Reconstruir à mão o estado anterior</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="note"><p>Os módulos <code>db</code> e <code>parse_template</code>, e as classes (<code>Contrato</code>, <code>Tarefa</code>, <code>Configuracao</code>), são fictícios. A API de cópia (<code>copy.deepcopy</code>, o spread) é a real.</p></div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="custo-de-criacao">1. Criar do zero é caro, copiar é barato</h2>
+          <p><strong>Situação.</strong> No fim do mês, o sistema gera 2.000 contratos de renovação. Cada contrato parte do mesmo modelo: um template em arquivo, com 200 cláusulas guardadas no banco. Montar o modelo envolve uma consulta e um <em>parse</em> do template; a única coisa que muda de um contrato para outro são os dados do cliente.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o modelo é montado de novo a cada contrato</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">GeradorDeContratos</span>:
+    <span class="t-k">def</span> <span class="t-f">gerar</span>(self, cliente):
+        clausulas = db.<span class="t-f">consultar</span>(
+            <span class="t-s">"SELECT * FROM clausulas WHERE modelo = 'padrao'"</span>   <span class="t-c"># 200 linhas</span>
+        )
+        template = <span class="t-f">parse_template</span>(<span class="t-s">"contrato_padrao.docx"</span>)   <span class="t-c"># ~300 ms</span>
+        contrato = <span class="t-f">Contrato</span>(template, [<span class="t-f">Clausula</span>(c) <span class="t-k">for</span> c <span class="t-k">in</span> clausulas])
+        contrato.<span class="t-f">preencher</span>(cliente)
+        <span class="t-k">return</span> contrato</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Para 2.000 clientes, são 2.000 consultas idênticas e 2.000 <em>parses</em> do mesmo arquivo — o resultado de cada passo é sempre o mesmo, e só o <code>preencher</code> é diferente. O lote passa de minutos para dezenas de minutos, e o banco recebe uma carga que ninguém pediu.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o modelo é montado uma vez e clonado</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> copy
+
+<span class="t-k">class</span> <span class="t-f">GeradorDeContratos</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._prototipo = <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">_montar_modelo</span>(self):
+        clausulas = db.<span class="t-f">consultar</span>(<span class="t-s">"SELECT * FROM clausulas WHERE modelo = 'padrao'"</span>)
+        template = <span class="t-f">parse_template</span>(<span class="t-s">"contrato_padrao.docx"</span>)
+        <span class="t-k">return</span> <span class="t-f">Contrato</span>(template, [<span class="t-f">Clausula</span>(c) <span class="t-k">for</span> c <span class="t-k">in</span> clausulas])
+
+    <span class="t-k">def</span> <span class="t-f">gerar</span>(self, cliente):
+        <span class="t-k">if</span> self._prototipo <span class="t-k">is</span> <span class="t-k">None</span>:
+            self._prototipo = self.<span class="t-f">_montar_modelo</span>()   <span class="t-c"># uma vez</span>
+
+        contrato = copy.<span class="t-f">deepcopy</span>(self._prototipo)    <span class="t-c"># memória, sem rede nem disco</span>
+        contrato.<span class="t-f">preencher</span>(cliente)                  <span class="t-c"># só na cópia</span>
+        <span class="t-k">return</span> contrato</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Prototype evita.</strong> <strong>Refazer a montagem</strong>. O custo da consulta e do <em>parse</em> é pago uma vez, e cada contrato custa uma cópia em memória. O protótipo é o contrato "em branco" ideal: ninguém o preenche nem o entrega; ele só existe para ser copiado.</p>
+          <div class="callout" data-kind="warn"><p>Duas condições para isso valer. Primeira: <strong>meça</strong>. Se montar o modelo custa 2 ms, a cópia não ganha nada e só acrescenta um estado guardado. Segunda: o protótipo nunca pode ser alterado — um <code>preencher</code> acidental nele e todos os contratos seguintes saem com os dados do primeiro cliente.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="modelos-do-usuario">2. Modelos que o usuário define em tempo de execução</h2>
+          <p><strong>Situação.</strong> O gerenciador de projetos tem "modelos de tarefa": um bug já vem com prioridade alta, a etiqueta <em>bug</em> e um checklist de reproduzir, corrigir e testar. Hoje os modelos são fixos. O pedido é que <strong>cada equipe crie os seus</strong>, a partir de uma tarefa que já existe.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — cada modelo é uma classe, escrita pelo time de desenvolvimento</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">TarefaDeBug</span> <span class="t-k">extends</span> <span class="t-f">Tarefa</span> {
+  <span class="t-k">constructor</span>() {
+    <span class="t-k">super</span>(<span class="t-s">""</span>, <span class="t-s">"alta"</span>, [<span class="t-s">"bug"</span>], [<span class="t-s">"reproduzir"</span>, <span class="t-s">"corrigir"</span>, <span class="t-s">"testar"</span>]);
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">TarefaDeReuniao</span> <span class="t-k">extends</span> <span class="t-f">Tarefa</span> {
+  <span class="t-k">constructor</span>() {
+    <span class="t-k">super</span>(<span class="t-s">""</span>, <span class="t-s">"media"</span>, [<span class="t-s">"reuniao"</span>], [<span class="t-s">"pauta"</span>, <span class="t-s">"ata"</span>]);
+  }
+}
+
+<span class="t-k">function</span> <span class="t-f">criarTarefa</span>(modelo: <span class="t-f">string</span>): <span class="t-f">Tarefa</span> {
+  <span class="t-k">switch</span> (modelo) {
+    <span class="t-k">case</span> <span class="t-s">"bug"</span>: <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">TarefaDeBug</span>();
+    <span class="t-k">case</span> <span class="t-s">"reuniao"</span>: <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">TarefaDeReuniao</span>();
+    <span class="t-k">default</span>: <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">Error</span>(modelo);
+  }
+}</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> As classes não diferem em comportamento — só em <em>valores</em>. Cada modelo novo é uma classe, um <code>case</code> e uma implantação. E o que se pede ("salvar esta tarefa como modelo") é impossível: um modelo criado pelo usuário em tempo de execução não pode ser uma classe escrita antes.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o modelo é uma tarefa, guardada e clonada</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Tarefa</span> {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">public</span> titulo: <span class="t-f">string</span>,
+    <span class="t-k">public</span> prioridade: <span class="t-f">string</span>,
+    <span class="t-k">public</span> etiquetas: <span class="t-f">string</span>[],
+    <span class="t-k">public</span> checklist: <span class="t-f">string</span>[],
+  ) {}
+
+  <span class="t-f">clonar</span>(): <span class="t-f">Tarefa</span> {
+    <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">Tarefa</span>(<span class="t-k">this</span>.titulo, <span class="t-k">this</span>.prioridade, [...<span class="t-k">this</span>.etiquetas], [...<span class="t-k">this</span>.checklist]);
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">CatalogoDeModelos</span> {
+  <span class="t-k">private</span> modelos = <span class="t-k">new</span> <span class="t-f">Map</span>&lt;<span class="t-f">string</span>, <span class="t-f">Tarefa</span>&gt;();
+
+  <span class="t-f">salvar</span>(nome: <span class="t-f">string</span>, tarefa: <span class="t-f">Tarefa</span>) {
+    <span class="t-k">this</span>.modelos.<span class="t-f">set</span>(nome, tarefa.<span class="t-f">clonar</span>());   <span class="t-c">// guarda uma cópia, não a tarefa viva</span>
+  }
+
+  <span class="t-f">criar</span>(nome: <span class="t-f">string</span>): <span class="t-f">Tarefa</span> {
+    <span class="t-k">const</span> modelo = <span class="t-k">this</span>.modelos.<span class="t-f">get</span>(nome);
+    <span class="t-k">if</span> (!modelo) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">Error</span>(<span class="t-s">`modelo desconhecido: ${nome}`</span>);
+    <span class="t-k">return</span> modelo.<span class="t-f">clonar</span>();
+  }
+}
+
+<span class="t-c">// em tempo de execução, pela interface</span>
+catalogo.<span class="t-f">salvar</span>(<span class="t-s">"Bug"</span>, tarefaAtual);
+<span class="t-k">const</span> nova = catalogo.<span class="t-f">criar</span>(<span class="t-s">"Bug"</span>);</code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Prototype evita.</strong> <strong>Uma subclasse por variante</strong>. Aqui a variação está nos dados, e não na classe, então o modelo é um objeto que qualquer pessoa pode produzir. Este é o uso em que o Prototype é insubstituível: com construtores e classes, um modelo definido por quem usa o sistema simplesmente não cabe. O <code>CatalogoDeModelos</code> é o "registro de protótipos" do padrão.</p>
+          <div class="callout" data-kind="tip"><p>Repare em <code>modelos.set(nome, tarefa.clonar())</code>: o catálogo guarda uma <em>cópia</em>. Se guardasse a tarefa viva, editá-la depois alteraria o modelo — o sinal de abuso "o protótipo guardado é alterado por quem o usa".</p></div>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="rascunho-e-desfazer">3. Um rascunho que pode ser descartado</h2>
+          <p><strong>Situação.</strong> A tela de configurações tem os botões <em>Salvar</em> e <em>Cancelar</em>. Quem cancela espera que nada tenha mudado, mesmo depois de ter alterado o tema, o idioma e os atalhos.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o objeto é editado direto, e o "anterior" é guardado à mão</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">TelaDeConfiguracao</span>:
+    <span class="t-k">def</span> <span class="t-f">abrir</span>(self, config):
+        self.config = config
+        self._anterior = {
+            <span class="t-s">"tema"</span>: config.tema,
+            <span class="t-s">"idioma"</span>: config.idioma,
+            <span class="t-s">"atalhos"</span>: config.atalhos,   <span class="t-c"># a mesma lista: vai mudar junto</span>
+        }
+
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self):
+        self.config.tema = self._anterior[<span class="t-s">"tema"</span>]
+        self.config.idioma = self._anterior[<span class="t-s">"idioma"</span>]
+        self.config.atalhos = self._anterior[<span class="t-s">"atalhos"</span>]</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> A lista <code>atalhos</code> é a mesma nos dois lados: o usuário remove um atalho, cancela, e o "anterior" já estava sem ele. O campo <code>notificacoes</code>, acrescentado semana passada, não está na lista, e cancelar não o desfaz. E a lista de campos existe em dois lugares (<code>abrir</code> e <code>cancelar</code>) além da própria classe.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — o usuário edita uma cópia, e descartar é largá-la</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Configuracao</span>:
+    <span class="t-k">def</span> <span class="t-f">clonar</span>(self):
+        <span class="t-k">return</span> copy.<span class="t-f">deepcopy</span>(self)
+
+<span class="t-k">class</span> <span class="t-f">TelaDeConfiguracao</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, repositorio):
+        self._repo = repositorio
+        self.rascunho = <span class="t-k">None</span>
+
+    <span class="t-k">def</span> <span class="t-f">abrir</span>(self):
+        self.rascunho = self._repo.<span class="t-f">atual</span>().<span class="t-f">clonar</span>()   <span class="t-c"># o usuário edita isto</span>
+
+    <span class="t-k">def</span> <span class="t-f">salvar</span>(self):
+        self._repo.<span class="t-f">substituir</span>(self.rascunho)
+
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self):
+        self.rascunho = <span class="t-k">None</span>                              <span class="t-c"># nada a desfazer</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que o Prototype evita.</strong> <strong>Reconstruir o estado anterior à mão</strong>. A configuração original nunca foi tocada, então não existe "desfazer": existe um objeto que se descarta. Um campo novo na <code>Configuracao</code> entra na cópia sozinho, porque <code>clonar()</code> não tem lista de campos.</p>
+          <div class="callout" data-kind="note"><p>Isso cobre <em>um</em> nível de "voltar". Um histórico de desfazer com vários passos tem outro nome — Memento, normalmente em conjunto com o Command — e o Prototype é só o mecanismo de copiar o estado.</p></div>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos três, na Explicação, ou porque a resposta certa é outra:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Duplicar uma linha ou entidade em uma tela ("duplicar pedido")</td><td>Explicação — copiar sem conhecer a classe</td></tr>
+                <tr><td>Copiar e colar formas em um editor gráfico</td><td>Explicação — copiar sem conhecer a classe</td></tr>
+                <tr><td>Criar inimigos ou partículas a partir de um modelo já carregado</td><td>1 — criar do zero é caro</td></tr>
+                <tr><td>Presets de exportação, de tema ou de filtro criados pelo usuário</td><td>2 — modelos em tempo de execução</td></tr>
+                <tr><td>Fixtures de teste a partir de um objeto-base com um campo diferente</td><td><code>dataclasses.replace(base, status="pago")</code>. Veja "Quando não usar"</td></tr>
+                <tr><td>Histórico de desfazer com vários níveis</td><td>3 — um nível; o histórico completo é Memento</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Prototype, mas não é: copiar com <code>dict(obj)</code>, <code>{ ...obj }</code> ou <code>JSON.parse(JSON.stringify(obj))</code>. É uma cópia solta, sem contrato: a primeira é rasa, e a última perde tipos e métodos (datas viram texto). Não há uma regra do objeto dizendo o que compartilhar e o que zerar, que é o que o padrão acrescenta. A seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação mostra a diferença para o Factory Method.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

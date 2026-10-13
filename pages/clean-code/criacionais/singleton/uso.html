@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uso | Singleton · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="criacionais/singleton/uso">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Singleton</div>
+          <h1 class="page-title" tabindex="-1">Uso</h1>
+          <p class="lead">Cinco situações em que o Singleton resolve o problema. Cada uma traz o código sem o pattern, o código com ele e o que a instância única garante em cada caso.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-escolhi">Por que cinco</h2>
+          <p>Cada exemplo entrou com uma regra: precisa trazer um <strong>motivo diferente</strong> para ter uma instância só. Quando dois casos se resolvem com o mesmo raciocínio — um pool de conexões e um cliente HTTP, por exemplo — só um fica. O Singleton tem poucos motivos legítimos, e a lista é curta de propósito. Os que ficaram de fora estão no <a href="#fora-da-lista">fim da página</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Situação</th><th>O que a instância única garante</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="#recurso-caro">Recurso caro criado a cada uso</a></td><td>O custo é pago uma vez</td></tr>
+                <tr><td>2</td><td><a href="#estado-compartilhado">Estado que deveria ser um só</a></td><td>Todo mundo vê os mesmos dados</td></tr>
+                <tr><td>3</td><td><a href="#recurso-exclusivo">Recurso exclusivo disputado</a></td><td>Um dono, uma trava</td></tr>
+                <tr><td>4</td><td><a href="#criacao-concorrente">Objeto pesado criado sob concorrência</a></td><td>Criação preguiçosa e segura</td></tr>
+                <tr><td>5</td><td><a href="#sem-global">Unicidade sem acesso global</a></td><td>Um só, sem estado global</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="note"><p>Os exemplos 1 e 4 usam <code>psycopg2</code> e <code>joblib</code> com as chamadas simplificadas: o formato é o real, mas parâmetros opcionais e configuração foram omitidos.</p></div>
+
+          <!-- 1 ─────────────────────────────────────────────── -->
+          <h2 id="recurso-caro">1. Recurso caro criado a cada uso</h2>
+          <p><strong>Situação.</strong> O repositório de pedidos abre uma conexão com o PostgreSQL a cada consulta, usa e fecha. Em desenvolvimento, com uma pessoa clicando, funciona. Em produção, com centenas de requisições por segundo, o banco começa a recusar conexões.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — uma conexão nova por consulta</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">RepositorioDePedidos</span>:
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, id):
+        conn = psycopg2.<span class="t-f">connect</span>(DSN)   <span class="t-c"># TCP + autenticação, toda vez</span>
+        <span class="t-k">try</span>:
+            cur = conn.<span class="t-f">cursor</span>()
+            cur.<span class="t-f">execute</span>(<span class="t-s">"SELECT * FROM pedidos WHERE id = %s"</span>, (id,))
+            <span class="t-k">return</span> cur.<span class="t-f">fetchone</span>()
+        <span class="t-k">finally</span>:
+            conn.<span class="t-f">close</span>()</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Abrir a conexão custa mais que a consulta. Sob carga, o número de conexões simultâneas passa de <code>max_connections</code> e o banco responde com erro. E cada repositório novo repete o mesmo <code>connect</code>.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — um pool, criado uma vez</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Banco</span>:
+    _instancia = <span class="t-k">None</span>
+    _trava = threading.<span class="t-f">Lock</span>()
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._pool = <span class="t-f">ThreadedConnectionPool</span>(minconn=<span class="t-n">2</span>, maxconn=<span class="t-n">10</span>, dsn=DSN)
+
+    <span class="t-f">@classmethod</span>
+    <span class="t-k">def</span> <span class="t-f">instancia</span>(cls):
+        <span class="t-k">if</span> cls._instancia <span class="t-k">is</span> <span class="t-k">None</span>:
+            <span class="t-k">with</span> cls._trava:
+                <span class="t-k">if</span> cls._instancia <span class="t-k">is</span> <span class="t-k">None</span>:
+                    cls._instancia = cls()
+        <span class="t-k">return</span> cls._instancia
+
+    <span class="t-f">@contextmanager</span>
+    <span class="t-k">def</span> <span class="t-f">conexao</span>(self):
+        conn = self._pool.<span class="t-f">getconn</span>()
+        <span class="t-k">try</span>:
+            <span class="t-k">yield</span> conn
+            conn.<span class="t-f">commit</span>()
+        <span class="t-k">except</span> <span class="t-f">Exception</span>:
+            conn.<span class="t-f">rollback</span>()
+            <span class="t-k">raise</span>
+        <span class="t-k">finally</span>:
+            self._pool.<span class="t-f">putconn</span>(conn)
+
+<span class="t-k">class</span> <span class="t-f">RepositorioDePedidos</span>:
+    <span class="t-k">def</span> <span class="t-f">buscar</span>(self, id):
+        <span class="t-k">with</span> Banco.<span class="t-f">instancia</span>().<span class="t-f">conexao</span>() <span class="t-k">as</span> conn:
+            cur = conn.<span class="t-f">cursor</span>()
+            cur.<span class="t-f">execute</span>(<span class="t-s">"SELECT * FROM pedidos WHERE id = %s"</span>, (id,))
+            <span class="t-k">return</span> cur.<span class="t-f">fetchone</span>()</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a instância única garante.</strong> Que o custo de criar o recurso é pago uma vez, e que o limite de conexões vale para o processo inteiro. Dois pools de dez conexões não são "um pool com limite dez": é justamente isso que a unicidade protege.</p>
+          <div class="callout" data-kind="warn"><p>A garantia é <strong>por processo</strong>. Um servidor com 8 workers tem 8 pools de 10, ou seja, até 80 conexões. Some isso ao limite do banco antes de escolher o <code>maxconn</code>.</p></div>
+
+          <!-- 2 ─────────────────────────────────────────────── -->
+          <h2 id="estado-compartilhado">2. Estado que deveria ser um só</h2>
+          <p><strong>Situação.</strong> A API limita cada cliente a 100 requisições por minuto. O limitador guarda a contagem em memória. Cada arquivo de rotas — pedidos, produtos — cria o seu, e a regra "100 por minuto" é uma regra do <em>cliente</em>, não de cada rota.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — um limitador por arquivo, cada um com sua contagem</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-c">// pedidos.ts</span>
+<span class="t-k">const</span> limitador = <span class="t-k">new</span> <span class="t-f">Limitador</span>(<span class="t-n">100</span>);
+<span class="t-f">app</span>.<span class="t-f">get</span>(<span class="t-s">"/pedidos"</span>, (req, res) =&gt; {
+  <span class="t-k">if</span> (!limitador.<span class="t-f">permitir</span>(req.ip)) <span class="t-k">return</span> res.<span class="t-f">status</span>(<span class="t-n">429</span>).<span class="t-f">end</span>();
+  <span class="t-c">// ...</span>
+});
+
+<span class="t-c">// produtos.ts</span>
+<span class="t-k">const</span> limitador = <span class="t-k">new</span> <span class="t-f">Limitador</span>(<span class="t-n">100</span>);   <span class="t-c">// outra contagem, do zero</span>
+<span class="t-f">app</span>.<span class="t-f">get</span>(<span class="t-s">"/produtos"</span>, (req, res) =&gt; {
+  <span class="t-k">if</span> (!limitador.<span class="t-f">permitir</span>(req.ip)) <span class="t-k">return</span> res.<span class="t-f">status</span>(<span class="t-n">429</span>).<span class="t-f">end</span>();
+  <span class="t-c">// ...</span>
+});</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Um cliente faz 100 chamadas em <code>/pedidos</code> e mais 100 em <code>/produtos</code> no mesmo minuto, e nenhuma é recusada: o limite real é 100 <em>por rota</em>, e cresce a cada arquivo novo. O bug não dá erro, só deixa passar, e é por isso que demora a ser notado.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — uma contagem para todas as rotas</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">export</span> <span class="t-k">class</span> <span class="t-f">Limitador</span> {
+  <span class="t-k">private</span> <span class="t-k">static</span> _instancia: <span class="t-f">Limitador</span> | <span class="t-k">undefined</span>;
+  <span class="t-k">private</span> contagem = <span class="t-k">new</span> <span class="t-f">Map</span>&lt;<span class="t-f">string</span>, <span class="t-f">number</span>&gt;();
+
+  <span class="t-k">private</span> <span class="t-k">constructor</span>(<span class="t-k">private</span> <span class="t-k">readonly</span> limitePorMinuto: <span class="t-f">number</span>) {
+    <span class="t-f">setInterval</span>(() =&gt; <span class="t-k">this</span>.contagem.<span class="t-f">clear</span>(), <span class="t-n">60_000</span>).<span class="t-f">unref</span>();
+  }
+
+  <span class="t-k">static</span> <span class="t-k">get</span> <span class="t-f">instancia</span>(): <span class="t-f">Limitador</span> {
+    <span class="t-k">return</span> (<span class="t-f">Limitador</span>._instancia ??= <span class="t-k">new</span> <span class="t-f">Limitador</span>(<span class="t-n">100</span>));
+  }
+
+  <span class="t-f">permitir</span>(cliente: <span class="t-f">string</span>): <span class="t-f">boolean</span> {
+    <span class="t-k">const</span> n = (<span class="t-k">this</span>.contagem.<span class="t-f">get</span>(cliente) ?? <span class="t-n">0</span>) + <span class="t-n">1</span>;
+    <span class="t-k">this</span>.contagem.<span class="t-f">set</span>(cliente, n);
+    <span class="t-k">return</span> n &lt;= <span class="t-k">this</span>.limitePorMinuto;
+  }
+}
+
+<span class="t-c">// pedidos.ts e produtos.ts, iguais</span>
+<span class="t-f">app</span>.<span class="t-f">get</span>(<span class="t-s">"/pedidos"</span>, (req, res) =&gt; {
+  <span class="t-k">if</span> (!<span class="t-f">Limitador</span>.instancia.<span class="t-f">permitir</span>(req.ip)) <span class="t-k">return</span> res.<span class="t-f">status</span>(<span class="t-n">429</span>).<span class="t-f">end</span>();
+  <span class="t-c">// ...</span>
+});</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a instância única garante.</strong> Que existe <strong>uma verdade só</strong>. Aqui o motivo não é custo, como no exemplo 1: é correção. Duas instâncias não são mais caras, são <em>erradas</em> — cada uma enxerga uma parte dos fatos. Esse é o teste mais confiável do padrão: se duas instâncias dariam respostas diferentes para a mesma pergunta, ele é a ferramenta certa.</p>
+
+          <!-- 3 ─────────────────────────────────────────────── -->
+          <h2 id="recurso-exclusivo">3. Recurso exclusivo disputado</h2>
+          <p><strong>Situação.</strong> A emissão de notas fiscais exige numeração sequencial, sem buracos e sem repetição. O último número fica em um arquivo, e três serviços emitem notas ao mesmo tempo, em threads diferentes.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — ler, somar e gravar, sem ninguém na frente</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">proximo_numero</span>():
+    atual = <span class="t-f">int</span>(<span class="t-f">Path</span>(<span class="t-s">"ultima_nota.txt"</span>).<span class="t-f">read_text</span>())
+    novo = atual + <span class="t-n">1</span>
+    <span class="t-f">Path</span>(<span class="t-s">"ultima_nota.txt"</span>).<span class="t-f">write_text</span>(<span class="t-f">str</span>(novo))
+    <span class="t-k">return</span> novo</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Duas threads leem <code>41</code> antes de qualquer uma gravar; as duas devolvem <code>42</code>, e há duas notas com o mesmo número. É uma falha de numeração fiscal, que só aparece sob concorrência — ou seja, em produção, não nos testes.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — um dono do arquivo, uma trava</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">NumeradorDeNotas</span>:
+    _instancia = <span class="t-k">None</span>
+    _trava_de_criacao = threading.<span class="t-f">Lock</span>()
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, arquivo=<span class="t-f">Path</span>(<span class="t-s">"ultima_nota.txt"</span>)):
+        self._arquivo = arquivo
+        self._ultimo = <span class="t-f">int</span>(arquivo.<span class="t-f">read_text</span>())
+        self._trava = threading.<span class="t-f">Lock</span>()          <span class="t-c"># protege o número</span>
+
+    <span class="t-f">@classmethod</span>
+    <span class="t-k">def</span> <span class="t-f">instancia</span>(cls):
+        <span class="t-c"># mesmo corpo do instancia() da Configuracao</span>
+        ...
+
+    <span class="t-k">def</span> <span class="t-f">proximo</span>(self):
+        <span class="t-k">with</span> self._trava:
+            self._ultimo += <span class="t-n">1</span>
+            self._arquivo.<span class="t-f">write_text</span>(<span class="t-f">str</span>(self._ultimo))
+            <span class="t-k">return</span> self._ultimo
+
+<span class="t-c"># em qualquer serviço</span>
+numero = NumeradorDeNotas.<span class="t-f">instancia</span>().<span class="t-f">proximo</span>()</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a instância única garante.</strong> Que existe <strong>um único dono</strong> do recurso, e portanto uma única trava para ele. Uma trava só funciona se todos disputam <em>a mesma</em>: duas instâncias teriam duas travas, e nenhuma protegeria nada.</p>
+          <div class="callout" data-kind="note"><p>Em um sistema real, a numeração pertence ao banco: uma <code>SEQUENCE</code> do PostgreSQL entrega números sem repetição para todos os processos, o que um Singleton em memória não consegue. O exemplo mostra o princípio — um dono, uma trava — e não a melhor forma de numerar notas.</p></div>
+
+          <!-- 4 ─────────────────────────────────────────────── -->
+          <h2 id="criacao-concorrente">4. Objeto pesado criado sob concorrência</h2>
+          <p><strong>Situação.</strong> Um serviço de classificação de tickets usa um modelo de 400 MB, que leva dois segundos para carregar. Carregá-lo no <code>import</code> atrasa o início de qualquer comando, até os que nem classificam. Então alguém o carrega "só quando precisar".</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — carga preguiçosa, mas com uma corrida</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code>_modelo = <span class="t-k">None</span>
+
+<span class="t-k">def</span> <span class="t-f">classificar</span>(texto):
+    <span class="t-k">global</span> _modelo
+    <span class="t-k">if</span> _modelo <span class="t-k">is</span> <span class="t-k">None</span>:
+        _modelo = joblib.<span class="t-f">load</span>(<span class="t-s">"classificador.pkl"</span>)   <span class="t-c"># duas threads chegam aqui juntas</span>
+    <span class="t-k">return</span> _modelo.<span class="t-f">predict</span>([texto])[<span class="t-n">0</span>]</code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> Com as primeiras requisições chegando juntas, várias threads veem <code>_modelo is None</code> ao mesmo tempo e cada uma carrega os 400 MB. O pico de memória é múltiplo do esperado, e o serviço pode ser derrubado logo após uma implantação. Em testes sequenciais, nada disso aparece.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com o pattern — a criação é preguiçosa e protegida</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Classificador</span>:
+    _instancia = <span class="t-k">None</span>
+    _trava = threading.<span class="t-f">Lock</span>()
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._modelo = joblib.<span class="t-f">load</span>(<span class="t-s">"classificador.pkl"</span>)
+
+    <span class="t-f">@classmethod</span>
+    <span class="t-k">def</span> <span class="t-f">instancia</span>(cls):
+        <span class="t-k">if</span> cls._instancia <span class="t-k">is</span> <span class="t-k">None</span>:             <span class="t-c"># caminho rápido: sem trava</span>
+            <span class="t-k">with</span> cls._trava:
+                <span class="t-k">if</span> cls._instancia <span class="t-k">is</span> <span class="t-k">None</span>:     <span class="t-c"># só uma thread chega aqui com None</span>
+                    cls._instancia = cls()
+        <span class="t-k">return</span> cls._instancia
+
+    <span class="t-k">def</span> <span class="t-f">classificar</span>(self, texto):
+        <span class="t-k">return</span> self._modelo.<span class="t-f">predict</span>([texto])[<span class="t-n">0</span>]
+
+<span class="t-k">def</span> <span class="t-f">classificar</span>(texto):
+    <span class="t-k">return</span> Classificador.<span class="t-f">instancia</span>().<span class="t-f">classificar</span>(texto)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a instância única garante.</strong> A <strong>criação</strong> acontece uma vez, na primeira vez que alguém precisa, e só uma thread a executa — as outras esperam na trava e depois reaproveitam. Ele resolve duas coisas juntas: não paga a carga se ninguém usar, e não paga duas vezes se muitos usarem ao mesmo tempo.</p>
+          <div class="callout" data-kind="tip"><p>O <code>functools.cache</code> sobre uma função <code>carregar_modelo()</code> resolve a parte preguiçosa com uma linha, mas ele não segura a chamada: duas threads simultâneas ainda podem executá-la ao mesmo tempo. Se a carga é cara e a concorrência é real, a trava continua sendo necessária.</p></div>
+
+          <!-- 5 ─────────────────────────────────────────────── -->
+          <h2 id="sem-global">5. Unicidade sem acesso global</h2>
+          <p><strong>Situação.</strong> A <code>Configuracao</code> da Explicação funciona, mas o <code>Mailer</code> a busca com <code>Configuracao.instancia()</code> lá dentro do método. Alguém precisa testar o envio com outro host de SMTP.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">sem o pattern — o teste altera o global e contamina os seguintes</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Mailer</span>:
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, destino, texto):
+        host = Configuracao.<span class="t-f">instancia</span>().dados[<span class="t-s">"smtp_host"</span>]   <span class="t-c"># dependência escondida</span>
+        ...
+
+<span class="t-k">def</span> <span class="t-f">test_envio_usa_o_host_configurado</span>():
+    Configuracao.<span class="t-f">instancia</span>().dados[<span class="t-s">"smtp_host"</span>] = <span class="t-s">"localhost"</span>
+    <span class="t-f">Mailer</span>().<span class="t-f">enviar</span>(<span class="t-s">"ana@exemplo.com"</span>, <span class="t-s">"oi"</span>)
+    <span class="t-c"># o "localhost" continua lá para todos os testes que rodarem depois</span></code></pre>
+            </div>
+          </div>
+          <p><strong>O que dói.</strong> O construtor de <code>Mailer</code> não diz que depende de configuração: para descobrir, é preciso ler o corpo do método. O teste altera o estado compartilhado e o deixa lá, então o resultado de um teste passa a depender de quais rodaram antes dele — e o <code>reset()</code> que aparece para consertar é o sintoma descrito em "Sinais de que o Singleton saiu do lugar".</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">com a unicidade, sem o global — criar uma vez e passar adiante</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Configuracao</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, dados: <span class="t-f">dict</span>):
+        self.dados = dados
+
+    <span class="t-f">@classmethod</span>
+    <span class="t-k">def</span> <span class="t-f">carregar</span>(cls, caminho: <span class="t-f">str</span>):
+        <span class="t-k">with</span> <span class="t-f">open</span>(caminho, encoding=<span class="t-s">"utf-8"</span>) <span class="t-k">as</span> f:
+            <span class="t-k">return</span> <span class="t-f">cls</span>(json.<span class="t-f">load</span>(f))
+
+<span class="t-k">class</span> <span class="t-f">Mailer</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, config: Configuracao):
+        self._config = config
+
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, destino, texto):
+        host = self._config.dados[<span class="t-s">"smtp_host"</span>]
+        ...
+
+<span class="t-c"># a única criação, no ponto de entrada da aplicação</span>
+<span class="t-k">def</span> <span class="t-f">main</span>():
+    config = Configuracao.<span class="t-f">carregar</span>(<span class="t-s">"config.json"</span>)
+    mailer = <span class="t-f">Mailer</span>(config)
+    relatorio = <span class="t-f">Relatorio</span>(config, mailer)
+    ...
+
+<span class="t-c"># o teste cria a sua, e mais nada é afetado</span>
+<span class="t-k">def</span> <span class="t-f">test_envio_usa_o_host_configurado</span>():
+    mailer = <span class="t-f">Mailer</span>(<span class="t-f">Configuracao</span>({<span class="t-s">"smtp_host"</span>: <span class="t-s">"localhost"</span>}))
+    mailer.<span class="t-f">enviar</span>(<span class="t-s">"ana@exemplo.com"</span>, <span class="t-s">"oi"</span>)</code></pre>
+            </div>
+          </div>
+          <p><strong>O que a instância única garante.</strong> Aqui a unicidade não vem da classe, e sim do <strong>lugar onde ela é criada</strong>: a aplicação cria uma <code>Configuracao</code>, uma vez, e todo mundo recebe a mesma. É um "Singleton por convenção" — você mantém o "um só" e perde o "global". Na maior parte dos sistemas, é a forma de usar essa ideia que menos dá trabalho depois.</p>
+
+          <!-- fora ─────────────────────────────────────────────── -->
+          <h2 id="fora-da-lista">O que ficou de fora</h2>
+          <p>Casos comuns que não ganharam seção própria, porque o motivo já está em um dos cinco:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Caso</th><th>Já coberto por</th></tr></thead>
+              <tbody>
+                <tr><td>Cliente HTTP ou SDK de terceiros criado uma vez e reaproveitado</td><td>1 — recurso caro</td></tr>
+                <tr><td>Pool de threads ou de workers</td><td>1 — recurso caro, com um limite global</td></tr>
+                <tr><td>Cache em memória, registro de plugins ou de handlers</td><td>2 — estado que deveria ser um só</td></tr>
+                <tr><td>Logger da aplicação</td><td>2 e 3 — estado único e destino exclusivo; na prática <code>logging.getLogger</code> já cuida disso</td></tr>
+                <tr><td>Gerador de IDs sequenciais</td><td>3 — um dono, uma trava</td></tr>
+                <tr><td>Carregar configuração do disco só na primeira vez</td><td>4 — criação preguiçosa</td></tr>
+                <tr><td>Configuração da aplicação</td><td>5 — criar uma vez e passar</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>E um caso que parece Singleton, mas não é: uma classe só com métodos estáticos e nenhum estado, para agrupar funções. Não há instância controlada nem ciclo de vida — é um módulo com outro nome, e a seção <a href="explicacao.html#parecidos">Parecidos</a> da explicação mostra a diferença.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

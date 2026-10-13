@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Factory Method · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="criacionais/factory-method/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Factory Method</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como deixar o código principal criar um objeto sem saber qual classe exata está criando, entregando essa escolha para as subclasses.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>O sistema gera relatórios: o de vendas mostra um gráfico de barras, o de estoque mostra um gráfico de linhas. O fluxo é o mesmo nos dois — coletar os dados, montar o gráfico, renderizar — e só duas coisas mudam: de onde vêm os dados e <strong>qual gráfico</strong> é criado.</p>
+          <p>A saída mais curta é uma classe só, com o tipo do relatório como parâmetro e um <code>if</code> em cada ponto que varia:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — a classe conhece todos os relatórios e todos os gráficos</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Relatorio</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, tipo):
+        self.tipo = tipo
+
+    <span class="t-k">def</span> <span class="t-f">gerar</span>(self):
+        <span class="t-k">if</span> self.tipo == <span class="t-s">"vendas"</span>:
+            dados = <span class="t-f">consultar_vendas</span>()
+        <span class="t-k">elif</span> self.tipo == <span class="t-s">"estoque"</span>:
+            dados = <span class="t-f">consultar_estoque</span>()
+        <span class="t-k">else</span>:
+            <span class="t-k">raise</span> <span class="t-f">ValueError</span>(self.tipo)
+
+        <span class="t-k">if</span> self.tipo == <span class="t-s">"vendas"</span>:
+            grafico = <span class="t-f">GraficoDeBarras</span>(dados)
+        <span class="t-k">elif</span> self.tipo == <span class="t-s">"estoque"</span>:
+            grafico = <span class="t-f">GraficoDeLinhas</span>(dados)   <span class="t-c"># o mesmo if, de novo</span>
+
+        <span class="t-k">return</span> grafico.<span class="t-f">renderizar</span>()</code></pre>
+            </div>
+          </div>
+          <p>Três coisas aparecem aos poucos: um relatório novo exige editar a classe em <strong>dois lugares</strong> — e esquecer um só dá erro em produção; a classe passa a conhecer todos os gráficos, então testar o relatório de vendas carrega o código do de estoque; e a cadeia de <code>if</code> cresce a cada pedido, sempre dentro de um método que já faz coisa demais. É o Open/Closed ao contrário: toda extensão vira modificação.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Tire a criação do meio do fluxo e dê a ela um nome: um método, <code>criar_grafico()</code>, que a classe base <em>chama</em> mas não <em>implementa</em>. Cada tipo de relatório vira uma subclasse e decide o que criar. São quatro papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Produto</td><td>A interface do que é criado</td><td><code>Grafico</code></td></tr>
+                <tr><td>Produto concreto</td><td>Uma implementação do produto</td><td><code>GraficoDeBarras</code>, <code>GraficoDeLinhas</code></td></tr>
+                <tr><td>Criador</td><td>A classe com o fluxo; chama o método fábrica sem saber o que volta</td><td><code>Relatorio</code></td></tr>
+                <tr><td>Criador concreto</td><td>A subclasse que sobrescreve o método fábrica</td><td><code>RelatorioDeVendas</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é <strong>quem decide o tipo</strong>. O fluxo mora em um lugar só, na classe base, e fica fechado para modificação. A decisão de qual gráfico criar sai dele e vai para quem já é, por outros motivos, o especialista naquele relatório.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+
+<span class="t-c"># 1. o produto: o que o criador espera receber</span>
+<span class="t-k">class</span> <span class="t-f">Grafico</span>(ABC):
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">renderizar</span>(self) -&gt; <span class="t-f">str</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">GraficoDeBarras</span>(Grafico):
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, dados):
+        self._dados = dados
+
+    <span class="t-k">def</span> <span class="t-f">renderizar</span>(self):
+        <span class="t-k">return</span> <span class="t-s">f"barras({self._dados})"</span>
+
+<span class="t-c"># 2. o criador: o fluxo, com o método fábrica no meio</span>
+<span class="t-k">class</span> <span class="t-f">Relatorio</span>(ABC):
+    <span class="t-k">def</span> <span class="t-f">gerar</span>(self):
+        dados = self.<span class="t-f">coletar</span>()
+        grafico = self.<span class="t-f">criar_grafico</span>(dados)   <span class="t-c"># não sabe qual é</span>
+        <span class="t-k">return</span> grafico.<span class="t-f">renderizar</span>()
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">coletar</span>(self): ...
+
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">criar_grafico</span>(self, dados) -&gt; Grafico: ...   <span class="t-c"># o método fábrica</span>
+
+<span class="t-c"># 3. o criador concreto: decide o tipo e mais nada do fluxo</span>
+<span class="t-k">class</span> <span class="t-f">RelatorioDeVendas</span>(Relatorio):
+    <span class="t-k">def</span> <span class="t-f">coletar</span>(self):
+        <span class="t-k">return</span> <span class="t-f">consultar_vendas</span>()
+
+    <span class="t-k">def</span> <span class="t-f">criar_grafico</span>(self, dados):
+        <span class="t-k">return</span> <span class="t-f">GraficoDeBarras</span>(dados)
+
+<span class="t-c"># quem chama já sabe qual relatório quer</span>
+<span class="t-f">RelatorioDeVendas</span>().<span class="t-f">gerar</span>()</code></pre>
+              <pre><code><span class="t-c">// 1. o produto: o que o criador espera receber</span>
+<span class="t-k">interface</span> <span class="t-f">Grafico</span> {
+  <span class="t-f">renderizar</span>(): <span class="t-f">string</span>;
+}
+
+<span class="t-k">class</span> <span class="t-f">GraficoDeBarras</span> <span class="t-k">implements</span> <span class="t-f">Grafico</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">private</span> dados: <span class="t-f">number</span>[]) {}
+
+  <span class="t-f">renderizar</span>() {
+    <span class="t-k">return</span> <span class="t-s">`barras(${this.dados})`</span>;
+  }
+}
+
+<span class="t-c">// 2. o criador: o fluxo, com o método fábrica no meio</span>
+<span class="t-k">abstract</span> <span class="t-k">class</span> <span class="t-f">Relatorio</span> {
+  <span class="t-f">gerar</span>(): <span class="t-f">string</span> {
+    <span class="t-k">const</span> dados = <span class="t-k">this</span>.<span class="t-f">coletar</span>();
+    <span class="t-k">const</span> grafico = <span class="t-k">this</span>.<span class="t-f">criarGrafico</span>(dados);   <span class="t-c">// não sabe qual é</span>
+    <span class="t-k">return</span> grafico.<span class="t-f">renderizar</span>();
+  }
+
+  <span class="t-k">protected</span> <span class="t-k">abstract</span> <span class="t-f">coletar</span>(): <span class="t-f">number</span>[];
+  <span class="t-k">protected</span> <span class="t-k">abstract</span> <span class="t-f">criarGrafico</span>(dados: <span class="t-f">number</span>[]): <span class="t-f">Grafico</span>;   <span class="t-c">// o método fábrica</span>
+}
+
+<span class="t-c">// 3. o criador concreto: decide o tipo e mais nada do fluxo</span>
+<span class="t-k">class</span> <span class="t-f">RelatorioDeVendas</span> <span class="t-k">extends</span> <span class="t-f">Relatorio</span> {
+  <span class="t-k">protected</span> <span class="t-f">coletar</span>() {
+    <span class="t-k">return</span> <span class="t-f">consultarVendas</span>();
+  }
+
+  <span class="t-k">protected</span> <span class="t-f">criarGrafico</span>(dados: <span class="t-f">number</span>[]) {
+    <span class="t-k">return</span> <span class="t-k">new</span> <span class="t-f">GraficoDeBarras</span>(dados);
+  }
+}
+
+<span class="t-k">new</span> <span class="t-f">RelatorioDeVendas</span>().<span class="t-f">gerar</span>();</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste do fluxo agora é uma subclasse de três linhas cujo <code>criar_grafico</code> devolve um <code>GraficoFalso</code> que guarda o que recebeu. Nenhum dos relatórios reais entra no teste.</p></div>
+          <div class="callout" data-kind="note"><p>Em Python, quando a subclasse só troca a <em>classe</em> criada, um atributo basta: <code>classe_do_grafico = GraficoDeBarras</code> na subclasse e <code>self.classe_do_grafico(dados)</code> na base. É o mesmo padrão com menos cerimônia — e o método fábrica só se justifica quando a criação precisa de mais lógica do que "qual classe".</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Factory Method vale quando três coisas acontecem ao mesmo tempo: o código <strong>precisa criar</strong> um objeto cujo tipo exato ele não deveria conhecer; o resto do fluxo é <strong>comum</strong> e só o objeto criado muda; e <strong>subclasses</strong> já existem (ou fazem sentido) porque as variantes diferem em outras coisas além da criação.</p>
+          <p>No código, isso aparece de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Um método longo em que só a linha de criação muda entre variantes</td><td><code>if self.tipo == …</code> escolhendo qual classe instanciar, no meio de um fluxo que repete igual</td><td><a href="uso.html#fluxo-fixo">Uso #1</a></td></tr>
+                <tr><td>Uma biblioteca ou classe base que outros times estendem</td><td>A biblioteca importa as classes concretas de quem a usa; cada necessidade nova vira PR nela</td><td><a href="uso.html#ponto-de-extensao">Uso #2</a></td></tr>
+                <tr><td>A mesma escolha de tipo em vários métodos da mesma classe</td><td>A mesma cadeia <code>if</code>/<code>elif</code> ou <code>isinstance</code> copiada em <code>novo()</code>, <code>abrir()</code> e <code>duplicar()</code></td><td><a href="uso.html#tipo-em-um-lugar">Uso #3</a></td></tr>
+                <tr><td>Teste que precisa trocar um objeto criado no meio de um método</td><td><code>@patch("modulo.requests.get")</code>; o objeto é criado dentro do método e o construtor não aceita parâmetros</td><td><a href="uso.html#costura-de-teste">Uso #4</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: a pergunta "qual classe?" aparece <strong>dentro</strong> de um código que não tinha nada a ver com ela. O método fábrica é o lugar para onde essa pergunta vai.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>O tipo criado muda?</strong> Se é sempre a mesma classe, chame <code>Classe()</code> direto.</li>
+            <li><strong>A escolha vem de um dado em tempo de execução</strong> (extensão do arquivo, campo do JSON, string de configuração)? Então use uma função fábrica ou um mapa: o Factory Method pede que a escolha seja feita por <em>quem é a subclasse</em>, não por um valor.</li>
+            <li><strong>As variantes diferem só na criação?</strong> Então não precisa de herança: receba a fábrica (ou o próprio objeto) por parâmetro.</li>
+            <li><strong>Existe um fluxo comum, e as variantes são subclasses por outros motivos?</strong> Se sim, Factory Method.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Factory Method paga com <strong>herança</strong>: uma classe criadora por variante, mais uma hierarquia de produtos em paralelo. Para saber o que o fluxo realmente cria, é preciso saber qual subclasse está rodando, e o "ir para a definição" cai no método abstrato da base. Para uma variação de uma linha, o custo é desproporcional.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>O tipo vem de um dado (extensão, campo, configuração)</td><td>Alguém ainda precisa de um <code>if</code> ou mapa para escolher a subclasse — você só moveu o problema</td><td>Uma função fábrica ou um dicionário <code>{".csv": LeitorCsv}</code></td></tr>
+                <tr><td>Só a criação varia, e nada mais</td><td>Uma subclasse inteira para sobrescrever uma linha é muita estrutura</td><td>Receba o objeto, ou uma função que o cria, pelo construtor</td></tr>
+                <tr><td>Você pode injetar a dependência pelo construtor</td><td>A injeção é mais simples e mais explícita que uma subclasse de teste</td><td>Injeção de dependência</td></tr>
+                <tr><td>Vários produtos que precisam combinar entre si (botão e janela do mesmo tema)</td><td>Um método fábrica só cria um produto; a consistência entre eles fica a seu cargo</td><td>Abstract Factory</td></tr>
+                <tr><td>O objeto tem muitos parâmetros e é montado passo a passo</td><td>O problema não é "qual tipo", é "como montar"</td><td>Builder</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Factory Method saiu do lugar</h3>
+          <ul>
+            <li><strong>O método fábrica recebe um <code>tipo</code> e faz <code>if</code>.</strong> Você moveu a cadeia de <code>if</code> de lugar, e agora ela mora dentro de um método com nome de padrão.</li>
+            <li><strong>Subclasses que só sobrescrevem a criação.</strong> Se nada mais as diferencia, a herança não está dizendo nada: é uma função com mais arquivos.</li>
+            <li><strong>Uma hierarquia nova para cada produto novo, sem ninguém pedir variação.</strong> Dois produtos paralelos que crescem juntos "por precaução" dobram o custo de toda mudança.</li>
+            <li><strong>O método fábrica faz mais que criar.</strong> Abrir conexão, registrar em log, gravar em disco. Quem chama <code>criar_x()</code> não espera efeito colateral.</li>
+            <li><strong>O criador depende do tipo concreto que criou.</strong> Um <code>isinstance(grafico, GraficoDeBarras)</code> no fluxo mostra que a abstração não está segurando a diferença.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: toda subclasse de criador se resume a <code>return NovaClasse()</code>. O padrão virou um <code>if</code> com mais arquivos.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com <code>Classe()</code> direto. A segunda variação é o momento certo para extrair o método fábrica: a refatoração é pequena (extrair o método, criar a subclasse), e agora você tem dois casos reais para desenhá-lo, em vez de um palpite.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Fábrica simples (função ou mapa)</td><td>Escolhe o tipo por um <code>if</code> ou dicionário sobre um dado, sem herança. O Factory Method entrega a escolha a uma subclasse</td></tr>
+                <tr><td>Abstract Factory</td><td>Cria <em>famílias</em> de objetos que combinam entre si; costuma ser implementada com vários métodos fábrica</td></tr>
+                <tr><td>Template Method</td><td>Esqueleto fixo com passos sobrescritos. O Factory Method é um Template Method em que um dos passos é criar um objeto</td></tr>
+                <tr><td>Strategy</td><td>Troca o comportamento por composição: o objeto é passado de fora. O Factory Method troca por herança: a subclasse o cria</td></tr>
+                <tr><td>Builder</td><td>Monta um objeto complexo passo a passo; não decide o tipo, decide como montar</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se a escolha do tipo é feita por um <code>if</code> sobre um dado, é uma fábrica simples. Se é feita por uma subclasse, é Factory Method.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Template Method · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/template-method/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Template Method</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como escrever uma vez só a ordem dos passos de um processo, e deixar cada variação preencher apenas o passo que é diferente dela.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>A loja importa catálogo de fornecedores. O primeiro manda CSV; o segundo, JSON. O roteiro é o mesmo nos dois: ler o arquivo, conferir os preços, gravar tudo em uma transação e registrar o que entrou. Só a leitura é diferente.</p>
+          <p>A saída preguiçosa é copiar a primeira função e trocar o miolo:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — o roteiro copiado, e já divergindo</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">importar_csv</span>(caminho):
+    <span class="t-k">with</span> <span class="t-f">open</span>(caminho, newline=<span class="t-s">""</span>) <span class="t-k">as</span> f:
+        produtos = [<span class="t-f">Produto</span>(l[<span class="t-s">"sku"</span>], <span class="t-f">Decimal</span>(l[<span class="t-s">"preco"</span>])) <span class="t-k">for</span> l <span class="t-k">in</span> csv.<span class="t-f">DictReader</span>(f)]
+    <span class="t-k">for</span> p <span class="t-k">in</span> produtos:
+        <span class="t-k">if</span> p.preco &lt;= <span class="t-n">0</span>:
+            <span class="t-k">raise</span> <span class="t-f">ImportacaoInvalida</span>(p.sku)
+    <span class="t-k">with</span> db.<span class="t-f">transacao</span>():
+        <span class="t-k">for</span> p <span class="t-k">in</span> produtos:
+            db.<span class="t-f">salvar</span>(p)
+    log.<span class="t-f">info</span>(<span class="t-s">"importados %d produtos"</span>, <span class="t-f">len</span>(produtos))
+
+<span class="t-k">def</span> <span class="t-f">importar_json</span>(caminho):
+    <span class="t-k">with</span> <span class="t-f">open</span>(caminho) <span class="t-k">as</span> f:
+        itens = json.<span class="t-f">load</span>(f)[<span class="t-s">"itens"</span>]
+    produtos = [<span class="t-f">Produto</span>(i[<span class="t-s">"codigo"</span>], <span class="t-f">Decimal</span>(<span class="t-f">str</span>(i[<span class="t-s">"valor"</span>]))) <span class="t-k">for</span> i <span class="t-k">in</span> itens]
+    <span class="t-k">for</span> p <span class="t-k">in</span> produtos:
+        <span class="t-k">if</span> p.preco &lt;= <span class="t-n">0</span>:
+            <span class="t-k">raise</span> <span class="t-f">ImportacaoInvalida</span>(p.sku)
+    <span class="t-k">for</span> p <span class="t-k">in</span> produtos:          <span class="t-c"># a transação ficou para trás</span>
+        db.<span class="t-f">salvar</span>(p)
+    log.<span class="t-f">info</span>(<span class="t-s">"importados %d produtos"</span>, <span class="t-f">len</span>(produtos))</code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram daqui a pouco. As duas cópias já divergiram: a do JSON grava sem transação, e uma importação que falha no meio deixa o catálogo pela metade. Um terceiro formato é a terceira cópia, com a terceira chance de esquecer algo. E qualquer regra nova (rejeitar SKU repetido, por exemplo) é uma edição em cada função, sem nada que avise quando uma ficar de fora.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Escreva o roteiro uma vez, em uma classe base, e deixe os passos que variam como buracos para as subclasses preencherem. Quem chama é a classe base: ela decide a ordem e, em cada ponto, pergunta à subclasse o que fazer. São quatro papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Classe base</td><td>Dona do roteiro e dos passos que são iguais para todos</td><td><code>Importador</code></td></tr>
+                <tr><td>Método-template</td><td>O método que fixa a ordem dos passos</td><td><code>importar()</code></td></tr>
+                <tr><td>Passo variável</td><td>O buraco: obrigatório, ou com um padrão que pode ser trocado</td><td><code>ler()</code>, <code>validar()</code></td></tr>
+                <tr><td>Subclasse concreta</td><td>Preenche só o que é diferente dela</td><td><code>ImportadorCsv</code>, <code>ImportadorJson</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é a <strong>direção da chamada</strong>: o pai chama o filho, e não o contrário. A subclasse nunca decide quando seu passo roda nem o que vem antes ou depois dele. Por isso a transação, a ordem e o log não dependem de ninguém lembrar deles.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> abc <span class="t-k">import</span> ABC, abstractmethod
+
+<span class="t-c"># 1. a classe base: dona do roteiro</span>
+<span class="t-k">class</span> <span class="t-f">Importador</span>(ABC):
+
+    <span class="t-c"># 2. o método-template: a ordem dos passos, escrita uma vez</span>
+    <span class="t-k">def</span> <span class="t-f">importar</span>(self, caminho):
+        produtos = self.<span class="t-f">ler</span>(caminho)
+        self.<span class="t-f">validar</span>(produtos)
+        <span class="t-k">with</span> db.<span class="t-f">transacao</span>():
+            <span class="t-k">for</span> produto <span class="t-k">in</span> produtos:
+                db.<span class="t-f">salvar</span>(produto)
+        log.<span class="t-f">info</span>(<span class="t-s">"importados %d produtos"</span>, <span class="t-f">len</span>(produtos))
+
+    <span class="t-c"># 3. o passo que muda: a subclasse é obrigada a escrever</span>
+    <span class="t-f">@abstractmethod</span>
+    <span class="t-k">def</span> <span class="t-f">ler</span>(self, caminho) -&gt; <span class="t-f">list</span>[<span class="t-f">Produto</span>]: ...
+
+    <span class="t-c"># 4. um passo comum, com padrão que a subclasse pode trocar</span>
+    <span class="t-k">def</span> <span class="t-f">validar</span>(self, produtos):
+        <span class="t-k">for</span> p <span class="t-k">in</span> produtos:
+            <span class="t-k">if</span> p.preco &lt;= <span class="t-n">0</span>:
+                <span class="t-k">raise</span> <span class="t-f">ImportacaoInvalida</span>(p.sku)
+
+<span class="t-c"># 5. as subclasses: só o que é diferente</span>
+<span class="t-k">class</span> <span class="t-f">ImportadorCsv</span>(Importador):
+    <span class="t-k">def</span> <span class="t-f">ler</span>(self, caminho):
+        <span class="t-k">with</span> <span class="t-f">open</span>(caminho, newline=<span class="t-s">""</span>) <span class="t-k">as</span> f:
+            <span class="t-k">return</span> [<span class="t-f">Produto</span>(l[<span class="t-s">"sku"</span>], <span class="t-f">Decimal</span>(l[<span class="t-s">"preco"</span>])) <span class="t-k">for</span> l <span class="t-k">in</span> csv.<span class="t-f">DictReader</span>(f)]
+
+<span class="t-k">class</span> <span class="t-f">ImportadorJson</span>(Importador):
+    <span class="t-k">def</span> <span class="t-f">ler</span>(self, caminho):
+        <span class="t-k">with</span> <span class="t-f">open</span>(caminho) <span class="t-k">as</span> f:
+            itens = json.<span class="t-f">load</span>(f)[<span class="t-s">"itens"</span>]
+        <span class="t-k">return</span> [<span class="t-f">Produto</span>(i[<span class="t-s">"codigo"</span>], <span class="t-f">Decimal</span>(<span class="t-f">str</span>(i[<span class="t-s">"valor"</span>]))) <span class="t-k">for</span> i <span class="t-k">in</span> itens]
+
+<span class="t-f">ImportadorJson</span>().<span class="t-f">importar</span>(<span class="t-s">"fornecedor-b.json"</span>)</code></pre>
+              <pre><code><span class="t-c">// 1. a classe base: dona do roteiro</span>
+<span class="t-k">abstract</span> <span class="t-k">class</span> <span class="t-f">Importador</span> {
+
+  <span class="t-c">// 2. o método-template: a ordem dos passos, escrita uma vez</span>
+  <span class="t-k">async</span> <span class="t-f">importar</span>(caminho: <span class="t-f">string</span>) {
+    <span class="t-k">const</span> produtos = <span class="t-k">await</span> <span class="t-k">this</span>.<span class="t-f">ler</span>(caminho);
+    <span class="t-k">this</span>.<span class="t-f">validar</span>(produtos);
+    <span class="t-k">await</span> db.<span class="t-f">transacao</span>(<span class="t-k">async</span> () =&gt; {
+      <span class="t-k">for</span> (<span class="t-k">const</span> produto <span class="t-k">of</span> produtos) <span class="t-k">await</span> db.<span class="t-f">salvar</span>(produto);
+    });
+    console.<span class="t-f">log</span>(<span class="t-s">`importados ${produtos.length} produtos`</span>);
+  }
+
+  <span class="t-c">// 3. o passo que muda: a subclasse é obrigada a escrever</span>
+  <span class="t-k">protected</span> <span class="t-k">abstract</span> <span class="t-f">ler</span>(caminho: <span class="t-f">string</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">Produto</span>[]&gt;;
+
+  <span class="t-c">// 4. um passo comum, com padrão que a subclasse pode trocar</span>
+  <span class="t-k">protected</span> <span class="t-f">validar</span>(produtos: <span class="t-f">Produto</span>[]) {
+    <span class="t-k">for</span> (<span class="t-k">const</span> p <span class="t-k">of</span> produtos) {
+      <span class="t-k">if</span> (p.preco &lt;= <span class="t-n">0</span>) <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">ImportacaoInvalida</span>(p.sku);
+    }
+  }
+}
+
+<span class="t-c">// 5. as subclasses: só o que é diferente</span>
+<span class="t-k">class</span> <span class="t-f">ImportadorCsv</span> <span class="t-k">extends</span> <span class="t-f">Importador</span> {
+  <span class="t-k">protected</span> <span class="t-k">async</span> <span class="t-f">ler</span>(caminho: <span class="t-f">string</span>) {
+    <span class="t-k">const</span> linhas = <span class="t-k">await</span> <span class="t-f">lerCsv</span>(caminho);
+    <span class="t-k">return</span> linhas.<span class="t-f">map</span>(l =&gt; <span class="t-k">new</span> <span class="t-f">Produto</span>(l.sku, <span class="t-f">Number</span>(l.preco)));
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">ImportadorJson</span> <span class="t-k">extends</span> <span class="t-f">Importador</span> {
+  <span class="t-k">protected</span> <span class="t-k">async</span> <span class="t-f">ler</span>(caminho: <span class="t-f">string</span>) {
+    <span class="t-k">const</span> dados = <span class="t-f">JSON</span>.<span class="t-f">parse</span>(<span class="t-k">await</span> <span class="t-f">readFile</span>(caminho, <span class="t-s">"utf8"</span>));
+    <span class="t-k">return</span> dados.itens.<span class="t-f">map</span>((i: <span class="t-f">any</span>) =&gt; <span class="t-k">new</span> <span class="t-f">Produto</span>(i.codigo, i.valor));
+  }
+}
+
+<span class="t-k">await</span> <span class="t-k">new</span> <span class="t-f">ImportadorJson</span>().<span class="t-f">importar</span>(<span class="t-s">"fornecedor-b.json"</span>);</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O roteiro agora se testa uma vez, com uma subclasse de cinco linhas cujo <code>ler</code> devolve uma lista fixa: confira que a transação envolve a gravação e que um preço zero aborta antes. Cada <code>ler</code> se testa sozinho, com um arquivo pequeno. Um formato novo é uma classe com um método.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Template Method vale quando três coisas acontecem ao mesmo tempo: existem <strong>duas ou mais variantes</strong> do mesmo processo; a <strong>ordem</strong> dos passos é a mesma em todas; e o que muda cabe em <strong>poucos passos</strong> bem nomeados, enquanto o resto é igual.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Funções quase iguais, com um miolo diferente</td><td>Duas funções com 80% das linhas iguais; uma correção feita em uma delas e esquecida na outra</td><td><a href="uso.html#mesmo-roteiro">Uso #1</a></td></tr>
+                <tr><td>Um passo que nenhuma variante pode pular</td><td><code>verificar_assinatura()</code> repetido em cada handler (e faltando em um); um <code>try/finally</code> copiado</td><td><a href="uso.html#passo-obrigatorio">Uso #2</a></td></tr>
+                <tr><td>A política do processo varia pouco, de forma pontual</td><td><code>if self.ativo:</code>, parâmetros <code>antes=None, depois=None</code> ou comentários "este job pula fim de semana"</td><td><a href="uso.html#ganchos-opcionais">Uso #3</a></td></tr>
+                <tr><td>O mesmo roteiro com um tipo novo à vista</td><td>Um <code>if tipo == …</code> em cada passo do mesmo processo</td><td><a href="uso.html#mesmo-roteiro">Uso #1</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: você encontra o <em>mesmo esqueleto</em> escrito mais de uma vez, e a diferença entre as cópias é pequena e fácil de apontar. Se for difícil dizer "o que muda é só isto", ainda não há um template.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Existe mais de uma variante do processo?</strong> Se só há uma, escreva uma função. Ainda não há o que separar.</li>
+            <li><strong>A ordem dos passos é a mesma em todas?</strong> Se a ordem muda de uma variante para outra, o esqueleto não é fixo: escreva cada fluxo, ou componha os passos de fora.</li>
+            <li><strong>O que varia cabe em um ou três passos?</strong> Se quase tudo muda, sobra um esqueleto fino demais para valer uma classe base.</li>
+            <li><strong>Dá para passar o passo como função?</strong> Se o que varia é uma ação sem estado, passe uma função como parâmetro. Herança só se paga quando as variantes têm vários passos e dados próprios.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O custo do Template Method é a <strong>herança</strong>. A subclasse fica presa à classe base: qualquer mudança no esqueleto atinge todas, e o fluxo fica dividido em dois arquivos, de modo que, para saber o que acontece, é preciso abrir o pai e o filho. Cada hierarquia ainda varia em uma dimensão só.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Há uma variante só, sem segunda à vista</td><td>A classe base nasce sem ter o que compartilhar</td><td>Uma função. Extraia a classe base quando a segunda variante aparecer</td></tr>
+                <tr><td>O que varia é um passo único e simples</td><td>Uma hierarquia para uma ação é cerimônia</td><td>Passe uma função como parâmetro</td></tr>
+                <tr><td>A variação precisa mudar em tempo de execução</td><td>A herança é fixada quando o objeto é criado</td><td>Strategy: guarde o passo como objeto e troque-o</td></tr>
+                <tr><td>Duas coisas variam de forma independente (formato <em>e</em> destino)</td><td>A herança explode em uma subclasse por combinação</td><td>Composição, ou Bridge</td></tr>
+                <tr><td>A ordem dos passos muda entre as variantes</td><td>O método-template deixa de ser um esqueleto e vira um <code>if</code> disfarçado</td><td>Escreva cada fluxo, ou monte a sequência fora, como dados</td></tr>
+                <tr><td>Só abrir e fechar um recurso em volta de um trecho</td><td>É um roteiro de dois passos</td><td><code>with</code> / <code>try/finally</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Template Method saiu do lugar</h3>
+          <ul>
+            <li><strong>A subclasse sobrescreve o próprio roteiro.</strong> Se <code>importar</code> é redefinido, o esqueleto deixou de garantir qualquer coisa: cada subclasse tem o seu, e a garantia voltou a depender de cada autor.</li>
+            <li><strong>Ganchos demais.</strong> Doze pontos de extensão, cada um com um padrão, e ninguém sabe qual sobrescrever. Cada gancho é uma promessa que a classe base precisa manter para sempre.</li>
+            <li><strong>Passos que viram <code>pass</code>.</strong> Se várias subclasses implementam um passo abstrato com <code>pass</code> ou levantando <code>NotImplementedError</code>, o esqueleto não serve para todas.</li>
+            <li><strong>"Lembre de chamar <code>super()</code>."</strong> O passo só funciona se a subclasse chamar o pai na hora certa. Esse contrato fica na cabeça de quem escreve, não no código.</li>
+            <li><strong>Hierarquia em três níveis.</strong> A classe do meio redefine parte do roteiro e os netos redefinem outra parte. Ninguém sabe mais em que ordem as coisas rodam.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: subclasses que sobrescrevem o método-template inteiro "só desta vez". Python e TypeScript não têm <code>final</code> para impedir; proteja com um teste que falhe se alguma subclasse redefinir o roteiro, ou com uma convenção que a revisão de código cobre.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com uma função que recebe os passos que mudam como parâmetros. Quando as variantes ganharem estado próprio e vários passos, a classe base se paga, e a refatoração é pequena porque o roteiro já está escrito em um lugar.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Strategy</td><td>Troca o algoritmo inteiro por composição, até em tempo de execução. O Template Method fixa o esqueleto e varia as partes por herança, no momento em que a classe é escrita</td></tr>
+                <tr><td><a href="../../criacionais/factory-method/explicacao.html">Factory Method</a></td><td>É um Template Method especializado em um passo só: criar o objeto. O roteiro usa o que a subclasse criou</td></tr>
+                <tr><td><a href="../../estruturais/decorator/explicacao.html">Decorator</a></td><td>Acrescenta comportamento <em>em volta</em> de um objeto, por composição, sem herdar. No Template Method o pai chama a subclasse no meio do roteiro</td></tr>
+                <tr><td><a href="../observer/explicacao.html">Observer</a></td><td>Avisa vários ouvintes que não podem mudar o fluxo; o gancho do Template Method é uma subclasse só, que preenche (e às vezes altera) um passo do roteiro</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o esqueleto é herdado e os passos são métodos que o pai chama, é Template Method. Se o algoritmo é um objeto que se passa de fora, é Strategy.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

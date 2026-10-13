@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Iterator · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/iterator/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Iterator</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como percorrer uma coleção, ou uma fonte de dados, um elemento por vez, sem que quem percorre precise saber como ela guarda os elementos.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>A loja organiza os produtos em categorias que contêm outras categorias: Roupas, dentro dela Camisetas, e dentro dela Camisetas Infantis. Três telas precisam passar por todas elas: o sitemap, a busca do menu e o relatório de estoque.</p>
+          <p>A saída preguiçosa é cada tela escrever a própria recursão, lendo direto o campo <code>filhos</code>:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — cada chamador percorre a árvore à sua maneira</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">def</span> <span class="t-f">listar_nomes</span>(cat):
+    nomes = [cat.nome]
+    <span class="t-k">for</span> filho <span class="t-k">in</span> cat.filhos:
+        nomes += <span class="t-f">listar_nomes</span>(filho)
+    <span class="t-k">return</span> nomes
+
+<span class="t-k">def</span> <span class="t-f">contar_produtos</span>(cat):
+    total = <span class="t-f">len</span>(cat.produtos)
+    <span class="t-k">for</span> filho <span class="t-k">in</span> cat.filhos:
+        total += <span class="t-f">contar_produtos</span>(filho)
+    <span class="t-k">return</span> total
+
+<span class="t-k">def</span> <span class="t-f">achar</span>(cat, nome):
+    <span class="t-k">if</span> cat.nome == nome:
+        <span class="t-k">return</span> cat
+    <span class="t-k">for</span> filho <span class="t-k">in</span> cat.filhos:
+        achado = <span class="t-f">achar</span>(filho, nome)
+        <span class="t-k">if</span> achado:
+            <span class="t-k">return</span> achado</code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram daqui a pouco. A estrutura vazou: no dia em que as categorias vierem do banco como uma tabela plana com <code>pai_id</code>, ou em que <code>filhos</code> passar a ser carregado sob demanda, toda função que lê <code>filhos</code> precisa mudar. Cada percurso novo é mais uma recursão copiada. E as funções que listam tudo montam a lista inteira antes de entregá-la, mesmo quando quem pediu só queria o primeiro resultado.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Tire o percurso de quem consome e entregue-o à própria coleção. Ela passa a oferecer um objeto que sabe percorrê-la e responde a duas perguntas: "tem mais?" e "qual é o próximo?". Quem percorre usa só isso. São quatro papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Iterável</td><td>A coleção: sabe criar um iterador sobre si mesma</td><td><code>Categoria</code></td></tr>
+                <tr><td>Iterador</td><td>Guarda a posição do percurso e entrega o próximo elemento</td><td>O gerador devolvido por <code>__iter__</code></td></tr>
+                <tr><td>Estrutura interna</td><td>Como a coleção guarda os elementos; fica escondida</td><td>O campo <code>_filhos</code></td></tr>
+                <tr><td>Cliente</td><td>Percorre pedindo "o próximo", sem saber de onde ele vem</td><td>Um <code>for</code>, um <code>sum</code>, um <code>next</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é onde mora a <strong>posição</strong>. Ela é do iterador, não da coleção nem do cliente. Por isso dois percursos da mesma coleção, ao mesmo tempo, não se atrapalham, e por isso a coleção pode mudar a forma como guarda tudo sem que nenhum cliente perceba.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># 1. o iterável: a coleção sabe criar um iterador sobre si mesma</span>
+<span class="t-k">class</span> <span class="t-f">Categoria</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, nome, filhos=(), produtos=()):
+        self.nome = nome
+        self.produtos = <span class="t-f">list</span>(produtos)
+        self._filhos = <span class="t-f">list</span>(filhos)      <span class="t-c"># 2. a estrutura interna: ninguém de fora lê isto</span>
+
+    <span class="t-c"># 3. o iterador: o gerador guarda a posição e entrega uma categoria por vez</span>
+    <span class="t-k">def</span> <span class="t-f">__iter__</span>(self):
+        <span class="t-k">yield</span> self
+        <span class="t-k">for</span> filho <span class="t-k">in</span> self._filhos:
+            <span class="t-k">yield from</span> filho
+
+<span class="t-c"># 4. o cliente: não sabe se é árvore, lista ou consulta ao banco</span>
+nomes = [c.nome <span class="t-k">for</span> c <span class="t-k">in</span> raiz]
+total = <span class="t-f">sum</span>(<span class="t-f">len</span>(c.produtos) <span class="t-k">for</span> c <span class="t-k">in</span> raiz)
+achada = <span class="t-f">next</span>((c <span class="t-k">for</span> c <span class="t-k">in</span> raiz <span class="t-k">if</span> c.nome == <span class="t-s">"Camisetas"</span>), <span class="t-k">None</span>)   <span class="t-c"># para na primeira</span></code></pre>
+              <pre><code><span class="t-c">// 1. o iterável: a coleção sabe criar um iterador sobre si mesma</span>
+<span class="t-k">class</span> <span class="t-f">Categoria</span> <span class="t-k">implements</span> <span class="t-f">Iterable</span>&lt;<span class="t-f">Categoria</span>&gt; {
+  <span class="t-k">private</span> filhos: <span class="t-f">Categoria</span>[];   <span class="t-c">// 2. a estrutura interna: ninguém de fora lê isto</span>
+
+  <span class="t-k">constructor</span>(
+    <span class="t-k">readonly</span> nome: <span class="t-f">string</span>,
+    filhos: <span class="t-f">Categoria</span>[] = [],
+    <span class="t-k">readonly</span> produtos: <span class="t-f">Produto</span>[] = [],
+  ) {
+    <span class="t-k">this</span>.filhos = filhos;
+  }
+
+  <span class="t-c">// 3. o iterador: o gerador guarda a posição e entrega uma categoria por vez</span>
+  *[Symbol.iterator](): <span class="t-f">Iterator</span>&lt;<span class="t-f">Categoria</span>&gt; {
+    <span class="t-k">yield</span> <span class="t-k">this</span>;
+    <span class="t-k">for</span> (<span class="t-k">const</span> filho <span class="t-k">of</span> <span class="t-k">this</span>.filhos) <span class="t-k">yield*</span> filho;
+  }
+}
+
+<span class="t-c">// 4. o cliente: não sabe se é árvore, lista ou consulta ao banco</span>
+<span class="t-k">const</span> nomes = [...raiz].<span class="t-f">map</span>((c) =&gt; c.nome);
+
+<span class="t-k">let</span> achada: <span class="t-f">Categoria</span> | <span class="t-k">undefined</span>;
+<span class="t-k">for</span> (<span class="t-k">const</span> c <span class="t-k">of</span> raiz) {
+  <span class="t-k">if</span> (c.nome === <span class="t-s">"Camisetas"</span>) { achada = c; <span class="t-k">break</span>; }   <span class="t-c">// para na primeira</span>
+}</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>Se as categorias passarem a vir de uma tabela plana com <code>pai_id</code>, só o <code>__iter__</code> muda. E qualquer função que receba "um iterável de categorias" aceita, nos testes, uma lista comum de três itens, sem montar a árvore.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Iterator vale quando três coisas acontecem ao mesmo tempo: existe uma coleção, ou uma fonte, com <strong>estrutura própria</strong>; <strong>vários lugares</strong> precisam percorrê-la; e eles <strong>não devem depender</strong> de como ela guarda os elementos, seja porque a forma pode mudar, seja porque ela é grande ou lenta demais para entregar de uma vez.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Cada chamador reimplementa o percurso</td><td>A mesma recursão, ou o mesmo <code>while pilha:</code>, copiada em várias funções, mudando só o que fazem com cada nó</td><td><a href="uso.html#varios-percursos">Uso #1</a></td></tr>
+                <tr><td>O código de fora lê o campo interno</td><td><code>cat.filhos</code>, <code>lista._itens</code> ou <code>resp["data"]</code> aparecendo fora da classe que os define</td><td><a href="uso.html#varios-percursos">Uso #1</a></td></tr>
+                <tr><td>Mais de uma ordem de percurso</td><td>Funções chamadas <code>em_profundidade</code>, <code>em_largura</code>, <code>so_folhas</code>, cada uma com a própria lógica</td><td><a href="uso.html#varios-percursos">Uso #1</a></td></tr>
+                <tr><td>Carrega tudo para usar só um pedaço</td><td><code>readlines()</code> ou <code>list(...)</code> seguido de <code>[:10]</code>, <code>if</code> e <code>break</code></td><td><a href="uso.html#fonte-grande">Uso #2</a></td></tr>
+                <tr><td>Precisa parar e continuar depois</td><td>Um <code>offset</code> ou <code>posicao</code> passado à mão entre chamadas e salvo em algum lugar</td><td><a href="uso.html#retomar-de-onde-parou">Uso #3</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: o chamador carrega junto uma peça do funcionamento interno da coleção, uma recursão, um cursor ou um <code>offset</code>. O iterador é o lugar para onde essa peça se muda.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>O que você percorre é uma lista, um dicionário ou um conjunto da linguagem?</strong> Use o <code>for</code>: eles já são iteráveis.</li>
+            <li><strong>Mais de um lugar percorre isso?</strong> Se só um, um laço local basta.</li>
+            <li><strong>Quem percorre precisa conhecer a estrutura, ou ela pode mudar?</strong> Se a estrutura é pública e estável, deixe o laço ler direto.</li>
+            <li><strong>O percurso precisa ser sob demanda, ter mais de uma ordem ou ser retomado?</strong> Se sim, é Iterator. Se é só "todos os elementos, de uma vez, em uma ordem", devolva uma lista.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>Em linguagens com geradores, o Iterator custa quase nada para escrever, e por isso o custo real passa despercebido. Ele aparece na hora de depurar. O iterador é de <strong>uso único</strong>: percorrê-lo uma segunda vez não dá nada. O trabalho acontece no meio do laço de quem consome, então erros e I/O surgem ali, longe de onde o iterador foi criado. E uma coleção que muda durante o percurso dá resultados que ninguém previu.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>A coleção é uma lista, um dicionário ou um conjunto</td><td>Eles já são iteráveis; uma classe para isso só acrescenta cerimônia</td><td>Use o <code>for</code> direto</td></tr>
+                <tr><td>Filtrar ou transformar uma coleção pequena</td><td>Um gerador esconde, com preguiça, o que uma linha resolve</td><td>Uma compreensão de lista</td></tr>
+                <tr><td>Você precisa de acesso por posição, ordenar ou saber o tamanho</td><td>O iterador é sequencial e de passagem única</td><td>Devolva uma lista (ou um objeto com <code>__len__</code> e <code>__getitem__</code>)</td></tr>
+                <tr><td>A coleção é pequena e o consumidor percorre mais de uma vez</td><td>O iterador esvazia depois da primeira passagem</td><td>Devolva uma lista</td></tr>
+                <tr><td>A coleção muda enquanto é percorrida</td><td>Elementos podem ser pulados ou repetidos, e na maioria das linguagens isso nem dá erro</td><td>Percorra uma cópia, ou junte as mudanças e aplique depois</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Iterator saiu do lugar</h3>
+          <ul>
+            <li><strong>O iterador faz efeito colateral.</strong> Gravar, enviar ou apagar a cada passo deixa o laço com um trabalho que ninguém vê.</li>
+            <li><strong>Um iterador de uso único é tratado como coleção.</strong> A função percorre duas vezes, e a segunda vem vazia, sem erro.</li>
+            <li><strong>Uma classe onde um gerador bastava.</strong> Um <code>__next__</code> escrito à mão, com estado manual, para algo que um <code>yield</code> resolve em três linhas.</li>
+            <li><strong>Tudo vira lista logo na chegada.</strong> Se o consumidor faz <code>list(it)</code> na primeira linha, a preguiça foi paga e não usada.</li>
+            <li><strong>O resultado muda a cada percurso.</strong> Um iterador que depende da hora, de estado global ou de uma fonte que muda sob ele torna a depuração um jogo de adivinhação.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: o iterador cobra, envia ou apaga a cada <code>next()</code>. Um <code>list(...)</code> para inspecionar, ou o depurador da IDE mostrando o valor, dispara o efeito sem ninguém ter pedido.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, devolva uma lista. Trocar um <code>return lista</code> por <code>yield</code> é uma mudança de uma linha, e os consumidores que só usam <code>for</code> nem percebem. Faça a troca quando a lista ficar grande, lenta ou impossível de montar.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td><a href="../../estruturais/composite/explicacao.html">Composite</a></td><td>É a estrutura em árvore: folhas e grupos tratados do mesmo jeito. O Iterator é a forma de percorrê-la, e os dois aparecem juntos com frequência</td></tr>
+                <tr><td>Visitor</td><td>Aplica uma operação a cada nó, e conhece os tipos dos nós. O Iterator só entrega os elementos, e quem o usa decide o que fazer com cada um</td></tr>
+                <tr><td>Observer</td><td>A fonte <em>empurra</em> cada novidade para quem escuta, no ritmo dela. No Iterator, o cliente <em>puxa</em> o próximo, no ritmo dele</td></tr>
+                <tr><td><a href="../../estruturais/adapter/explicacao.html">Adapter</a></td><td>Converte uma interface em outra. Um iterador sobre uma API paginada é um Adapter cujo alvo é o protocolo de iteração da linguagem</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o cliente pede o próximo elemento, quando quer, é Iterator. Se a fonte avisa o cliente quando há um, é Observer.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

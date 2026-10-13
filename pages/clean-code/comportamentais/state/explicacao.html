@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | State · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="comportamentais/state/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / State</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como fazer um objeto que se comporta de um jeito em cada fase da vida dele sem encher todos os métodos de <code>if</code> sobre em qual fase ele está.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Um pedido passa por fases: nasce como rascunho, é pago, é enviado, é entregue. Também pode ser cancelado, mas cancelar um rascunho não custa nada, cancelar um pedido pago exige estorno, e cancelar um pedido que já foi enviado nem é permitido.</p>
+          <p>A saída preguiçosa é guardar a fase em um texto e conferi-la dentro de cada método:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — a mesma escada de if em cada operação</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Pedido</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self.status = <span class="t-s">"rascunho"</span>
+
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self):
+        <span class="t-k">if</span> self.status == <span class="t-s">"rascunho"</span>:
+            self.status = <span class="t-s">"pago"</span>
+        <span class="t-k">else</span>:
+            <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">f"não dá para pagar um pedido {self.status}"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self):
+        <span class="t-k">if</span> self.status == <span class="t-s">"pago"</span>:
+            self.status = <span class="t-s">"enviado"</span>
+        <span class="t-k">else</span>:
+            <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">f"não dá para enviar um pedido {self.status}"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self):
+        <span class="t-k">if</span> self.status == <span class="t-s">"rascunho"</span>:
+            self.status = <span class="t-s">"cancelado"</span>
+        <span class="t-k">elif</span> self.status == <span class="t-s">"pago"</span>:
+            self.<span class="t-f">_estornar</span>()
+            self.status = <span class="t-s">"cancelado"</span>
+        <span class="t-k">elif</span> self.status <span class="t-k">in</span> (<span class="t-s">"enviado"</span>, <span class="t-s">"entregue"</span>):
+            <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">"o pedido já saiu; abra uma devolução"</span>)
+        <span class="t-c"># e "cancelado"? cancelar de novo cai aqui sem fazer nada, e sem avisar</span></code></pre>
+            </div>
+          </div>
+          <p>Três coisas quebram daqui a pouco. Uma fase nova, como "em separação", obriga a abrir todos os métodos e achar o lugar certo em cada escada. As regras de transição não estão em lugar nenhum: para saber de onde se chega a <code>cancelado</code>, é preciso ler o arquivo inteiro. E um erro de digitação em <code>"enviado"</code> não falha; só faz um <code>if</code> nunca ser verdadeiro.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Faça cada fase virar um objeto. O pedido guarda o objeto da fase atual e <strong>delega</strong> a ele o que fazer. Cada fase sabe o que permite, o que recusa e para qual fase o pedido vai depois. São quatro papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Contexto</td><td>O objeto que muda de comportamento; guarda o estado atual e delega</td><td><code>Pedido</code></td></tr>
+                <tr><td>Estado</td><td>A interface: todas as operações que dependem da fase</td><td><code>Estado</code></td></tr>
+                <tr><td>Estados concretos</td><td>Uma fase: o que ela permite, recusa e qual é a próxima</td><td><code>Rascunho</code>, <code>Pago</code>, <code>Enviado</code>…</td></tr>
+                <tr><td>Cliente</td><td>Usa o contexto, sem saber em que fase ele está</td><td>O checkout, a API</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é para onde foi o <code>if</code>. Em vez de uma escada em cada método ("em qual fase estou?"), há uma escolha, feita uma vez, de qual objeto está ativo. O polimorfismo faz o resto. Uma operação que a fase não permite simplesmente não está implementada nela, e a recusa fica no padrão da interface.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">TransicaoInvalida</span>(Exception): ...
+
+<span class="t-c"># 1. o estado: toda operação do pedido, recusada por padrão</span>
+<span class="t-k">class</span> <span class="t-f">Estado</span>:
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self, pedido):    self.<span class="t-f">_recusar</span>(<span class="t-s">"pagar"</span>)
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, pedido):   self.<span class="t-f">_recusar</span>(<span class="t-s">"enviar"</span>)
+    <span class="t-k">def</span> <span class="t-f">entregar</span>(self, pedido): self.<span class="t-f">_recusar</span>(<span class="t-s">"entregar"</span>)
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self, pedido): self.<span class="t-f">_recusar</span>(<span class="t-s">"cancelar"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">_recusar</span>(self, operacao):
+        <span class="t-k">raise</span> <span class="t-f">TransicaoInvalida</span>(<span class="t-s">f"{operacao}, em {type(self).__name__}"</span>)
+
+<span class="t-c"># 2. os estados concretos: cada um só escreve o que permite</span>
+<span class="t-k">class</span> <span class="t-f">Rascunho</span>(Estado):
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self, pedido):    pedido.<span class="t-f">ir_para</span>(<span class="t-f">Pago</span>())
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self, pedido): pedido.<span class="t-f">ir_para</span>(<span class="t-f">Cancelado</span>())
+
+<span class="t-k">class</span> <span class="t-f">Pago</span>(Estado):
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, pedido):   pedido.<span class="t-f">ir_para</span>(<span class="t-f">Enviado</span>())
+
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self, pedido):
+        pedido.<span class="t-f">estornar</span>()
+        pedido.<span class="t-f">ir_para</span>(<span class="t-f">Cancelado</span>())
+
+<span class="t-k">class</span> <span class="t-f">Enviado</span>(Estado):
+    <span class="t-k">def</span> <span class="t-f">entregar</span>(self, pedido): pedido.<span class="t-f">ir_para</span>(<span class="t-f">Entregue</span>())
+
+<span class="t-k">class</span> <span class="t-f">Entregue</span>(Estado): ...
+<span class="t-k">class</span> <span class="t-f">Cancelado</span>(Estado): ...
+
+<span class="t-c"># 3. o contexto: guarda o estado atual e delega</span>
+<span class="t-k">class</span> <span class="t-f">Pedido</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self._estado = <span class="t-f">Rascunho</span>()
+
+    <span class="t-k">def</span> <span class="t-f">ir_para</span>(self, estado):
+        self._estado = estado
+
+    <span class="t-k">def</span> <span class="t-f">estornar</span>(self): ...
+
+    <span class="t-k">def</span> <span class="t-f">pagar</span>(self):    self._estado.<span class="t-f">pagar</span>(self)
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self):   self._estado.<span class="t-f">enviar</span>(self)
+    <span class="t-k">def</span> <span class="t-f">entregar</span>(self): self._estado.<span class="t-f">entregar</span>(self)
+    <span class="t-k">def</span> <span class="t-f">cancelar</span>(self): self._estado.<span class="t-f">cancelar</span>(self)
+
+    <span class="t-f">@property</span>
+    <span class="t-k">def</span> <span class="t-f">status</span>(self):
+        <span class="t-k">return</span> <span class="t-f">type</span>(self._estado).__name__.<span class="t-f">lower</span>()
+
+<span class="t-c"># 4. o cliente: pede a operação, sem perguntar em que fase está</span>
+pedido = <span class="t-f">Pedido</span>()
+pedido.<span class="t-f">pagar</span>()
+pedido.<span class="t-f">cancelar</span>()      <span class="t-c"># estorna, porque está em Pago</span></code></pre>
+              <pre><code><span class="t-k">class</span> <span class="t-f">TransicaoInvalida</span> <span class="t-k">extends</span> <span class="t-f">Error</span> {}
+
+<span class="t-c">// 1. o estado: toda operação do pedido, recusada por padrão</span>
+<span class="t-k">abstract</span> <span class="t-k">class</span> <span class="t-f">Estado</span> {
+  <span class="t-f">pagar</span>(_: <span class="t-f">Pedido</span>): <span class="t-f">void</span>    { <span class="t-k">this</span>.<span class="t-f">recusar</span>(<span class="t-s">"pagar"</span>); }
+  <span class="t-f">enviar</span>(_: <span class="t-f">Pedido</span>): <span class="t-f">void</span>   { <span class="t-k">this</span>.<span class="t-f">recusar</span>(<span class="t-s">"enviar"</span>); }
+  <span class="t-f">entregar</span>(_: <span class="t-f">Pedido</span>): <span class="t-f">void</span> { <span class="t-k">this</span>.<span class="t-f">recusar</span>(<span class="t-s">"entregar"</span>); }
+  <span class="t-f">cancelar</span>(_: <span class="t-f">Pedido</span>): <span class="t-f">void</span> { <span class="t-k">this</span>.<span class="t-f">recusar</span>(<span class="t-s">"cancelar"</span>); }
+
+  <span class="t-k">private</span> <span class="t-f">recusar</span>(operacao: <span class="t-f">string</span>): <span class="t-f">never</span> {
+    <span class="t-k">throw</span> <span class="t-k">new</span> <span class="t-f">TransicaoInvalida</span>(<span class="t-s">`${operacao}, em ${this.constructor.name}`</span>);
+  }
+}
+
+<span class="t-c">// 2. os estados concretos: cada um só escreve o que permite</span>
+<span class="t-k">class</span> <span class="t-f">Rascunho</span> <span class="t-k">extends</span> <span class="t-f">Estado</span> {
+  <span class="t-k">override</span> <span class="t-f">pagar</span>(p: <span class="t-f">Pedido</span>)    { p.<span class="t-f">irPara</span>(<span class="t-k">new</span> <span class="t-f">Pago</span>()); }
+  <span class="t-k">override</span> <span class="t-f">cancelar</span>(p: <span class="t-f">Pedido</span>) { p.<span class="t-f">irPara</span>(<span class="t-k">new</span> <span class="t-f">Cancelado</span>()); }
+}
+
+<span class="t-k">class</span> <span class="t-f">Pago</span> <span class="t-k">extends</span> <span class="t-f">Estado</span> {
+  <span class="t-k">override</span> <span class="t-f">enviar</span>(p: <span class="t-f">Pedido</span>) { p.<span class="t-f">irPara</span>(<span class="t-k">new</span> <span class="t-f">Enviado</span>()); }
+
+  <span class="t-k">override</span> <span class="t-f">cancelar</span>(p: <span class="t-f">Pedido</span>) {
+    p.<span class="t-f">estornar</span>();
+    p.<span class="t-f">irPara</span>(<span class="t-k">new</span> <span class="t-f">Cancelado</span>());
+  }
+}
+
+<span class="t-k">class</span> <span class="t-f">Enviado</span> <span class="t-k">extends</span> <span class="t-f">Estado</span> {
+  <span class="t-k">override</span> <span class="t-f">entregar</span>(p: <span class="t-f">Pedido</span>) { p.<span class="t-f">irPara</span>(<span class="t-k">new</span> <span class="t-f">Entregue</span>()); }
+}
+
+<span class="t-k">class</span> <span class="t-f">Entregue</span> <span class="t-k">extends</span> <span class="t-f">Estado</span> {}
+<span class="t-k">class</span> <span class="t-f">Cancelado</span> <span class="t-k">extends</span> <span class="t-f">Estado</span> {}
+
+<span class="t-c">// 3. o contexto: guarda o estado atual e delega</span>
+<span class="t-k">class</span> <span class="t-f">Pedido</span> {
+  <span class="t-k">private</span> estado: <span class="t-f">Estado</span> = <span class="t-k">new</span> <span class="t-f">Rascunho</span>();
+
+  <span class="t-f">irPara</span>(estado: <span class="t-f">Estado</span>) { <span class="t-k">this</span>.estado = estado; }
+  <span class="t-f">estornar</span>() { <span class="t-c">/* … */</span> }
+
+  <span class="t-f">pagar</span>()    { <span class="t-k">this</span>.estado.<span class="t-f">pagar</span>(<span class="t-k">this</span>); }
+  <span class="t-f">enviar</span>()   { <span class="t-k">this</span>.estado.<span class="t-f">enviar</span>(<span class="t-k">this</span>); }
+  <span class="t-f">entregar</span>() { <span class="t-k">this</span>.estado.<span class="t-f">entregar</span>(<span class="t-k">this</span>); }
+  <span class="t-f">cancelar</span>() { <span class="t-k">this</span>.estado.<span class="t-f">cancelar</span>(<span class="t-k">this</span>); }
+
+  <span class="t-k">get</span> <span class="t-f">status</span>() { <span class="t-k">return</span> <span class="t-k">this</span>.estado.constructor.name.<span class="t-f">toLowerCase</span>(); }
+}
+
+<span class="t-c">// 4. o cliente: pede a operação, sem perguntar em que fase está</span>
+<span class="t-k">const</span> pedido = <span class="t-k">new</span> <span class="t-f">Pedido</span>();
+pedido.<span class="t-f">pagar</span>();
+pedido.<span class="t-f">cancelar</span>();   <span class="t-c">// estorna, porque está em Pago</span></code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste de uma fase é uma classe e uma chamada: <code>Pago().enviar(pedido)</code> e confira para onde o pedido foi. Uma fase nova, como "em separação", é uma classe nova e uma linha em <code>Pago</code> que aponta para ela; nenhuma outra fase é aberta.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O State vale quando três coisas acontecem ao mesmo tempo: o comportamento do objeto <strong>depende de uma fase</strong> que muda ao longo da vida dele; há <strong>várias fases</strong>, cada uma com comportamento próprio; e a pergunta "em que fase estou?" aparece em <strong>mais de um método</strong>.</p>
+          <p>Na prática, isso aparece no código de algumas formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>A mesma escada de <code>if</code> sobre a fase em vários métodos</td><td><code>if self.status == …</code> / <code>elif</code> repetido no começo de cada operação, como o <code>pagar</code> e o <code>cancelar</code> acima</td><td>O exemplo desta página</td></tr>
+                <tr><td>O mesmo gesto faz coisas diferentes conforme o modo</td><td><code>switch (ferramenta)</code> dentro de cada um dos handlers de mouse ou de teclado</td><td><a href="uso.html#ferramenta-ativa">Uso #1</a></td></tr>
+                <tr><td>Flags booleanas que juntas descrevem a fase</td><td><code>self.aberto</code>, <code>self.meio_aberto</code> e <code>self.falhas</code>, em que algumas combinações não deveriam existir</td><td><a href="uso.html#disjuntor">Uso #2</a></td></tr>
+                <tr><td>Algo precisa acontecer toda vez que se entra ou se sai de uma fase</td><td>Um <code>timer.cancel()</code> ou uma limpeza copiada em cada método que muda <code>status</code>, e esquecida em um</td><td><a href="uso.html#reserva-com-prazo">Uso #3</a></td></tr>
+                <tr><td>As transições não estão escritas em lugar nenhum</td><td>Para descobrir de onde se chega a <code>cancelado</code>, é preciso ler todos os métodos</td><td>O exemplo desta página</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: a pergunta "em que fase estou?" é feita por quem não deveria precisar fazê-la. O State é o lugar para onde a resposta se muda, para os métodos só pedirem a operação.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>O objeto muda de comportamento ao longo da vida?</strong> Se ele se comporta sempre do mesmo jeito, não há fase para modelar.</li>
+            <li><strong>Há mais de duas ou três fases?</strong> Com duas, um booleano e um <code>if</code> resolvem, e as classes não se pagam.</li>
+            <li><strong>A diferença aparece em mais de uma operação, ou há algo a fazer ao entrar e sair?</strong> Se só uma decisão depende da fase, um <code>if</code> naquele ponto basta.</li>
+            <li><strong>Cada fase tem um <em>comportamento</em> próprio, e não só "pode" ou "não pode"?</strong> Se a fase só decide quais transições valem, uma tabela de transições é mais curta. O State vale quando há o que fazer.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O custo do State é uma classe por fase, e o fluxo inteiro deixa de caber em uma tela. As transições ficam espalhadas, cada uma dentro da fase de onde sai, então ver o "diagrama" de estados exige abrir várias classes. Com muitas fases pequenas, o objeto se pulveriza em arquivos de três linhas, e o ganho de clareza some.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Duas fases (ligado e desligado, aberto e fechado)</td><td>Duas classes para um booleano</td><td>Um <code>bool</code> e um <code>if</code></td></tr>
+                <tr><td>As fases só definem quais transições são válidas</td><td>Não há comportamento por fase, só permissão</td><td>Um <code>enum</code> e um dicionário de transições</td></tr>
+                <tr><td>A fase é só um rótulo para exibir</td><td>Nada muda no comportamento em função dela</td><td>Um campo <code>status</code></td></tr>
+                <tr><td>O comportamento é escolhido de fora, e não muda por transições</td><td>O que varia é o algoritmo, não a fase de vida</td><td>Strategy</td></tr>
+                <tr><td>Fluxo longo, com muitas transições, ou vindo de configuração</td><td>As classes viram uma máquina de estados escrita à mão</td><td>Uma biblioteca de máquina de estados ou de workflow</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o State saiu do lugar</h3>
+          <ul>
+            <li><strong>O cliente pergunta a fase.</strong> Um <code>if pedido.status == "pago"</code> antes de chamar <code>cancelar()</code> traz a escada de volta, agora fora do objeto, e as duas regras divergem.</li>
+            <li><strong>Os estados vazios.</strong> Classes com <code>pass</code> em tudo, diferentes só pelo nome, mostram que um <code>enum</code> bastava.</li>
+            <li><strong>As fases se conhecem em malha.</strong> Cada estado cria os outros estados concretos, e acrescentar uma fase obriga a abrir várias. Se isso dói, centralize as transições.</li>
+            <li><strong>O estado copia dados do contexto.</strong> Campos duplicados entre o estado e o pedido saem de sincronia. O estado deve guardar só o que é dele.</li>
+            <li><strong>Transições sem evento.</strong> Um estado que decide sozinho, sem que ninguém peça, para onde ir é uma máquina que roda por conta própria e ninguém sabe quando.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: o <code>if pedido.status == …</code> reaparece na tela e na API, para decidir o que oferecer. O estado deixou de ser a única fonte de verdade, e a regra de "o que vale agora" passa a existir em três versões.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, comece com um <code>enum</code> e um <code>if</code>. Extraia os estados quando a segunda ou a terceira operação precisar da mesma escada: nesse ponto as fases já existem no código, e é só dar a cada uma um nome e um lugar.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Strategy</td><td>Tem a mesma forma (um contexto delega a um objeto trocável), mas quem troca é o cliente, de fora, e as opções não se conhecem. No State, o próprio objeto troca de fase, e cada fase sabe qual é a próxima</td></tr>
+                <tr><td><a href="../observer/explicacao.html">Observer</a></td><td>Avisa quem estiver interessado de que a fase mudou. O State é quem decide o que fazer em cada fase, e os dois aparecem juntos</td></tr>
+                <tr><td><a href="../memento/explicacao.html">Memento</a></td><td>Guarda os dados de um objeto para voltar a eles depois. O State guarda <em>comportamento</em>; não guarda uma foto</td></tr>
+                <tr><td>Máquina de estados em tabela</td><td>Não é do catálogo GoF: um <code>enum</code> e um dicionário de transições. Serve quando as fases só definem o que é permitido, sem comportamento próprio</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se o objeto troca sozinho de objeto de comportamento, conforme a vida dele avança, é State. Se alguém de fora escolhe qual objeto usar, é Strategy.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>

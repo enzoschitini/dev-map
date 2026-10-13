@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explicação | Singleton · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../../../assets/css/design-system.css">
+</head>
+<body data-root="../../../../" data-tab="clean-code" data-page="criacionais/singleton/explicacao">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern / Singleton</div>
+          <h1 class="page-title" tabindex="-1">Explicação</h1>
+          <p class="lead">Como garantir que um objeto existe uma vez só e que todo mundo chega nele, em vez de cada parte do sistema criar a sua própria cópia do que deveria ser único.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>A aplicação lê um arquivo de configuração: host do SMTP, modo de manutenção, limites. Vários pontos do código precisam desses valores — o envio de e-mails, os relatórios, a API. A saída mais curta é cada um criar o seu <code>Configuracao()</code> quando precisa:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — cada cliente cria e lê a sua própria cópia</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Configuracao</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        <span class="t-k">with</span> <span class="t-f">open</span>(<span class="t-s">"config.json"</span>, encoding=<span class="t-s">"utf-8"</span>) <span class="t-k">as</span> f:
+            self.dados = json.<span class="t-f">load</span>(f)
+
+<span class="t-k">class</span> <span class="t-f">Mailer</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self.config = <span class="t-f">Configuracao</span>()   <span class="t-c"># lê o disco de novo</span>
+
+<span class="t-k">class</span> <span class="t-f">Relatorio</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        self.config = <span class="t-f">Configuracao</span>()   <span class="t-c"># e de novo</span>
+
+<span class="t-c"># em algum ponto do painel de administração</span>
+config = <span class="t-f">Configuracao</span>()
+config.dados[<span class="t-s">"modo_manutencao"</span>] = <span class="t-k">True</span>  <span class="t-c"># só esta cópia ficou sabendo</span></code></pre>
+            </div>
+          </div>
+          <p>Nada na classe diz que ela deveria ser única, então ninguém a trata assim. Três coisas aparecem aos poucos: o arquivo é lido uma vez por cliente; as cópias <strong>divergem</strong> — o modo de manutenção ligado em uma não chega nas outras; e cada novo cliente decide sozinho como obter a configuração, sem ninguém no controle.</p>
+
+          <h2 id="a-solucao">A solução</h2>
+          <p>Faça a própria classe controlar a criação: ela guarda a única instância e entrega sempre a mesma. Quem precisa dela não cria — pede. São quatro papéis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Papel</th><th>Quem é</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Singleton</td><td>A classe que controla a própria criação</td><td><code>Configuracao</code></td></tr>
+                <tr><td>Instância única</td><td>O único objeto que existe, guardado na classe</td><td>O que <code>instancia()</code> devolve</td></tr>
+                <tr><td>Ponto de acesso</td><td>Como os clientes chegam nela</td><td><code>Configuracao.instancia()</code></td></tr>
+                <tr><td>Cliente</td><td>Quem usa, sem criar</td><td><code>Mailer</code>, <code>Relatorio</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é <strong>quem decide quantos objetos existem</strong>. Antes, a decisão estava espalhada em quem usa; agora está na classe, em um lugar só. Quem usa não consegue criar uma segunda cópia por distração.</p>
+
+          <h2 id="implementacao">Implementação</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">import</span> json
+<span class="t-k">import</span> threading
+
+<span class="t-k">class</span> <span class="t-f">Configuracao</span>:
+    <span class="t-c"># 1. a instância única, guardada na própria classe</span>
+    _instancia = <span class="t-k">None</span>
+    _trava = threading.<span class="t-f">Lock</span>()
+
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self):
+        <span class="t-k">with</span> <span class="t-f">open</span>(<span class="t-s">"config.json"</span>, encoding=<span class="t-s">"utf-8"</span>) <span class="t-k">as</span> f:
+            self.dados = json.<span class="t-f">load</span>(f)
+
+    <span class="t-c"># 2. o ponto de acesso: cria na primeira vez, devolve sempre a mesma</span>
+    <span class="t-f">@classmethod</span>
+    <span class="t-k">def</span> <span class="t-f">instancia</span>(cls):
+        <span class="t-k">if</span> cls._instancia <span class="t-k">is</span> <span class="t-k">None</span>:
+            <span class="t-k">with</span> cls._trava:
+                <span class="t-k">if</span> cls._instancia <span class="t-k">is</span> <span class="t-k">None</span>:  <span class="t-c"># de novo: outra thread pode ter criado</span>
+                    cls._instancia = cls()
+        <span class="t-k">return</span> cls._instancia
+
+<span class="t-c"># 3. os clientes: nunca chamam Configuracao()</span>
+<span class="t-k">class</span> <span class="t-f">Mailer</span>:
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, destino, texto):
+        host = Configuracao.<span class="t-f">instancia</span>().dados[<span class="t-s">"smtp_host"</span>]
+        ...</code></pre>
+              <pre><code><span class="t-k">import</span> { readFileSync } <span class="t-k">from</span> <span class="t-s">"node:fs"</span>;
+
+<span class="t-k">class</span> <span class="t-f">Configuracao</span> {
+  <span class="t-c">// 1. a instância única, guardada na própria classe</span>
+  <span class="t-k">private</span> <span class="t-k">static</span> _instancia: <span class="t-f">Configuracao</span> | <span class="t-k">undefined</span>;
+
+  <span class="t-c">// o construtor privado: de fora, `new Configuracao()` nem compila</span>
+  <span class="t-k">private</span> <span class="t-k">constructor</span>(<span class="t-k">readonly</span> dados: <span class="t-f">Record</span>&lt;<span class="t-f">string</span>, <span class="t-f">unknown</span>&gt;) {}
+
+  <span class="t-c">// 2. o ponto de acesso. Node roda o seu código em uma thread só,</span>
+  <span class="t-c">//    então não há corrida aqui — não precisa de trava</span>
+  <span class="t-k">static</span> <span class="t-k">get</span> <span class="t-f">instancia</span>(): <span class="t-f">Configuracao</span> {
+    <span class="t-k">if</span> (!<span class="t-f">Configuracao</span>._instancia) {
+      <span class="t-k">const</span> dados = <span class="t-f">JSON</span>.<span class="t-f">parse</span>(<span class="t-f">readFileSync</span>(<span class="t-s">"config.json"</span>, <span class="t-s">"utf-8"</span>));
+      <span class="t-f">Configuracao</span>._instancia = <span class="t-k">new</span> <span class="t-f">Configuracao</span>(dados);
+    }
+    <span class="t-k">return</span> <span class="t-f">Configuracao</span>._instancia;
+  }
+}
+
+<span class="t-c">// 3. os clientes: nunca criam</span>
+<span class="t-k">class</span> <span class="t-f">Mailer</span> {
+  <span class="t-f">enviar</span>(destino: <span class="t-f">string</span>, texto: <span class="t-f">string</span>) {
+    <span class="t-k">const</span> host = <span class="t-f">Configuracao</span>.instancia.dados[<span class="t-s">"smtp_host"</span>];
+    <span class="t-c">// ...</span>
+  }
+}</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="warn"><p>O Python não tem construtor privado: nada impede alguém de escrever <code>Configuracao()</code> e criar uma segunda instância. A garantia é de convenção. Se isso incomoda, o <a href="uso.html#sem-global">exemplo 5 do Uso</a> mostra o caminho: criar uma vez, na inicialização, e passar adiante.</p></div>
+          <div class="callout" data-kind="tip"><p>Em Python e em JavaScript, <strong>o módulo já é um Singleton</strong>: ele é executado uma vez e o resultado fica em cache. Um <code>config = Configuracao()</code> no fim de <code>config.py</code>, com <code>from config import config</code> nos clientes, entrega a mesma instância sem nenhuma das linhas acima.</p></div>
+
+          <h2 id="quando-usar">Quando usar</h2>
+          <p>O Singleton vale quando as três coisas acontecem ao mesmo tempo: ter <strong>duas instâncias é um erro</strong> (ou um custo alto demais), <strong>vários pontos distantes</strong> do código precisam da mesma, e o objeto vive <strong>o processo inteiro</strong>.</p>
+          <p>No código, isso aparece de formas reconhecíveis:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Como reconhecer no código</th><th>Exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Recurso caro criado de novo a cada uso</td><td><code>connect()</code> ou <code>load()</code> dentro de método de repositório ou de construtor de serviço</td><td><a href="uso.html#recurso-caro">Uso #1</a></td></tr>
+                <tr><td>Duas cópias de um estado que deveria ser um só</td><td><code>new Limitador()</code> em mais de um arquivo; o bug "só acontece em algumas telas"</td><td><a href="uso.html#estado-compartilhado">Uso #2</a></td></tr>
+                <tr><td>Várias partes mexendo no mesmo recurso exclusivo</td><td>Ler, somar e gravar no mesmo arquivo; dois números iguais em registros diferentes</td><td><a href="uso.html#recurso-exclusivo">Uso #3</a></td></tr>
+                <tr><td>Objeto pesado, nem sempre necessário</td><td><code>global _modelo</code> com <code>if _modelo is None</code>; carga no <code>import</code> que atrasa o início</td><td><a href="uso.html#criacao-concorrente">Uso #4</a></td></tr>
+                <tr><td>Unicidade desejada, mas o acesso global atrapalha</td><td>Teste que altera <code>X.instancia()</code> e contamina os seguintes; <code>reset()</code> só para teste</td><td><a href="uso.html#sem-global">Uso #5</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="tip"><p>O que os sinais têm em comum: o problema nunca é "tenho um objeto só". É "<strong>dois objetos</strong> quebram alguma coisa". Se duas instâncias convivem bem, você não precisa de Singleton.</p></div>
+
+          <h3 id="teste-rapido">Um teste rápido</h3>
+          <p>Na dúvida, responda em ordem. A primeira resposta que manda parar decide.</p>
+          <ol>
+            <li><strong>Ter duas instâncias quebra algo, ou só desperdiça um pouco?</strong> Se só desperdiça, crie normalmente.</li>
+            <li><strong>Dá para criar uma na inicialização e passá-la a quem precisa?</strong> Se sim, faça isso: você tem a unicidade sem o acesso global.</li>
+            <li><strong>Uma variável de módulo resolve?</strong> Em Python e em JavaScript, quase sempre resolve.</li>
+            <li><strong>Só depois disso:</strong> Singleton, com criação preguiçosa e trava, se houver concorrência.</li>
+          </ol>
+
+          <h2 id="quando-nao-usar">Quando não usar</h2>
+          <p>O Singleton é o padrão mais usado e o mais criticado, pelo mesmo motivo: ele é <strong>estado global com uma roupa de objeto</strong>. O custo é pago todo dia: dependências escondidas dentro dos métodos, testes que contaminam uns aos outros e código que não funciona com duas instâncias nem quando você precisa de duas.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Você só quer evitar passar um parâmetro</td><td>É conveniência, não necessidade. A dependência continua existindo, só ficou invisível</td><td>Receba pelo construtor</td></tr>
+                <tr><td>O objeto guarda estado mutável</td><td>Os testes alteram e o estado vaza para o teste seguinte</td><td>Uma instância por teste, injetada</td></tr>
+                <tr><td>Pode haver mais de uma no futuro (um por cliente, por tenant, por região)</td><td>"Uma só" vira premissa espalhada pelo código e custa caro de desfazer</td><td>Um objeto por chave, em um registro</td></tr>
+                <tr><td>A aplicação roda em vários processos ou servidores</td><td>O Singleton é "um por processo". Com 8 workers, são 8 instâncias — e nenhuma sabe das outras</td><td>Um recurso externo (banco, Redis) que seja a fonte única</td></tr>
+                <tr><td>Python ou JavaScript e o objeto não tem lógica de criação</td><td>O módulo já entrega isso, sem classe nem trava</td><td>Uma variável de módulo</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="sinais-de-abuso">Sinais de que o Singleton saiu do lugar</h3>
+          <ul>
+            <li><strong>Virou depósito de estado global.</strong> Um <code>Contexto.instancia()</code> com 40 campos, onde todo mundo pendura o que precisa. Isso é uma variável global com nome de classe.</li>
+            <li><strong>Aparece dentro de tudo.</strong> Se a leitura de um método exige saber que ele chama <code>Algo.instancia()</code> lá no meio, a assinatura mente sobre as dependências.</li>
+            <li><strong>Tem <code>reset()</code> só para os testes.</strong> Um método que existe para desfazer a própria unicidade é o sintoma de que ela não cabe naquele código.</li>
+            <li><strong>Ganhou subclasses.</strong> Singleton de uma hierarquia obriga a decidir qual das classes é "a" única, e quase sempre o resultado é um <code>if</code> escondido.</li>
+            <li><strong>Existe "por precaução".</strong> "Vai que criam duas" não é motivo: se duas não quebram nada, o Singleton só acrescenta um acoplamento.</li>
+          </ul>
+          <div class="callout" data-kind="danger"><p>O sinal mais comum: você escreveu <code>Singleton.reset()</code> para os testes passarem. O padrão está cobrando o preço de ser global.</p></div>
+          <div class="callout" data-kind="note"><p>Na dúvida, crie a instância uma vez, na inicialização, e passe pelo construtor. Você tem "um só" na prática, e nada impede um teste de criar outra — que é exatamente o que um Singleton clássico impede.</p></div>
+
+          <h2 id="parecidos">Parecidos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Padrão</th><th>Diferença</th></tr></thead>
+              <tbody>
+                <tr><td>Variável global / de módulo</td><td>É a versão sem cerimônia. Perde o controle explícito da criação, mas em Python e JS costuma ser suficiente</td></tr>
+                <tr><td>Injeção de dependência</td><td>Resolve <em>quem recebe</em> o objeto; o Singleton resolve <em>quantos existem</em>. Combinam: um contêiner de DI costuma ter escopo "singleton"</td></tr>
+                <tr><td>Flyweight</td><td>Compartilha muitas instâncias imutáveis, uma por valor diferente; o Singleton é uma só, quase sempre mutável</td></tr>
+                <tr><td>Classe estática / utilitária</td><td>Não tem instância: não implementa interface, não pode ser trocada em teste e não tem ciclo de vida</td></tr>
+                <tr><td>Factory Method / Abstract Factory</td><td>Decidem <em>qual</em> objeto criar. É comum a fábrica ser um Singleton, mas são problemas diferentes</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Regra prática: se a pergunta é "quantos objetos existem", é Singleton. Se é "quem recebe o objeto", é injeção.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../../../assets/js/site.js"></script>
+<script src="../../../../assets/js/shell.js"></script>
+<script src="../../../../assets/js/ds.js"></script>
+</body>
+</html>
