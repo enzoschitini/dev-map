@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liskov Substitution | SOLID · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../assets/css/design-system.css">
+</head>
+<body data-root="../../" data-tab="clean-code" data-page="liskov-substitution">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / SOLID / Liskov Substitution</div>
+          <h1 class="page-title" tabindex="-1">Liskov Substitution</h1>
+          <p class="lead">Como garantir que uma subclasse pode entrar no lugar da classe base sem que quem chama precise perguntar "que tipo você é?".</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Um sistema de pagamentos tem a classe base <code>Pagamento</code> com o método <code>estornar()</code>. O cartão e o Pix estornam. Aí chega o boleto, que <strong>não tem estorno</strong>: depois de pago, o dinheiro já foi para o outro lado. A saída rápida é herdar mesmo assim e lançar um erro.</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — a subclasse promete o que não cumpre</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Pagamento</span>:
+    <span class="t-k">def</span> <span class="t-f">estornar</span>(self):
+        gateway.<span class="t-f">estornar</span>(self.id)
+
+<span class="t-k">class</span> <span class="t-f">PagamentoBoleto</span>(<span class="t-f">Pagamento</span>):
+    <span class="t-k">def</span> <span class="t-f">estornar</span>(self):
+        <span class="t-k">raise</span> <span class="t-f">NotImplementedError</span>(<span class="t-s">"boleto não estorna"</span>)
+
+<span class="t-c"># quem chama, sem suspeitar de nada:</span>
+<span class="t-k">def</span> <span class="t-f">cancelar_compra</span>(pagamentos):
+    <span class="t-k">for</span> p <span class="t-k">in</span> pagamentos:
+        p.<span class="t-f">estornar</span>()          <span class="t-c"># estoura no meio da lista, com metade já estornada</span></code></pre>
+            </div>
+          </div>
+          <p>O sistema de tipos diz que <code>PagamentoBoleto</code> é um <code>Pagamento</code>. O comportamento diz que não é. O resultado é um erro em produção, no meio de um laço, com parte dos pagamentos já estornados. E o próximo desenvolvedor aprende a lição errada: escrever <code>if not isinstance(p, PagamentoBoleto)</code> antes de cada chamada.</p>
+
+          <h2 id="a-ideia">A ideia</h2>
+          <p>Onde o código espera um <code>Pagamento</code>, qualquer subclasse tem que funcionar <strong>sem surpresa</strong>. Isso não é sobre tipos: é sobre o <em>contrato</em> que a classe base promete. A subclasse pode fazer mais, mas não pode fazer menos nem de outro jeito.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Regra do contrato</th><th>Em palavras</th><th>Quebra quando</th></tr></thead>
+              <tbody>
+                <tr><td>Pré-condições não ficam mais fortes</td><td>A subclasse aceita tudo o que a base aceitava</td><td>Passa a rejeitar valores que a base aceitava</td></tr>
+                <tr><td>Pós-condições não ficam mais fracas</td><td>A subclasse entrega tudo o que a base prometia</td><td>Devolve <code>None</code>, ou deixa de fazer o efeito prometido</td></tr>
+                <tr><td>Nada de erro novo</td><td>As falhas possíveis são as da base</td><td>Lança uma exceção que a base nunca lançou</td></tr>
+                <tr><td>Invariantes se mantêm</td><td>O que é sempre verdade na base continua verdade</td><td>Deixa o objeto num estado que a base proibia</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é a direção da pergunta. Não é "o boleto é um pagamento?" (no mundo real, é), e sim <em>"o boleto cumpre tudo o que o código promete a quem usa um pagamento?"</em>. Se não cumpre, a herança está errada, mesmo que o nome pareça certo.</p>
+
+          <h2 id="depois">Como fica</h2>
+          <p>Se só alguns pagamentos estornam, <code>estornar</code> não pertence à base. Ele vira uma capacidade separada, e quem precisa estornar pede <strong>essa capacidade</strong>, não "um pagamento":</p>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> typing <span class="t-k">import</span> Protocol
+
+<span class="t-c"># 1. a base só promete o que todos cumprem</span>
+<span class="t-k">class</span> <span class="t-f">Pagamento</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, id, valor):
+        self.id = id
+        self.valor = valor
+
+<span class="t-c"># 2. estornar é uma capacidade, não uma obrigação de todos</span>
+<span class="t-k">class</span> <span class="t-f">Estornavel</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">estornar</span>(self) -&gt; <span class="t-f">None</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">PagamentoCartao</span>(<span class="t-f">Pagamento</span>):
+    <span class="t-k">def</span> <span class="t-f">estornar</span>(self):
+        gateway.<span class="t-f">estornar</span>(self.id)
+
+<span class="t-k">class</span> <span class="t-f">PagamentoBoleto</span>(<span class="t-f">Pagamento</span>):
+    <span class="t-k">pass</span>                               <span class="t-c"># sem estornar(), sem mentira</span>
+
+<span class="t-c"># 3. quem chama pede exatamente o que usa</span>
+<span class="t-k">def</span> <span class="t-f">estornar_todos</span>(pagamentos: <span class="t-f">list</span>[<span class="t-f">Estornavel</span>]):
+    <span class="t-k">for</span> p <span class="t-k">in</span> pagamentos:
+        p.<span class="t-f">estornar</span>()</code></pre>
+              <pre><code><span class="t-c">// 1. a base só promete o que todos cumprem</span>
+<span class="t-k">abstract</span> <span class="t-k">class</span> <span class="t-f">Pagamento</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">readonly</span> id: <span class="t-f">string</span>, <span class="t-k">readonly</span> valor: <span class="t-f">number</span>) {}
+}
+
+<span class="t-c">// 2. estornar é uma capacidade, não uma obrigação de todos</span>
+<span class="t-k">interface</span> <span class="t-f">Estornavel</span> {
+  <span class="t-f">estornar</span>(): <span class="t-f">Promise</span>&lt;<span class="t-f">void</span>&gt;;
+}
+
+<span class="t-k">class</span> <span class="t-f">PagamentoCartao</span> <span class="t-k">extends</span> <span class="t-f">Pagamento</span> <span class="t-k">implements</span> <span class="t-f">Estornavel</span> {
+  <span class="t-k">async</span> <span class="t-f">estornar</span>() { <span class="t-k">await</span> gateway.<span class="t-f">estornar</span>(<span class="t-k">this</span>.id); }
+}
+
+<span class="t-k">class</span> <span class="t-f">PagamentoBoleto</span> <span class="t-k">extends</span> <span class="t-f">Pagamento</span> {}  <span class="t-c">// sem estornar(), sem mentira</span>
+
+<span class="t-c">// 3. quem chama pede exatamente o que usa</span>
+<span class="t-k">async</span> <span class="t-k">function</span> <span class="t-f">estornarTodos</span>(pagamentos: <span class="t-f">Estornavel</span>[]) {
+  <span class="t-k">for</span> (<span class="t-k">const</span> p <span class="t-k">of</span> pagamentos) <span class="t-k">await</span> p.<span class="t-f">estornar</span>();
+}</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>Agora tentar estornar um boleto é um erro <strong>de tipo</strong>, visto no editor ou na CI, e não um erro de execução às três da manhã. Quando o contrato está certo, o compilador (ou o verificador de tipos) passa a trabalhar a seu favor.</p></div>
+
+          <h2 id="como-reconhecer">Como reconhecer a violação</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Sintoma</th><th>O que está acontecendo</th></tr></thead>
+              <tbody>
+                <tr><td><code>raise NotImplementedError</code> ou <code>throw new Error("não suportado")</code> numa sobrescrita</td><td>A subclasse recusa parte do contrato que herdou</td></tr>
+                <tr><td>Método sobrescrito vazio, ou que só devolve um valor "neutro"</td><td>A promessa foi esvaziada em silêncio, o que é pior que um erro</td></tr>
+                <tr><td><code>isinstance</code> / <code>instanceof</code> / <code>type(x) == …</code> em quem usa a base</td><td>Quem chama já aprendeu que não pode confiar na base</td></tr>
+                <tr><td>Subclasse que valida mais que a base (<code>if valor &gt; 1000: raise</code>)</td><td>Pré-condição ficou mais forte</td></tr>
+                <tr><td>Classe base com um comentário "não chamar em subclasse X"</td><td>A exceção está documentada em vez de modelada</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="quando-nao-aplicar">Quando não é o problema</h2>
+          <p>Liskov não proíbe herança. Proíbe herança que <strong>mente</strong>. Em dois casos o instinto de "isso viola Liskov" é falso alarme:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que está tudo bem</th></tr></thead>
+              <tbody>
+                <tr><td>A subclasse faz <em>mais</em> que a base: aceita mais entradas, devolve um tipo mais específico</td><td>Quem chama a base nunca vai notar; a regra só proíbe fazer menos</td></tr>
+                <tr><td>A subclasse muda o jeito, mas cumpre o contrato (cache, log, outro algoritmo)</td><td>É exatamente a variação que a abstração existe para permitir</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="warn"><p>O exemplo clássico do <code>Quadrado</code> que herda de <code>Retangulo</code> falha pelo mesmo motivo: <code>set_largura</code> numa base promete "a altura não muda", e o quadrado não pode cumprir. Matematicamente é um retângulo; <em>como contrato de objeto mutável</em>, não é.</p></div>
+
+          <h2 id="relacao">Relação com os outros</h2>
+          <p>Liskov é o que torna o <a href="open-closed.html">Open/Closed</a> seguro: só dá para estender por subclasse se a subclasse for substituível. Quando a solução é separar a capacidade em uma interface própria, como acima, você está a um passo do <a href="interface-segregation.html">Interface Segregation</a>. Em linguagens com herança rasa, a correção costuma ser trocar herança por <a href="estruturais/decorator/explicacao.html">composição</a>.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../assets/js/site.js"></script>
+<script src="../../assets/js/shell.js"></script>
+<script src="../../assets/js/ds.js"></script>
+</body>
+</html>

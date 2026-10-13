@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Single Responsibility | SOLID · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../assets/css/design-system.css">
+</head>
+<body data-root="../../" data-tab="clean-code" data-page="single-responsibility">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / SOLID / Single Responsibility</div>
+          <h1 class="page-title" tabindex="-1">Single Responsibility</h1>
+          <p class="lead">Como evitar que uma classe quebre toda vez que qualquer pessoa da empresa muda de ideia, dando a cada motivo de mudança o seu próprio lugar.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>Um <code>Pedido</code> começa pequeno: itens, cliente, total. Aí alguém precisa salvar o pedido e o método <code>salvar()</code> entra na classe. Depois vem o e-mail de confirmação, depois a nota fiscal. Cada método parece natural, porque "tudo isso é do pedido".</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — a classe muda por quatro motivos</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">Pedido</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, itens, cliente):
+        self.itens = itens
+        self.cliente = cliente
+
+    <span class="t-k">def</span> <span class="t-f">total</span>(self):                      <span class="t-c"># regra de preço (time comercial)</span>
+        <span class="t-k">return</span> <span class="t-f">sum</span>(i.preco * i.qtd <span class="t-k">for</span> i <span class="t-k">in</span> self.itens)
+
+    <span class="t-k">def</span> <span class="t-f">salvar</span>(self):                     <span class="t-c"># SQL (time de dados)</span>
+        db.<span class="t-f">execute</span>(<span class="t-s">"INSERT INTO pedidos (cliente_id, total) VALUES (?, ?)"</span>,
+                   self.cliente.id, self.<span class="t-f">total</span>())
+
+    <span class="t-k">def</span> <span class="t-f">enviar_confirmacao</span>(self):         <span class="t-c"># texto e canal (time de marketing)</span>
+        smtp.<span class="t-f">send</span>(self.cliente.email, <span class="t-s">f"Total do pedido: R$ {</span>self.<span class="t-f">total</span>()<span class="t-s">:.2f}"</span>)
+
+    <span class="t-k">def</span> <span class="t-f">gerar_nota</span>(self):                 <span class="t-c"># regras fiscais (time contábil)</span>
+        ...</code></pre>
+            </div>
+          </div>
+          <p>Quatro times diferentes pedem mudanças na mesma classe. O marketing troca o texto do e-mail e o <code>git blame</code> do cálculo de preço muda junto. Dois merges na mesma semana conflitam em um arquivo que "ninguém mexeu". E para testar <code>total()</code> você precisa importar SMTP e banco, porque eles vieram junto.</p>
+
+          <h2 id="a-ideia">A ideia</h2>
+          <p>Uma classe deve ter <strong>um motivo para mudar</strong>. Não "fazer uma coisa só": uma classe pode ter dez métodos. O que conta é quantas pessoas ou áreas diferentes podem pedir mudança nela por razões diferentes. Cada razão ganha uma classe.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Quem pede a mudança</th><th>O que muda</th><th>Onde passa a morar</th></tr></thead>
+              <tbody>
+                <tr><td>Comercial</td><td>Como o total é calculado</td><td><code>Pedido</code></td></tr>
+                <tr><td>Dados</td><td>Tabela, colunas, banco</td><td><code>RepositorioDePedidos</code></td></tr>
+                <tr><td>Marketing</td><td>Texto e canal do aviso</td><td><code>Confirmacao</code></td></tr>
+                <tr><td>Contabilidade</td><td>Layout e regras da nota</td><td><code>EmissorDeNota</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>O ponto é a pergunta que você faz: não "o que essa classe faz?", e sim <em>"quem vai me pedir para mexer aqui, e por quê?"</em>. Se a resposta tem mais de um nome, a classe tem mais de uma responsabilidade.</p>
+
+          <h2 id="depois">Como fica</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-c"># 1. a regra de negócio: só dados e cálculo, nada de infraestrutura</span>
+<span class="t-k">class</span> <span class="t-f">Pedido</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, itens, cliente):
+        self.itens = itens
+        self.cliente = cliente
+
+    <span class="t-k">def</span> <span class="t-f">total</span>(self):
+        <span class="t-k">return</span> <span class="t-f">sum</span>(i.preco * i.qtd <span class="t-k">for</span> i <span class="t-k">in</span> self.itens)
+
+<span class="t-c"># 2. persistência: só muda se o banco mudar</span>
+<span class="t-k">class</span> <span class="t-f">RepositorioDePedidos</span>:
+    <span class="t-k">def</span> <span class="t-f">salvar</span>(self, pedido):
+        db.<span class="t-f">execute</span>(<span class="t-s">"INSERT INTO pedidos (cliente_id, total) VALUES (?, ?)"</span>,
+                   pedido.cliente.id, pedido.<span class="t-f">total</span>())
+
+<span class="t-c"># 3. comunicação: só muda se o texto ou o canal mudar</span>
+<span class="t-k">class</span> <span class="t-f">Confirmacao</span>:
+    <span class="t-k">def</span> <span class="t-f">enviar</span>(self, pedido):
+        smtp.<span class="t-f">send</span>(pedido.cliente.email, <span class="t-s">f"Total do pedido: R$ {</span>pedido.<span class="t-f">total</span>()<span class="t-s">:.2f}"</span>)
+
+<span class="t-c"># 4. quem junta as peças fica fora das três</span>
+<span class="t-k">def</span> <span class="t-f">fechar_pedido</span>(pedido, repositorio, confirmacao):
+    repositorio.<span class="t-f">salvar</span>(pedido)
+    confirmacao.<span class="t-f">enviar</span>(pedido)</code></pre>
+              <pre><code><span class="t-c">// 1. a regra de negócio: só dados e cálculo, nada de infraestrutura</span>
+<span class="t-k">class</span> <span class="t-f">Pedido</span> {
+  <span class="t-k">constructor</span>(<span class="t-k">readonly</span> itens: <span class="t-f">Item</span>[], <span class="t-k">readonly</span> cliente: <span class="t-f">Cliente</span>) {}
+
+  <span class="t-f">total</span>(): <span class="t-f">number</span> {
+    <span class="t-k">return</span> <span class="t-k">this</span>.itens.<span class="t-f">reduce</span>((soma, i) =&gt; soma + i.preco * i.qtd, <span class="t-n">0</span>);
+  }
+}
+
+<span class="t-c">// 2. persistência: só muda se o banco mudar</span>
+<span class="t-k">class</span> <span class="t-f">RepositorioDePedidos</span> {
+  <span class="t-k">async</span> <span class="t-f">salvar</span>(pedido: <span class="t-f">Pedido</span>) {
+    <span class="t-k">await</span> db.<span class="t-f">execute</span>(<span class="t-s">"INSERT INTO pedidos (cliente_id, total) VALUES (?, ?)"</span>,
+                     [pedido.cliente.id, pedido.<span class="t-f">total</span>()]);
+  }
+}
+
+<span class="t-c">// 3. comunicação: só muda se o texto ou o canal mudar</span>
+<span class="t-k">class</span> <span class="t-f">Confirmacao</span> {
+  <span class="t-f">enviar</span>(pedido: <span class="t-f">Pedido</span>) {
+    <span class="t-k">return</span> smtp.<span class="t-f">send</span>(pedido.cliente.email, <span class="t-s">`Total do pedido: R$ ${pedido.total().toFixed(2)}`</span>);
+  }
+}
+
+<span class="t-c">// 4. quem junta as peças fica fora das três</span>
+<span class="t-k">async</span> <span class="t-k">function</span> <span class="t-f">fecharPedido</span>(pedido: <span class="t-f">Pedido</span>, repo: <span class="t-f">RepositorioDePedidos</span>, conf: <span class="t-f">Confirmacao</span>) {
+  <span class="t-k">await</span> repo.<span class="t-f">salvar</span>(pedido);
+  <span class="t-k">await</span> conf.<span class="t-f">enviar</span>(pedido);
+}</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste de <code>total()</code> agora é uma linha: cria um <code>Pedido</code> com dois itens e confere a soma. Nenhum banco, nenhum SMTP, nenhum mock.</p></div>
+
+          <h2 id="como-reconhecer">Como reconhecer a violação</h2>
+          <p>Raramente o problema aparece como "a classe faz muita coisa". Aparece como sintomas no dia a dia:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Sintoma</th><th>O que está acontecendo</th></tr></thead>
+              <tbody>
+                <tr><td>Nome com <code>Manager</code>, <code>Helper</code>, <code>Utils</code> ou "<code>E</code>" no meio (<code>ValidaESalva</code>)</td><td>O nome não consegue dizer uma coisa só porque ela não é uma coisa só</td></tr>
+                <tr><td>Imports de mundos distantes no mesmo arquivo: <code>sqlalchemy</code>, <code>smtplib</code>, <code>reportlab</code></td><td>A classe fala com banco, rede e disco além da regra</td></tr>
+                <tr><td>Grupos de métodos que usam atributos diferentes</td><td>Há duas classes escondidas dentro de uma</td></tr>
+                <tr><td>Conflito de merge sempre no mesmo arquivo, por pessoas de áreas diferentes</td><td>Vários atores pedem mudança no mesmo lugar</td></tr>
+                <tr><td>Teste unitário que precisa de mock de tudo</td><td>O que você quer testar está preso ao que não quer</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="quando-nao-aplicar">Quando não aplicar</h2>
+          <p>O custo é real: mais classes, mais arquivos e um lugar a mais para olhar para entender um fluxo. Vale pagar quando as razões de mudança <strong>existem de fato</strong> e já se cruzaram, não quando você imagina que talvez existam.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Classe pequena e coesa, que só tem um ator por trás</td><td>Dividir não elimina nenhuma mudança cruzada, só distribui o código</td><td>Deixe como está</td></tr>
+                <tr><td>Script de uma vez, ou protótipo</td><td>O custo de separar supera o de mexer três linhas depois</td><td>Escreva junto; separe quando o segundo ator aparecer</td></tr>
+                <tr><td>Um método de seis linhas que "faz duas coisas"</td><td>Um método não é uma responsabilidade; uma função de seis linhas lê melhor inteira</td><td>Extraia só se um dos pedaços for reutilizado</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="danger"><p>O exagero comum: uma classe por verbo (<code>CalculadorDeTotal</code>, <code>SomadorDeItens</code>, <code>FormatadorDeMoeda</code>), cada uma com um método <code>executar()</code>. Para entender um pedido você abre doze arquivos. Responsabilidade é um <em>motivo de mudança</em>, não um verbo.</p></div>
+
+          <h2 id="relacao">Relação com os outros</h2>
+          <p>A saída de uma classe grande quase sempre é composição: o <code>fechar_pedido</code> acima é um pequeno <a href="estruturais/facade/explicacao.html">Facade</a>. Quando o que muda dentro de uma responsabilidade é o <em>jeito</em> de fazer, entra o <a href="comportamentais/strategy/explicacao.html">Strategy</a>. E o que impede <code>Confirmacao</code> de conhecer o SMTP direto é o <a href="dependency-inversion.html">Dependency Inversion</a>.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../assets/js/site.js"></script>
+<script src="../../assets/js/shell.js"></script>
+<script src="../../assets/js/ds.js"></script>
+</body>
+</html>

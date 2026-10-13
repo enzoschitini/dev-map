@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dependency Inversion | SOLID · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../assets/css/design-system.css">
+</head>
+<body data-root="../../" data-tab="clean-code" data-page="dependency-inversion">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / SOLID / Dependency Inversion</div>
+          <h1 class="page-title" tabindex="-1">Dependency Inversion</h1>
+          <p class="lead">Como fazer a regra de negócio mandar na infraestrutura, e não o contrário, para trocar banco, e-mail ou relógio sem tocar nas regras.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="o-problema">O problema</h2>
+          <p>A regra "ao confirmar um pedido, salvar e avisar o cliente" é a parte que vale dinheiro. Mas, escrita de forma direta, ela cria o MySQL e o SMTP ali mesmo, dentro do método:</p>
+          <div class="code">
+            <div class="code-head"><span class="code-title">antes — a regra de negócio constrói a infraestrutura</span><button class="copy" type="button"></button></div>
+            <div class="code-body">
+              <pre><code><span class="t-k">class</span> <span class="t-f">ConfirmarPedido</span>:
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self, pedido):
+        banco = mysql.<span class="t-f">connect</span>(host=<span class="t-s">"db.interno"</span>, user=<span class="t-s">"app"</span>)   <span class="t-c"># a regra sabe o host</span>
+        banco.<span class="t-f">execute</span>(<span class="t-s">"UPDATE pedidos SET status='ok' WHERE id=%s"</span>, pedido.id)
+
+        smtp = smtplib.<span class="t-f">SMTP</span>(<span class="t-s">"smtp.empresa.com"</span>)              <span class="t-c"># e o servidor de e-mail</span>
+        smtp.<span class="t-f">sendmail</span>(<span class="t-s">"loja@empresa.com"</span>, pedido.email, <span class="t-s">"Confirmado"</span>)</code></pre>
+            </div>
+          </div>
+          <p>A regra mais importante do sistema depende de detalhes que mudam o tempo todo: onde está o banco, qual servidor de e-mail, qual biblioteca. Para testá-la, é preciso um MySQL e um SMTP de verdade. Trocar para PostgreSQL ou para um serviço de e-mail exige editar a regra, e o teste dela quebra por um motivo que não tem nada a ver com a regra.</p>
+
+          <h2 id="a-ideia">A ideia</h2>
+          <p>O princípio tem duas metades:</p>
+          <ol>
+            <li>Módulos de alto nível (a regra) não dependem de módulos de baixo nível (banco, e-mail). <strong>Os dois dependem de abstrações.</strong></li>
+            <li>As abstrações não dependem de detalhes; <strong>os detalhes dependem das abstrações.</strong></li>
+          </ol>
+          <p>Por isso "inversão": no código original, a seta de dependência vai da regra para o MySQL. Depois da inversão, o MySQL é que aponta para uma interface <strong>que a regra definiu</strong>. A regra passa a ser dona da interface, e a infraestrutura vira um plugin.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Peça</th><th>Papel</th><th>No exemplo</th></tr></thead>
+              <tbody>
+                <tr><td>Alto nível</td><td>A regra, que decide o que precisa</td><td><code>ConfirmarPedido</code></td></tr>
+                <tr><td>Abstração</td><td>O que a regra precisa, nas palavras dela</td><td><code>RepositorioDePedidos</code>, <code>Notificador</code></td></tr>
+                <tr><td>Baixo nível</td><td>O detalhe que implementa a abstração</td><td><code>RepositorioMySQL</code>, <code>NotificadorSmtp</code></td></tr>
+                <tr><td>Ponto de montagem</td><td>O único lugar que conhece as duas pontas</td><td>O <code>main</code> ou a configuração</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="depois">Como fica</h2>
+          <div class="code" data-tabs>
+            <div class="code-head">
+              <div class="code-tabs" role="tablist">
+                <button class="code-tab" type="button">Python</button>
+                <button class="code-tab" type="button">TypeScript</button>
+              </div>
+              <button class="copy" type="button"></button>
+            </div>
+            <div class="code-body">
+              <pre><code><span class="t-k">from</span> typing <span class="t-k">import</span> Protocol
+
+<span class="t-c"># 1. as abstrações pertencem à regra, e usam o vocabulário dela</span>
+<span class="t-k">class</span> <span class="t-f">RepositorioDePedidos</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">marcar_confirmado</span>(self, pedido_id) -&gt; <span class="t-f">None</span>: ...
+
+<span class="t-k">class</span> <span class="t-f">Notificador</span>(Protocol):
+    <span class="t-k">def</span> <span class="t-f">avisar</span>(self, email, texto) -&gt; <span class="t-f">None</span>: ...
+
+<span class="t-c"># 2. a regra recebe as dependências prontas, e não conhece nenhum detalhe</span>
+<span class="t-k">class</span> <span class="t-f">ConfirmarPedido</span>:
+    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, repositorio: <span class="t-f">RepositorioDePedidos</span>, notificador: <span class="t-f">Notificador</span>):
+        self._repositorio = repositorio
+        self._notificador = notificador
+
+    <span class="t-k">def</span> <span class="t-f">executar</span>(self, pedido):
+        self._repositorio.<span class="t-f">marcar_confirmado</span>(pedido.id)
+        self._notificador.<span class="t-f">avisar</span>(pedido.email, <span class="t-s">"Confirmado"</span>)
+
+<span class="t-c"># 3. os detalhes ficam de fora e apontam para as abstrações</span>
+<span class="t-k">class</span> <span class="t-f">RepositorioMySQL</span>:
+    <span class="t-k">def</span> <span class="t-f">marcar_confirmado</span>(self, pedido_id): ...
+
+<span class="t-c"># 4. o ponto de montagem: o único lugar que sabe quem é quem</span>
+caso_de_uso = <span class="t-f">ConfirmarPedido</span>(<span class="t-f">RepositorioMySQL</span>(), <span class="t-f">NotificadorSmtp</span>())</code></pre>
+              <pre><code><span class="t-c">// 1. as abstrações pertencem à regra, e usam o vocabulário dela</span>
+<span class="t-k">interface</span> <span class="t-f">RepositorioDePedidos</span> {
+  <span class="t-f">marcarConfirmado</span>(pedidoId: <span class="t-f">string</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">void</span>&gt;;
+}
+
+<span class="t-k">interface</span> <span class="t-f">Notificador</span> {
+  <span class="t-f">avisar</span>(email: <span class="t-f">string</span>, texto: <span class="t-f">string</span>): <span class="t-f">Promise</span>&lt;<span class="t-f">void</span>&gt;;
+}
+
+<span class="t-c">// 2. a regra recebe as dependências prontas, e não conhece nenhum detalhe</span>
+<span class="t-k">class</span> <span class="t-f">ConfirmarPedido</span> {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">private</span> repositorio: <span class="t-f">RepositorioDePedidos</span>,
+    <span class="t-k">private</span> notificador: <span class="t-f">Notificador</span>,
+  ) {}
+
+  <span class="t-k">async</span> <span class="t-f">executar</span>(pedido: <span class="t-f">Pedido</span>) {
+    <span class="t-k">await</span> <span class="t-k">this</span>.repositorio.<span class="t-f">marcarConfirmado</span>(pedido.id);
+    <span class="t-k">await</span> <span class="t-k">this</span>.notificador.<span class="t-f">avisar</span>(pedido.email, <span class="t-s">"Confirmado"</span>);
+  }
+}
+
+<span class="t-c">// 3. os detalhes ficam de fora e implementam as abstrações</span>
+<span class="t-k">class</span> <span class="t-f">RepositorioMySQL</span> <span class="t-k">implements</span> <span class="t-f">RepositorioDePedidos</span> {
+  <span class="t-k">async</span> <span class="t-f">marcarConfirmado</span>(pedidoId: <span class="t-f">string</span>) { <span class="t-c">/* ... */</span> }
+}
+
+<span class="t-c">// 4. o ponto de montagem: o único lugar que sabe quem é quem</span>
+<span class="t-k">const</span> casoDeUso = <span class="t-k">new</span> <span class="t-f">ConfirmarPedido</span>(<span class="t-k">new</span> <span class="t-f">RepositorioMySQL</span>(), <span class="t-k">new</span> <span class="t-f">NotificadorSmtp</span>());</code></pre>
+            </div>
+          </div>
+          <div class="callout" data-kind="tip"><p>O teste de <code>ConfirmarPedido</code> passa duas classes de cinco linhas, que guardam o que receberam em uma lista, e confere a lista. Sem Docker, sem rede, sem relógio, e roda em milissegundos.</p></div>
+
+          <h2 id="nao-confundir">Três coisas com nome parecido</h2>
+          <p>Na conversa do dia a dia, estes termos se misturam, e vale separá-los:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>O que é</th></tr></thead>
+              <tbody>
+                <tr><td>Dependency <strong>Inversion</strong></td><td>O princípio: a regra define a abstração e os detalhes a implementam. É uma decisão de <em>desenho</em></td></tr>
+                <tr><td>Dependency <strong>Injection</strong></td><td>A técnica: receber a dependência de fora (construtor, parâmetro), em vez de criá-la dentro. É o jeito mais comum de aplicar o princípio</td></tr>
+                <tr><td><strong>Container</strong> de DI / IoC</td><td>Uma ferramenta que faz a montagem automaticamente. Opcional: o <code>main</code> escrito à mão resolve a maioria dos projetos</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>É possível injetar sem inverter: se o construtor recebe <code>RepositorioMySQL</code> concreto, a dependência vem de fora, mas a seta continua apontando para o detalhe.</p>
+
+          <h2 id="como-reconhecer">Como reconhecer a violação</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Sintoma</th><th>O que está acontecendo</th></tr></thead>
+              <tbody>
+                <tr><td><code>import</code> de driver, SDK ou framework dentro do arquivo da regra</td><td>A regra conhece o detalhe pelo nome</td></tr>
+                <tr><td><code>new</code> / construtor de classe concreta dentro de método de negócio</td><td>A regra decide qual detalhe usa, e não dá para trocar</td></tr>
+                <tr><td><code>datetime.now()</code>, <code>random()</code>, <code>os.environ</code> no meio da regra</td><td>Até o relógio e o ambiente são dependências escondidas, e tornam o teste instável</td></tr>
+                <tr><td>Teste unitário que usa <code>patch("módulo.biblioteca")</code> para tudo</td><td>O teste precisa sabotar o código para escapar da dependência</td></tr>
+                <tr><td>Singleton ou variável global acessada de dentro da regra</td><td>Dependência escondida: a assinatura diz uma coisa, o corpo precisa de outra</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="quando-nao-aplicar">Quando não aplicar</h2>
+          <p>Cada inversão custa uma interface e um ponto de montagem. Ela se paga nas dependências que <strong>mudam, são lentas ou são difíceis de testar</strong>. As estáveis não precisam.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Situação</th><th>Por que não</th><th>Faça isto</th></tr></thead>
+              <tbody>
+                <tr><td>Biblioteca padrão estável: <code>math</code>, <code>list</code>, <code>json</code></td><td>Não muda e não tem efeito colateral; a abstração só adiciona ruído</td><td>Use direto</td></tr>
+                <tr><td>Script curto ou protótipo</td><td>O ponto de montagem seria maior que o próprio código</td><td>Escreva direto; inverta quando o primeiro teste doer</td></tr>
+                <tr><td>Classe de valor ou utilitário puro, sem I/O</td><td>Nada a trocar e nada a falsificar</td><td>Chame normalmente</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" data-kind="danger"><p>Sinal de exagero: uma interface para cada classe, nomeada <code>IAlgumaCoisa</code>, com uma única implementação e um nome que só repete o da classe. Se a abstração não representa uma decisão da regra, é só uma cópia da classe.</p></div>
+
+          <h2 id="relacao">Relação com os outros</h2>
+          <p>O <a href="estruturais/adapter/explicacao.html">Adapter</a> é o princípio aplicado quando a interface de fora não é a que a sua regra definiu: ele a traduz. O <a href="comportamentais/strategy/explicacao.html">Strategy</a> usa a mesma inversão para o algoritmo, e as <a href="criacionais/factory-method/explicacao.html">fábricas</a> resolvem o caso em que a regra precisa criar objetos sem conhecer a classe. E para que a abstração seja fácil de implementar, vale lembrar do <a href="interface-segregation.html">Interface Segregation</a>: pequena e feita para quem usa.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../assets/js/site.js"></script>
+<script src="../../assets/js/shell.js"></script>
+<script src="../../assets/js/ds.js"></script>
+</body>
+</html>

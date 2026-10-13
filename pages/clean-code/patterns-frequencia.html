@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frequência de uso | Design Pattern · DevMap</title>
+<script>
+  /* Define o tema antes de pintar a página, para não piscar. Mantenha em toda página. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="../../assets/css/design-system.css">
+</head>
+<body data-root="../../" data-tab="clean-code" data-page="patterns-frequencia">
+<a class="skip" href="#main">Ir para o conteúdo</a>
+
+<header class="header" id="header" data-shell="header"></header>
+
+<div class="shell">
+  <aside class="side-wrap" id="side" aria-label="Páginas de Clean Code" data-shell="side"></aside>
+  <div class="main">
+    <div class="main-row">
+      <main class="article" id="main">
+        <header>
+          <div class="eyebrow">Clean Code / Design Pattern</div>
+          <h1 class="page-title" tabindex="-1">Frequência de uso</h1>
+          <p class="lead">Quais padrões aparecem com mais frequência no código do dia a dia, e por onde começar a estudar.</p>
+        </header>
+
+        <div class="prose">
+          <h2 id="como-ler">Como ler esta página</h2>
+          <p>Os 23 padrões não pesam o mesmo. Uns você usa toda semana; outros, uma vez na carreira. Esta página ordena por quanto cada um aparece em código de aplicação comum: sistemas web, APIs, aplicativos, bibliotecas.</p>
+          <div class="callout" data-kind="warn"><p>A classificação é uma <strong>estimativa qualitativa</strong>, baseada no que costuma aparecer em frameworks e projetos de aplicação. Não é fruto de uma medição. Ela muda com a linguagem: onde há função de primeira classe, o Strategy e o Command viram uma função; onde há contêiner de injeção, o Singleton deixa de ser uma classe escrita à mão.</p></div>
+
+          <h2 id="por-nivel">Por nível</h2>
+          <h3 id="muito-alta">Muito alta</h3>
+          <p>Aparece em quase todo projeto, muitas vezes sem que ninguém o chame pelo nome.</p>
+          <p><a href="comportamentais/strategy/explicacao.html">Strategy</a>, <a href="comportamentais/observer/explicacao.html">Observer</a>, <a href="criacionais/factory-method/explicacao.html">Factory Method</a>, <a href="estruturais/adapter/explicacao.html">Adapter</a>, <a href="estruturais/facade/explicacao.html">Facade</a>, <a href="comportamentais/iterator/explicacao.html">Iterator</a>.</p>
+          <h3 id="alta">Alta</h3>
+          <p>Aparece em boa parte dos projetos, quase sempre num ponto específico.</p>
+          <p><a href="criacionais/builder/explicacao.html">Builder</a>, <a href="estruturais/decorator/explicacao.html">Decorator</a>, <a href="criacionais/singleton/explicacao.html">Singleton</a>, <a href="comportamentais/command/explicacao.html">Command</a>, <a href="comportamentais/template-method/explicacao.html">Template Method</a>, <a href="estruturais/proxy/explicacao.html">Proxy</a>.</p>
+          <h3 id="media">Média</h3>
+          <p>Aparece quando o problema é daquele formato, o que não acontece em todo sistema.</p>
+          <p><a href="comportamentais/state/explicacao.html">State</a>, <a href="estruturais/composite/explicacao.html">Composite</a>, <a href="comportamentais/chain-of-responsibility/explicacao.html">Chain of Responsibility</a>, <a href="criacionais/abstract-factory/explicacao.html">Abstract Factory</a>, <a href="comportamentais/mediator/explicacao.html">Mediator</a>.</p>
+          <h3 id="baixa">Baixa</h3>
+          <p>Útil em casos conhecidos e bem delimitados. Se você não está num deles, não procure um.</p>
+          <p><a href="criacionais/prototype/explicacao.html">Prototype</a>, <a href="comportamentais/memento/explicacao.html">Memento</a>, <a href="estruturais/bridge/explicacao.html">Bridge</a>, <a href="comportamentais/visitor/explicacao.html">Visitor</a>.</p>
+          <h3 id="rara">Rara</h3>
+          <p>Pertence a domínios específicos. Vale conhecer a ideia; é raro precisar escrever.</p>
+          <p><a href="estruturais/flyweight/explicacao.html">Flyweight</a>, <a href="comportamentais/interpreter/explicacao.html">Interpreter</a>.</p>
+
+          <h2 id="tabela">Tabela completa</h2>
+          <p>Do mais frequente ao menos frequente, com o lugar em que cada padrão costuma aparecer.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Frequência</th><th>Pattern</th><th>Grupo</th><th>Onde aparece</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Muito alta</strong></td><td><a href="comportamentais/strategy/explicacao.html">Strategy</a></td><td>Comportamental</td><td>Troca de regra de cálculo, de ordenação, de pagamento; em linguagens com função de primeira classe, é só passar uma função.</td></tr>
+                <tr><td><strong>Muito alta</strong></td><td><a href="comportamentais/observer/explicacao.html">Observer</a></td><td>Comportamental</td><td>Eventos de interface, filas, webhooks, <code>addEventListener</code>, stores reativos.</td></tr>
+                <tr><td><strong>Muito alta</strong></td><td><a href="criacionais/factory-method/explicacao.html">Factory Method</a></td><td>Criacional</td><td>Construtores nomeados, <code>createX()</code>, métodos estáticos que escolhem a classe devolvida.</td></tr>
+                <tr><td><strong>Muito alta</strong></td><td><a href="estruturais/adapter/explicacao.html">Adapter</a></td><td>Estrutural</td><td>Integração com API de terceiros, biblioteca antiga, SDK com interface que não é a sua.</td></tr>
+                <tr><td><strong>Muito alta</strong></td><td><a href="estruturais/facade/explicacao.html">Facade</a></td><td>Estrutural</td><td>Um serviço de aplicação que esconde três chamadas na ordem certa; um SDK com um cliente simples na frente.</td></tr>
+                <tr><td><strong>Muito alta</strong></td><td><a href="comportamentais/iterator/explicacao.html">Iterator</a></td><td>Comportamental</td><td>Já vem pronto: <code>for…of</code>, geradores, streams. Você o usa todo dia e o escreve raramente.</td></tr>
+                <tr><td><strong>Alta</strong></td><td><a href="criacionais/builder/explicacao.html">Builder</a></td><td>Criacional</td><td>Objeto com muitos campos opcionais: consultas, requisições HTTP, configurações, objetos de teste.</td></tr>
+                <tr><td><strong>Alta</strong></td><td><a href="estruturais/decorator/explicacao.html">Decorator</a></td><td>Estrutural</td><td>Middlewares, logging, cache e autenticação em volta de um serviço; decorators da linguagem.</td></tr>
+                <tr><td><strong>Alta</strong></td><td><a href="criacionais/singleton/explicacao.html">Singleton</a></td><td>Criacional</td><td>Configuração, pool de conexões, logger. Hoje costuma vir do contêiner de injeção, como escopo, e não escrito à mão.</td></tr>
+                <tr><td><strong>Alta</strong></td><td><a href="comportamentais/command/explicacao.html">Command</a></td><td>Comportamental</td><td>Desfazer e refazer, filas de tarefas, botões e atalhos que disparam a mesma ação.</td></tr>
+                <tr><td><strong>Alta</strong></td><td><a href="comportamentais/template-method/explicacao.html">Template Method</a></td><td>Comportamental</td><td>Classe base de framework com ganchos para sobrescrever: testes, jobs, importadores.</td></tr>
+                <tr><td><strong>Alta</strong></td><td><a href="estruturais/proxy/explicacao.html">Proxy</a></td><td>Estrutural</td><td>Carregamento sob demanda, cache transparente, controle de acesso; o ORM usa muito.</td></tr>
+                <tr><td><strong>Média</strong></td><td><a href="comportamentais/state/explicacao.html">State</a></td><td>Comportamental</td><td>Fluxos com fases bem definidas: pedido, pagamento, documento em revisão, conexão.</td></tr>
+                <tr><td><strong>Média</strong></td><td><a href="estruturais/composite/explicacao.html">Composite</a></td><td>Estrutural</td><td>Árvores: menus, pastas, componentes de interface, organogramas.</td></tr>
+                <tr><td><strong>Média</strong></td><td><a href="comportamentais/chain-of-responsibility/explicacao.html">Chain of Responsibility</a></td><td>Comportamental</td><td>Cadeia de validações, pipeline de middlewares, tratamento de pedido em níveis.</td></tr>
+                <tr><td><strong>Média</strong></td><td><a href="criacionais/abstract-factory/explicacao.html">Abstract Factory</a></td><td>Criacional</td><td>Suporte a vários temas, bancos ou plataformas em que as peças precisam combinar entre si.</td></tr>
+                <tr><td><strong>Média</strong></td><td><a href="comportamentais/mediator/explicacao.html">Mediator</a></td><td>Comportamental</td><td>Telas com muitos campos que dependem uns dos outros; chat; coordenação entre módulos.</td></tr>
+                <tr><td><strong>Baixa</strong></td><td><a href="criacionais/prototype/explicacao.html">Prototype</a></td><td>Criacional</td><td>Clonar um objeto caro de montar: modelos de documento, estado inicial de jogo.</td></tr>
+                <tr><td><strong>Baixa</strong></td><td><a href="comportamentais/memento/explicacao.html">Memento</a></td><td>Comportamental</td><td>Snapshots para desfazer em editores, formulários com rascunho, pontos de restauração.</td></tr>
+                <tr><td><strong>Baixa</strong></td><td><a href="estruturais/bridge/explicacao.html">Bridge</a></td><td>Estrutural</td><td>Duas dimensões que crescem separadas: formas e renderizadores, controle e dispositivo.</td></tr>
+                <tr><td><strong>Baixa</strong></td><td><a href="comportamentais/visitor/explicacao.html">Visitor</a></td><td>Comportamental</td><td>Operações novas sobre uma estrutura estável de tipos: compiladores, analisadores de árvore.</td></tr>
+                <tr><td><strong>Rara</strong></td><td><a href="estruturais/flyweight/explicacao.html">Flyweight</a></td><td>Estrutural</td><td>Milhares de objetos quase iguais em memória: jogos, editores de texto, mapas.</td></tr>
+                <tr><td><strong>Rara</strong></td><td><a href="comportamentais/interpreter/explicacao.html">Interpreter</a></td><td>Comportamental</td><td>Linguagem de regras ou de consulta própria. Na prática, costuma-se usar um parser pronto.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="por-onde-comecar">Por onde começar</h2>
+          <p>Estude na ordem da tabela, de cima para baixo. Os de frequência muito alta e alta cobrem a maior parte do que você vai ler em código de outras pessoas, e vários deles você já usa sem o nome.</p>
+          <p>Os de frequência baixa e rara servem para reconhecer. Quando um deles aparecer, você identifica a forma e sabe onde voltar para ver os detalhes.</p>
+          <p>A visão geral dos três grupos está na <a href="patterns-introducao.html">Introdução</a>.</p>
+        </div>
+
+        <nav class="pager" data-shell="pager" aria-label="Páginas vizinhas"></nav>
+      </main>
+      <aside class="toc" id="toc" data-toc aria-label="Nesta página"></aside>
+    </div>
+    <footer class="site-foot" data-shell="footer"></footer>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<dialog class="search" id="search" data-shell="search" aria-label="Buscar no DevMap"></dialog>
+
+<script src="../../assets/js/site.js"></script>
+<script src="../../assets/js/shell.js"></script>
+<script src="../../assets/js/ds.js"></script>
+</body>
+</html>

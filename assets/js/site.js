@@ -58,6 +58,31 @@ window.DEVMAP = {
               id: 'introducao',
               label: 'Introdução',
               summary: 'Os cinco princípios, o que cada um resolve e por onde começar.'
+            },
+            {
+              id: 'single-responsibility',
+              label: 'Single Responsibility',
+              summary: 'Como dar a cada motivo de mudança a sua própria classe, para uma mudança não arrastar as outras.'
+            },
+            {
+              id: 'open-closed',
+              label: 'Open/Closed',
+              summary: 'Como acrescentar um caso novo escrevendo código novo, sem reabrir o que já funcionava.'
+            },
+            {
+              id: 'liskov-substitution',
+              label: 'Liskov Substitution',
+              summary: 'Como garantir que a subclasse entra no lugar da base sem que quem chama precise perguntar o tipo.'
+            },
+            {
+              id: 'interface-segregation',
+              label: 'Interface Segregation',
+              summary: 'Como evitar interfaces largas que obrigam a implementar, e a conhecer, o que não se usa.'
+            },
+            {
+              id: 'dependency-inversion',
+              label: 'Dependency Inversion',
+              summary: 'Como fazer a regra de negócio mandar na infraestrutura, e não o contrário.'
             }
           ]
         },
@@ -65,9 +90,51 @@ window.DEVMAP = {
           group: 'Design Pattern',
           pages: [
             {
+              id: 'patterns-introducao',
+              label: 'Introdução',
+              summary: 'O que são os padrões, o que cada grupo resolve e a tabela com os 23 patterns.'
+            },
+            {
+              id: 'patterns-frequencia',
+              label: 'Frequência de uso',
+              summary: 'Quais padrões aparecem mais no dia a dia e por onde começar a estudar.'
+            },
+            {
               folder: 'criacionais',
               label: 'Criacionais',
               pages: [
+                {
+                  folder: 'singleton',
+                  label: 'Singleton',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como garantir que um objeto existe uma vez só e que todo mundo chega nele.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Cinco situações reais, com o código antes e depois do Singleton.'
+                    }
+                  ]
+                },
+                {
+                  folder: 'factory-method',
+                  label: 'Factory Method',
+                  pages: [
+                    {
+                      id: 'explicacao',
+                      label: 'Explicação',
+                      summary: 'Como criar um objeto sem saber a classe exata, entregando a escolha às subclasses.'
+                    },
+                    {
+                      id: 'uso',
+                      label: 'Uso',
+                      summary: 'Quatro situações reais, com o código antes e depois do Factory Method.'
+                    }
+                  ]
+                },
                 {
                   folder: 'abstract-factory',
                   label: 'Abstract Factory',
@@ -101,22 +168,6 @@ window.DEVMAP = {
                   ]
                 },
                 {
-                  folder: 'factory-method',
-                  label: 'Factory Method',
-                  pages: [
-                    {
-                      id: 'explicacao',
-                      label: 'Explicação',
-                      summary: 'Como criar um objeto sem saber a classe exata, entregando a escolha às subclasses.'
-                    },
-                    {
-                      id: 'uso',
-                      label: 'Uso',
-                      summary: 'Quatro situações reais, com o código antes e depois do Factory Method.'
-                    }
-                  ]
-                },
-                {
                   folder: 'prototype',
                   label: 'Prototype',
                   pages: [
@@ -129,22 +180,6 @@ window.DEVMAP = {
                       id: 'uso',
                       label: 'Uso',
                       summary: 'Três situações reais, com o código antes e depois do Prototype.'
-                    }
-                  ]
-                },
-                {
-                  folder: 'singleton',
-                  label: 'Singleton',
-                  pages: [
-                    {
-                      id: 'explicacao',
-                      label: 'Explicação',
-                      summary: 'Como garantir que um objeto existe uma vez só e que todo mundo chega nele.'
-                    },
-                    {
-                      id: 'uso',
-                      label: 'Uso',
-                      summary: 'Cinco situações reais, com o código antes e depois do Singleton.'
                     }
                   ]
                 }
