@@ -1,0 +1,797 @@
+{
+  "titulo": "Fluxo de pedidos da loja",
+  "projeto": "loja",
+  "data": "2026-10-14",
+  "escopo": {
+    "descricao": "Recebe um pedido, calcula desconto e frete, cobra no gateway escolhido, grava no banco e avisa o cliente por e-mail. Também marca pedidos como enviados ou cancelados.",
+    "ponto_de_entrada": "loja/pedidos.py:GerenciadorDePedidos.processar",
+    "arquivos": [
+      {
+        "caminho": "loja/pedidos.py",
+        "papel": "Todo o fluxo: validação, preço, pagamento, persistência, e-mail e mudança de status"
+      },
+      {
+        "caminho": "loja/relatorio.py",
+        "papel": "Exporta as vendas em CSV a partir da tabela `pedidos`"
+      },
+      {
+        "caminho": "loja/util.py",
+        "papel": "Formatação de moeda, sem uso dentro do fluxo"
+      },
+      {
+        "caminho": "main.py",
+        "papel": "Único chamador de `GerenciadorDePedidos` no projeto"
+      }
+    ],
+    "fora_do_escopo": [
+      "As APIs da PagFácil e da PayMundi, que são externas e só foram lidas para entender o formato das respostas"
+    ],
+    "testes": "Não há testes. Nada no repositório exercita `processar`, `marcar_enviado` ou `cancelar`."
+  },
+  "resumo": {
+    "veredito": "Refatoração recomendada antes do próximo gateway ou regra de desconto",
+    "prioridade": "alta",
+    "texto": "Todo o fluxo de pedidos mora em um método de 84 linhas que fala com banco, dois gateways de pagamento e servidor de e-mail. Ele funciona, mas cada mudança comercial, financeira ou de comunicação passa pelo mesmo lugar, e nada pode ser testado sem rede, SMTP e relógio de verdade.\n\nA proposta é pequena de propósito: separar o cálculo do pedido, que é a regra, do que é infraestrutura; pôr cada gateway atrás de um adaptador; e transformar as regras de desconto em funções escolhidas pelo tipo de cliente. Cinco hipóteses de pattern que pareciam caber ficaram de fora, cada uma com o gatilho que a traria de volta.",
+    "destaques": [
+      "Um gateway novo hoje exige editar a regra do pedido; com os adaptadores, vira uma classe nova [[A2]] [[R3]]",
+      "O cálculo de total (desconto, Black Friday, frete) passa a ser uma função pura, testável em milissegundos [[A1]] [[R1]]",
+      "Banco e e-mail entram pelo construtor, e `GerenciadorDePedidos()` continua funcionando para o `main.py` [[A4]] [[R2]]",
+      "State, Observer, Facade, Template Method e um Strategy para o frete foram avaliados e descartados por enquanto: o código ainda não tem as forças que os justificam",
+      "Há bugs que a refatoração **não** corrige, como a cobrança antes da gravação [[B2]]; eles ficam num passo próprio, decidido à parte"
+    ],
+    "esforco": "3 a 4 dias",
+    "risco": "Médio. Sem testes hoje; o passo 0 cria a rede de segurança antes de qualquer mudança."
+  },
+  "fluxo": {
+    "descricao": "O caminho principal é `processar`. As outras duas operações, `marcar_enviado` e `cancelar`, mudam o status de um pedido já gravado.",
+    "etapas": [
+      {
+        "id": "E1",
+        "nome": "Validar o pedido",
+        "onde": "loja/pedidos.py:25-32",
+        "descricao": "Confere itens, e-mail e quantidades; levanta `ValueError` com a mensagem do problema.",
+        "entrada": "`dados` (dict)",
+        "saida": "—",
+        "efeitos": [],
+        "achados": [
+          "A1"
+        ]
+      },
+      {
+        "id": "E2",
+        "nome": "Calcular o desconto",
+        "onde": "loja/pedidos.py:34-49",
+        "descricao": "Escolhe a regra pelo texto `tipo_cliente` e soma 5% em novembro.",
+        "entrada": "itens, `tipo_cliente`",
+        "saida": "`total` sem frete",
+        "efeitos": [
+          "relogio"
+        ],
+        "achados": [
+          "A1",
+          "A3"
+        ]
+      },
+      {
+        "id": "E3",
+        "nome": "Calcular o frete",
+        "onde": "loja/pedidos.py:51-58",
+        "descricao": "R$ 15 para SP, RJ e MG, R$ 30 para o resto, grátis acima de R$ 300.",
+        "entrada": "`uf`, `total`",
+        "saida": "`total` com frete",
+        "efeitos": [],
+        "achados": [
+          "A1"
+        ]
+      },
+      {
+        "id": "E4",
+        "nome": "Cobrar no gateway",
+        "onde": "loja/pedidos.py:60-85",
+        "descricao": "Monta a requisição de cada fornecedor e interpreta a resposta de cada um.",
+        "entrada": "`total`, `cartao`, `gateway`",
+        "saida": "`transacao`",
+        "efeitos": [
+          "rede",
+          "env"
+        ],
+        "achados": [
+          "A2"
+        ]
+      },
+      {
+        "id": "E5",
+        "nome": "Gravar o pedido",
+        "onde": "loja/pedidos.py:87-93",
+        "descricao": "INSERT com status `pago`.",
+        "entrada": "dados do pedido",
+        "saida": "`pedido_id`",
+        "efeitos": [
+          "banco"
+        ],
+        "achados": [
+          "A4"
+        ]
+      },
+      {
+        "id": "E6",
+        "nome": "Avisar o cliente",
+        "onde": "loja/pedidos.py:95-106",
+        "descricao": "Envia o e-mail de confirmação e escreve uma linha de log no stdout.",
+        "entrada": "`pedido_id`, `total`, `transacao`",
+        "saida": "dict com `id`, `total`, `transacao`",
+        "efeitos": [
+          "email",
+          "stdout",
+          "relogio"
+        ],
+        "achados": [
+          "A4"
+        ]
+      },
+      {
+        "id": "E7",
+        "nome": "Mudar o status",
+        "onde": "loja/pedidos.py:109-147",
+        "descricao": "`marcar_enviado` e `cancelar`: leem o status, atualizam e mandam e-mail.",
+        "entrada": "`pedido_id`",
+        "saida": "—",
+        "efeitos": [
+          "banco",
+          "email"
+        ],
+        "achados": [
+          "A4",
+          "A5"
+        ]
+      }
+    ]
+  },
+  "elementos": [
+    {
+      "nome": "GerenciadorDePedidos",
+      "tipo": "classe",
+      "onde": "loja/pedidos.py:15",
+      "responsabilidades": [
+        {
+          "descricao": "Validar o pedido e calcular desconto e frete",
+          "ator": "Comercial"
+        },
+        {
+          "descricao": "Falar com a PagFácil e a PayMundi",
+          "ator": "Financeiro"
+        },
+        {
+          "descricao": "Criar a tabela e gravar pedidos",
+          "ator": "Dados"
+        },
+        {
+          "descricao": "Texto e envio dos e-mails",
+          "ator": "Atendimento"
+        },
+        {
+          "descricao": "Regras de transição de status",
+          "ator": "Operações"
+        }
+      ]
+    },
+    {
+      "nome": "gerar_relatorio_vendas",
+      "tipo": "função",
+      "onde": "loja/relatorio.py:1",
+      "responsabilidades": [
+        {
+          "descricao": "Consultar e formatar o CSV de vendas",
+          "ator": "Financeiro"
+        }
+      ]
+    },
+    {
+      "nome": "formatar_moeda",
+      "tipo": "função",
+      "onde": "loja/util.py:1",
+      "responsabilidades": [
+        {
+          "descricao": "Formatar valores em reais",
+          "ator": "Atendimento"
+        }
+      ]
+    }
+  ],
+  "contrato": [
+    "`GerenciadorDePedidos()` sem argumentos, lendo `LOJA_DB`, `SMTP_HOST`, `PAGFACIL_KEY` e `PAYMUNDI_KEY` do ambiente.",
+    "`processar(dados: dict)` devolve `{\"id\", \"total\", \"transacao\"}`, com `total` arredondado como hoje.",
+    "Mensagens de erro: `pedido sem itens`, `email inválido`, `quantidade inválida para <sku>`, `pagamento recusado: …`, `gateway desconhecido: …`, `pedido não existe` e as de transição de status.",
+    "Ordem dos efeitos: cobra, grava, envia o e-mail, escreve o log.",
+    "Tabela `pedidos` com as colunas atuais, lida também por `relatorio.py`.",
+    "Assunto e texto dos três e-mails."
+  ],
+  "achados": [
+    {
+      "id": "A1",
+      "titulo": "Uma classe com cinco motivos para mudar",
+      "severidade": "alta",
+      "categoria": "responsabilidades",
+      "principios": [
+        "single-responsibility"
+      ],
+      "sinal": "Imports de mundos distantes no mesmo arquivo: `sqlite3`, `smtplib` e `urllib` ao lado da regra de preço",
+      "evidencias": [
+        {
+          "arquivo": "loja/pedidos.py",
+          "linhas": [
+            1,
+            12
+          ],
+          "destaque": [
+            [
+              4,
+              6
+            ],
+            [
+              9,
+              12
+            ]
+          ],
+          "nota": "O arquivo da regra de preço importa banco, e-mail e HTTP, e lê quatro variáveis de ambiente."
+        },
+        {
+          "arquivo": "loja/pedidos.py",
+          "linhas": [
+            34,
+            58
+          ],
+          "destaque": [
+            34,
+            51
+          ],
+          "nota": "Desconto e frete, que são a regra comercial, ficam no meio do mesmo método que cobra, grava e envia e-mail."
+        }
+      ],
+      "impacto": "Comercial, financeiro, dados, atendimento e operações pedem mudanças no mesmo arquivo, e no mesmo método. Mudar o texto do e-mail exige reler o cálculo de preço, e testar o desconto de atacado exige subir banco, gateway e SMTP falsos. O `git blame` da regra de preço vira o histórico de tudo.",
+      "recomendacoes": [
+        "R1"
+      ]
+    },
+    {
+      "id": "A2",
+      "titulo": "Os gateways de pagamento moram dentro da regra do pedido",
+      "severidade": "alta",
+      "categoria": "acoplamento",
+      "principios": [
+        "dependency-inversion",
+        "open-closed"
+      ],
+      "sinal": "Dois fornecedores para a mesma operação: `if gateway == \"pagfacil\"` … `elif gateway == \"paymundi\"`, com os códigos de retorno de cada um comparados como texto",
+      "evidencias": [
+        {
+          "arquivo": "loja/pedidos.py",
+          "linhas": [
+            61,
+            85
+          ],
+          "destaque": [
+            62,
+            70,
+            73,
+            81,
+            85
+          ]
+        }
+      ],
+      "impacto": "O terceiro gateway entra como mais um `elif` dentro de `processar`, ao lado da regra de preço. O formato de cada fornecedor (centavos ou reais, `situacao` ou `status`) vaza para o pedido, e não há como testar a cobrança sem rede ou sem `patch` em `urllib`.",
+      "recomendacoes": [
+        "R3"
+      ]
+    },
+    {
+      "id": "A3",
+      "titulo": "O tipo de cliente escolhe a regra de desconto numa escada de `if`",
+      "severidade": "media",
+      "categoria": "variação",
+      "principios": [
+        "open-closed",
+        "dependency-inversion"
+      ],
+      "sinal": "Um texto escolhe o algoritmo (`if tipo == \"vip\"` … `elif`), e o relógio é lido dentro da regra (`datetime.date.today()`)",
+      "evidencias": [
+        {
+          "arquivo": "loja/pedidos.py",
+          "linhas": [
+            35,
+            49
+          ],
+          "destaque": [
+            37,
+            39,
+            41,
+            43,
+            47
+          ]
+        }
+      ],
+      "impacto": "Cada tipo de cliente novo é um `elif` no meio do fluxo de pagamento. A Black Friday depende do mês real, então o teste dessa regra só passa em novembro, ou exige `patch` no `datetime`.",
+      "recomendacoes": [
+        "R4"
+      ]
+    },
+    {
+      "id": "A4",
+      "titulo": "Banco e e-mail são criados e chamados dentro da regra",
+      "severidade": "media",
+      "categoria": "acoplamento",
+      "principios": [
+        "dependency-inversion",
+        "single-responsibility"
+      ],
+      "sinal": "Construtor de classe concreta dentro do negócio (`sqlite3.connect`, `smtplib.SMTP`) e o mesmo bloco de e-mail copiado três vezes",
+      "evidencias": [
+        {
+          "arquivo": "loja/pedidos.py",
+          "linhas": [
+            16,
+            22
+          ],
+          "destaque": [
+            17
+          ],
+          "nota": "Instanciar a classe já abre o banco e cria a tabela."
+        },
+        {
+          "arquivo": "loja/pedidos.py",
+          "linhas": [
+            117,
+            123
+          ],
+          "destaque": [
+            [
+              122,
+              123
+            ]
+          ],
+          "nota": "O mesmo bloco aparece nas linhas 96–104 e 137–143, mudando só o assunto e o texto."
+        }
+      ],
+      "impacto": "Trocar SQLite por outro banco, ou SMTP por um serviço de e-mail, significa editar a classe que calcula preço. O remetente `loja@loja.com` está escrito três vezes, e a próxima mudança vai esquecer uma delas.",
+      "recomendacoes": [
+        "R2"
+      ]
+    },
+    {
+      "id": "A5",
+      "titulo": "A mesma escada de status em duas operações",
+      "severidade": "baixa",
+      "categoria": "variação",
+      "principios": [
+        "open-closed"
+      ],
+      "sinal": "A mesma escada de `if` sobre a fase em vários métodos: `if status == \"pago\"` / `elif` no começo de `marcar_enviado` e de `cancelar`",
+      "evidencias": [
+        {
+          "arquivo": "loja/pedidos.py",
+          "linhas": [
+            113,
+            127
+          ],
+          "destaque": [
+            114,
+            124,
+            126
+          ],
+          "nota": "`cancelar` (linhas 133–147) repete a estrutura."
+        }
+      ],
+      "impacto": "As transições válidas não estão escritas em lugar nenhum: para saber de onde se chega a `cancelado`, é preciso ler os dois métodos. Hoje são três status e duas operações, então a dor ainda é pequena.",
+      "recomendacoes": []
+    }
+  ],
+  "recomendacoes": [
+    {
+      "id": "R1",
+      "titulo": "Tirar o cálculo do pedido de dentro do processamento",
+      "pattern": "single-responsibility",
+      "achados": [
+        "A1"
+      ],
+      "prioridade": 1,
+      "impacto": "alto",
+      "esforco": "M",
+      "onde": [
+        "`loja/pedidos.py:25-58` vira o novo `loja/calculo.py`",
+        "`processar` passa a chamar `validar(dados)` e `calcular_total(...)`"
+      ],
+      "porque": "A validação, o desconto e o frete são a regra comercial, e são o que mais muda. Hoje elas estão presas entre a cobrança e o banco. Separadas numa função pura, elas ganham um teste de uma linha e deixam de mudar junto com o resto.\n\nÉ o primeiro passo porque os outros dependem dele: sem o cálculo isolado, os adaptadores e as regras de desconto continuariam encostados no I/O.",
+      "teste_rapido": [
+        {
+          "pergunta": "Quem pede mudança aqui, e por quê? A resposta tem mais de um nome?",
+          "resposta": "Cinco nomes: comercial, financeiro, dados, atendimento e operações (ver Elementos).",
+          "ok": true
+        },
+        {
+          "pergunta": "É uma classe pequena e coesa, com um ator só?",
+          "resposta": "Não. São 147 linhas e cinco atores.",
+          "ok": true
+        },
+        {
+          "pergunta": "É script de uma vez ou protótipo?",
+          "resposta": "Não. É o fluxo de vendas, chamado em produção.",
+          "ok": true
+        },
+        {
+          "pergunta": "É só um método de seis linhas que faz duas coisas?",
+          "resposta": "Não. O cálculo tem 34 linhas e três regras com donos diferentes.",
+          "ok": true
+        }
+      ],
+      "papeis": [
+        {
+          "papel": "Regra de negócio, sem I/O",
+          "no_codigo": "`validar(dados)` e `calcular_total(itens, tipo_cliente, uf, hoje)` em `loja/calculo.py`"
+        },
+        {
+          "papel": "Quem junta as peças",
+          "no_codigo": "`GerenciadorDePedidos.processar`"
+        }
+      ],
+      "codigo_proposto": {
+        "titulo": "proposta — loja/calculo.py",
+        "codigo": "UF_FRETE_REDUZIDO = (\"SP\", \"RJ\", \"MG\")\n\n\ndef validar(dados):\n    if not dados.get(\"itens\"):\n        raise ValueError(\"pedido sem itens\")\n    if \"@\" not in dados.get(\"email\", \"\"):\n        raise ValueError(\"email inválido\")\n    for item in dados[\"itens\"]:\n        if item[\"qtd\"] <= 0:\n            raise ValueError(f\"quantidade inválida para {item['sku']}\")\n\n\ndef calcular_frete(uf, total):\n    if total > 300:\n        return 0\n    return 15.0 if uf in UF_FRETE_REDUZIDO else 30.0\n\n\ndef calcular_total(itens, tipo_cliente, uf, hoje):\n    subtotal = sum(i[\"preco\"] * i[\"qtd\"] for i in itens)\n    desconto = calcular_desconto(subtotal, tipo_cliente, hoje)  # R4\n    total = round(subtotal - desconto, 2)\n    return total + calcular_frete(uf, total)"
+      },
+      "quando_nao_usar": "Conferido contra \"Quando não aplicar\" do Single Responsibility: não é classe pequena e coesa, não é script de uma vez e não é um método de seis linhas. A separação é por **motivo de mudança**, e não uma classe por verbo: o cálculo inteiro fica num módulo só.",
+      "custo": "Um módulo a mais. Quem lê `processar` precisa abrir `calculo.py` para ver a conta, o que é o objetivo."
+    },
+    {
+      "id": "R2",
+      "titulo": "Receber o banco e o e-mail pelo construtor",
+      "pattern": "dependency-inversion",
+      "achados": [
+        "A4"
+      ],
+      "prioridade": 2,
+      "impacto": "alto",
+      "esforco": "M",
+      "onde": [
+        "`loja/pedidos.py:16-22` e os blocos de SQL e SMTP",
+        "novos `loja/repositorio.py` e `loja/notificacao.py`"
+      ],
+      "porque": "O banco e o e-mail são as duas dependências que mais atrapalham o teste e que têm chance real de trocar. A regra define o que precisa (`salvar`, `buscar_status`, `avisar`) e as classes de SQLite e SMTP implementam isso.\n\nO `GerenciadorDePedidos()` sem argumentos continua funcionando: o construtor monta as versões padrão a partir do ambiente quando nada é passado. O `main.py` não muda.",
+      "teste_rapido": [
+        {
+          "pergunta": "A dependência muda, é lenta ou é difícil de testar?",
+          "resposta": "As duas são difíceis de testar (SQLite em disco, SMTP real), e o e-mail tem troca provável para um serviço.",
+          "ok": true
+        },
+        {
+          "pergunta": "É biblioteca padrão estável e sem efeito colateral?",
+          "resposta": "Não. `sqlite3` e `smtplib` fazem I/O.",
+          "ok": true
+        },
+        {
+          "pergunta": "É script curto, em que o ponto de montagem seria maior que o código?",
+          "resposta": "Não. A montagem cabe em dez linhas no construtor.",
+          "ok": true
+        }
+      ],
+      "papeis": [
+        {
+          "papel": "Abstração definida pela regra",
+          "no_codigo": "`RepositorioDePedidos` e `Notificador` (`Protocol`)"
+        },
+        {
+          "papel": "Detalhe",
+          "no_codigo": "`RepositorioSQLite`, `NotificadorSMTP`"
+        },
+        {
+          "papel": "Ponto de montagem",
+          "no_codigo": "`GerenciadorDePedidos.__init__` com valores padrão"
+        }
+      ],
+      "codigo_proposto": {
+        "titulo": "proposta — loja/pedidos.py (construtor)",
+        "codigo": "class GerenciadorDePedidos:\n    def __init__(self, repositorio=None, notificador=None, gateways=None, relogio=datetime.date.today):\n        self._repositorio = repositorio or RepositorioSQLite(os.environ.get(\"LOJA_DB\", \"loja.db\"))\n        self._notificador = notificador or NotificadorSMTP(os.environ.get(\"SMTP_HOST\", \"smtp.loja.com\"))\n        self._gateways = gateways or gateways_padrao()  # R3\n        self._hoje = relogio"
+      },
+      "quando_nao_usar": "Conferido contra \"Quando não aplicar\" do Dependency Inversion. `json` e `datetime` ficam diretos; só o relógio é injetado, porque a regra de Black Friday depende dele. Não haverá `IRepositorio` espelhando a classe: as interfaces têm só os métodos que o pedido usa.",
+      "custo": "Duas interfaces pequenas e um construtor com parâmetros opcionais. O \"ir para a definição\" de `salvar` cai no `Protocol`."
+    },
+    {
+      "id": "R3",
+      "titulo": "Um adaptador por gateway, atrás de uma interface do pedido",
+      "pattern": "adapter",
+      "achados": [
+        "A2"
+      ],
+      "prioridade": 3,
+      "impacto": "alto",
+      "esforco": "M",
+      "onde": [
+        "`loja/pedidos.py:61-85` sai da regra",
+        "novo `loja/pagamentos.py` com `PagFacil` e `PayMundi`"
+      ],
+      "porque": "O pedido quer uma coisa só: cobrar um valor num cartão e receber o id da transação. Cada fornecedor faz isso com outro nome de campo, outra unidade (centavos ou reais) e outro formato de erro. O adaptador é o único lugar que conhece esse formato, e um gateway novo vira uma classe nova, registrada no dicionário de gateways, sem tocar no pedido.",
+      "teste_rapido": [
+        {
+          "pergunta": "Já existe algo pronto que resolve?",
+          "resposta": "Sim: as APIs da PagFácil e da PayMundi.",
+          "ok": true
+        },
+        {
+          "pergunta": "A interface dele é diferente da que o seu código precisa?",
+          "resposta": "Sim. Campos, unidade de valor e formato de erro diferentes entre si e do que o pedido precisa.",
+          "ok": true
+        },
+        {
+          "pergunta": "Você pode mudar a interface na origem?",
+          "resposta": "Não. São APIs de terceiros.",
+          "ok": true
+        },
+        {
+          "pergunta": "A diferença vai aparecer em mais de um lugar, ou atrapalha testar?",
+          "resposta": "Atrapalha testar: hoje só dá para testar `processar` com `patch` em `urllib`.",
+          "ok": true
+        }
+      ],
+      "papeis": [
+        {
+          "papel": "Alvo",
+          "no_codigo": "`Gateway` (`Protocol`) com `cobrar(valor, cartao) -> str`"
+        },
+        {
+          "papel": "Cliente",
+          "no_codigo": "`GerenciadorDePedidos.processar`"
+        },
+        {
+          "papel": "Adaptado",
+          "no_codigo": "As APIs HTTP da PagFácil e da PayMundi"
+        },
+        {
+          "papel": "Adaptador",
+          "no_codigo": "`PagFacil`, `PayMundi`"
+        }
+      ],
+      "codigo_proposto": {
+        "titulo": "proposta — loja/pagamentos.py",
+        "codigo": "class Gateway(Protocol):\n    def cobrar(self, valor: float, cartao: str) -> str: ...\n\n\nclass PagFacil:\n    def __init__(self, chave):\n        self._chave = chave\n\n    def cobrar(self, valor, cartao):\n        resp = _post(\"https://api.pagfacil.com/v1/cobrancas\",\n                     {\"valor_centavos\": int(valor * 100), \"cartao\": cartao},\n                     {\"Authorization\": \"Bearer \" + self._chave})\n        if resp[\"situacao\"] != \"APROVADA\":\n            raise Exception(\"pagamento recusado: \" + resp.get(\"motivo\", \"\"))\n        return resp[\"id_cobranca\"]\n\n\nclass PayMundi:\n    ...  # mesma forma, com amount/currency/card_token e status == \"succeeded\"\n\n\ndef gateways_padrao():\n    return {\"pagfacil\": PagFacil(os.environ.get(\"PAGFACIL_KEY\", \"\")),\n            \"paymundi\": PayMundi(os.environ.get(\"PAYMUNDI_KEY\", \"\"))}",
+        "nota": "No pedido, a escada de `if` vira `self._gateways[gateway].cobrar(total, dados[\"cartao\"])`, com a mesma mensagem para gateway desconhecido."
+      },
+      "quando_nao_usar": "Nenhuma linha de \"Quando não usar\" se aplica: o projeto não controla os dois lados, são dois fornecedores, não é código descartável, e a interface alvo é diferente da de cada API.",
+      "custo": "Um módulo e uma interface a mais. O `int(valor * 100)` da PagFácil continua igual de propósito: a correção do arredondamento é um bug separado."
+    },
+    {
+      "id": "R4",
+      "titulo": "Regras de desconto como funções escolhidas pelo tipo de cliente",
+      "pattern": "strategy",
+      "achados": [
+        "A3"
+      ],
+      "prioridade": 4,
+      "impacto": "medio",
+      "esforco": "P",
+      "onde": [
+        "`loja/pedidos.py:36-48` vira `calcular_desconto` em `loja/calculo.py`"
+      ],
+      "porque": "Há quatro jeitos de calcular o desconto, com a mesma entrada (subtotal) e a mesma saída (valor), e a escolha vem do dado do pedido. É Strategy, mas na forma que a própria página recomenda para variantes pequenas e sem estado: **funções** num dicionário, e não uma classe por regra. Três das quatro regras diferem só num número, e por isso viram `percentual(0.10)`.\n\nO relógio entra como parâmetro (`hoje`), e o teste da Black Friday passa a rodar em qualquer mês.",
+      "teste_rapido": [
+        {
+          "pergunta": "Existe mais de um jeito de verdade?",
+          "resposta": "Sim: comum, vip, funcionário e atacado.",
+          "ok": true
+        },
+        {
+          "pergunta": "Os jeitos recebem as mesmas entradas e devolvem o mesmo tipo de resultado?",
+          "resposta": "Sim: subtotal → desconto.",
+          "ok": true
+        },
+        {
+          "pergunta": "A escolha é fixa por tipo, para sempre?",
+          "resposta": "Não há classe de cliente: o tipo chega como texto no pedido.",
+          "ok": true
+        },
+        {
+          "pergunta": "A escolha vem de fora e pode mudar sem mexer na classe?",
+          "resposta": "Sim, vem do dado do pedido.",
+          "ok": true
+        }
+      ],
+      "papeis": [
+        {
+          "papel": "Estratégia",
+          "no_codigo": "Uma função `subtotal -> desconto`"
+        },
+        {
+          "papel": "Estratégias concretas",
+          "no_codigo": "`percentual(0.10)`, `percentual(0.30)`, `atacado`"
+        },
+        {
+          "papel": "Contexto",
+          "no_codigo": "`calcular_desconto`, que escolhe pelo `tipo_cliente`"
+        }
+      ],
+      "codigo_proposto": {
+        "titulo": "proposta — loja/calculo.py (desconto)",
+        "codigo": "def percentual(taxa):\n    return lambda subtotal: subtotal * taxa\n\n\ndef atacado(subtotal):\n    return subtotal * (0.15 if subtotal > 1000 else 0.05)\n\n\nREGRAS_DE_DESCONTO = {\n    \"vip\": percentual(0.10),\n    \"funcionario\": percentual(0.30),\n    \"atacado\": atacado,\n}\n\n\ndef calcular_desconto(subtotal, tipo_cliente, hoje):\n    regra = REGRAS_DE_DESCONTO.get(tipo_cliente, lambda s: 0)\n    desconto = regra(subtotal)\n    if hoje.month == 11 and tipo_cliente != \"funcionario\":  # black friday\n        desconto += subtotal * 0.05\n    return desconto"
+      },
+      "quando_nao_usar": "Duas linhas de \"Quando não usar\" moldaram a forma: \"cada variante é uma função pequena e sem estado\" (então funções, não classes) e \"as variantes diferem em um número\" (então `percentual(taxa)`, não uma classe por taxa). Nenhuma impede o pattern.",
+      "custo": "A regra fica num dicionário em vez de à vista na escada de `if`. Para tipos de cliente vindos de configuração, o dicionário pode passar a ser montado a partir dela, sem mudar o resto."
+    }
+  ],
+  "descartados": [
+    {
+      "pattern": "state",
+      "achados": [
+        "A5"
+      ],
+      "sinal": "A mesma escada sobre `status` em `marcar_enviado` e `cancelar`",
+      "motivo": "Teste rápido, pergunta 4: as fases só decidem quais transições valem. Fora isso, cada operação faz a mesma coisa (atualiza e avisa). O \"Quando não usar\" do State indica um `enum` e um dicionário de transições, e a nota da página diz para começar com o `if` até a segunda ou terceira operação.",
+      "gatilho": "Uma terceira operação sobre o status (reembolso, devolução), ou uma fase que passe a ter comportamento próprio"
+    },
+    {
+      "pattern": "observer",
+      "achados": [
+        "A4"
+      ],
+      "sinal": "Pedido pago, enviado e cancelado disparam um e-mail",
+      "motivo": "Teste rápido, pergunta 1: só uma parte reage, e sempre a mesma. O notificador injetado em [[R2]] basta.",
+      "gatilho": "Um segundo interessado no mesmo evento (estoque, nota fiscal, analytics)"
+    },
+    {
+      "pattern": "facade",
+      "achados": [
+        "A1"
+      ],
+      "sinal": "`processar` executa validar → calcular → cobrar → gravar → avisar, nessa ordem",
+      "motivo": "Teste rápido, pergunta 2: só o `main.py` chama o fluxo. `GerenciadorDePedidos` continua como porta de entrada para preservar o contrato, sem uma camada nova.",
+      "gatilho": "Um segundo chamador (API, job, painel) repetindo a mesma sequência"
+    },
+    {
+      "pattern": "template-method",
+      "achados": [
+        "A2"
+      ],
+      "sinal": "Os dois gateways seguem o mesmo roteiro: montar corpo → POST → conferir status → ler id",
+      "motivo": "O que varia entre os dois é a tradução da interface de cada fornecedor, que é o caso do Adapter. Com dois adaptadores curtos, uma classe base só esconderia a diferença. O `_post` comum já tira a repetição.",
+      "gatilho": "Um terceiro gateway HTTP com o mesmo roteiro e passos obrigatórios em comum (assinatura, retentativa)"
+    },
+    {
+      "pattern": "strategy",
+      "achados": [
+        "A1"
+      ],
+      "sinal": "Regra de frete por UF no meio de `processar`",
+      "motivo": "Teste rápido, pergunta 1: há um jeito só de calcular o frete. Vira a função `calcular_frete` em [[R1]], sem interface.",
+      "gatilho": "Uma segunda forma de frete escolhida de fora (transportadora, retirada na loja)"
+    }
+  ],
+  "arquitetura": {
+    "antes": "loja/\n  pedidos.py     # validação, preço, pagamento, SQL, SMTP, status\n  relatorio.py   # CSV de vendas\n  util.py        # formatar_moeda\nmain.py",
+    "depois": "loja/\n  pedidos.py      # GerenciadorDePedidos: orquestra e monta os padrões\n  calculo.py      # validar, calcular_total, desconto, frete (sem I/O)\n  pagamentos.py   # Gateway (Protocol), PagFacil, PayMundi\n  repositorio.py  # RepositorioDePedidos (Protocol), RepositorioSQLite\n  notificacao.py  # Notificador (Protocol), NotificadorSMTP\n  relatorio.py    # sem mudança\n  util.py         # sem mudança\nmain.py           # sem mudança",
+    "montagem": "O construtor de `GerenciadorDePedidos` é o único lugar que conhece SQLite, SMTP e as classes de gateway. Sem argumentos, ele lê o ambiente como hoje; nos testes, recebe falsos. `calculo.py` não importa nada de infraestrutura."
+  },
+  "roteiro": [
+    {
+      "passo": 0,
+      "titulo": "Rede de segurança",
+      "recomendacoes": [],
+      "esforco": "M",
+      "descricao": "Testes de caracterização de `processar`, `marcar_enviado` e `cancelar` com SQLite em arquivo temporário, `smtplib.SMTP` e `urllib.request.urlopen` trocados por falsos e a data fixada. Cobrir os tipos de cliente, novembro, frete por UF e acima de R$ 300, os dois gateways, recusa e gateway desconhecido, e as transições de status.",
+      "verificacao": "Os testes passam no código original, sem nenhuma mudança."
+    },
+    {
+      "passo": 1,
+      "titulo": "Cálculo do pedido fora do processamento",
+      "recomendacoes": [
+        "R1"
+      ],
+      "esforco": "M",
+      "descricao": "Criar `calculo.py` e fazer `processar` chamá-lo. Nenhuma assinatura pública muda.",
+      "verificacao": "Testes de caracterização verdes; testes novos de `calcular_total` sem I/O."
+    },
+    {
+      "passo": 2,
+      "titulo": "Regras de desconto como funções",
+      "recomendacoes": [
+        "R4"
+      ],
+      "esforco": "P",
+      "descricao": "Trocar a escada por `REGRAS_DE_DESCONTO` e receber `hoje` como parâmetro.",
+      "verificacao": "O teste da Black Friday roda com uma data de novembro fixada."
+    },
+    {
+      "passo": 3,
+      "titulo": "Banco e e-mail pelo construtor",
+      "recomendacoes": [
+        "R2"
+      ],
+      "esforco": "M",
+      "descricao": "Criar `repositorio.py` e `notificacao.py`, mover o SQL e os três blocos de e-mail, e montar os padrões no construtor.",
+      "verificacao": "`main.py` roda sem mudança; os testes de caracterização ficam verdes."
+    },
+    {
+      "passo": 4,
+      "titulo": "Adaptadores de gateway",
+      "recomendacoes": [
+        "R3"
+      ],
+      "esforco": "M",
+      "descricao": "Criar `pagamentos.py` e trocar a escada de `if` por `self._gateways[gateway]`, mantendo a mensagem `gateway desconhecido`.",
+      "verificacao": "Testes de cada adaptador com `_post` falso; caracterização verde."
+    },
+    {
+      "passo": 5,
+      "titulo": "Correções, decididas à parte",
+      "recomendacoes": [],
+      "bugs": [
+        "B2",
+        "B1",
+        "B3"
+      ],
+      "esforco": "M",
+      "descricao": "Fora da refatoração. Cada correção muda o contrato e precisa de decisão: gravar o pedido como `pendente` antes de cobrar [[B2]], arredondar os centavos [[B1]] e pôr `timeout` nas chamadas HTTP [[B3]]. Com o código já separado, cada uma vira uma mudança pequena num lugar só.",
+      "verificacao": "Um teste novo por bug, e o teste de caracterização correspondente atualizado com o motivo."
+    }
+  ],
+  "riscos": [
+    {
+      "risco": "Mudar sem querer o arredondamento do total ou a ordem cobrança → gravação → e-mail",
+      "mitigacao": "Testes de caracterização com valores que exercitam o `round` e verificam a ordem das chamadas aos falsos"
+    },
+    {
+      "risco": "Algum código fora do repositório instanciar `GerenciadorDePedidos` e acessar `conn` diretamente",
+      "mitigacao": "Manter `self.conn` como propriedade que delega ao repositório SQLite até confirmar que ninguém usa"
+    },
+    {
+      "risco": "`relatorio.py` depende do esquema da tabela",
+      "mitigacao": "Não mudar colunas nesta refatoração; o esquema fica dentro de `RepositorioSQLite` como está"
+    }
+  ],
+  "bugs": [
+    {
+      "id": "B1",
+      "severidade": "media",
+      "onde": "loja/pedidos.py:63",
+      "descricao": "`int(total * 100)` trunca em vez de arredondar: R$ 300,03 vira 30002 centavos.",
+      "impacto": "Cobrança um centavo menor em parte dos pedidos."
+    },
+    {
+      "id": "B2",
+      "severidade": "alta",
+      "onde": "loja/pedidos.py:61-93",
+      "descricao": "A cobrança acontece antes do INSERT. Se gravar falhar (ou faltar `cliente`), o cliente é cobrado e o pedido não existe.",
+      "impacto": "Cobrança sem pedido; reprocessar cobra de novo."
+    },
+    {
+      "id": "B3",
+      "severidade": "media",
+      "onde": "loja/pedidos.py:69",
+      "descricao": "`urlopen` sem `timeout`.",
+      "impacto": "Um gateway lento trava o processo indefinidamente."
+    },
+    {
+      "id": "B4",
+      "severidade": "baixa",
+      "onde": "loja/relatorio.py:2-5",
+      "descricao": "A docstring fala em datas, mas o filtro é por `id BETWEEN`.",
+      "impacto": "Quem passa datas recebe só o cabeçalho."
+    },
+    {
+      "id": "B5",
+      "severidade": "baixa",
+      "onde": "loja/relatorio.py:9",
+      "descricao": "`.replace(\".\", \",\")` vale para a linha inteira, inclusive o nome do cliente.",
+      "impacto": "`Ana S. Lima` vira `Ana S, Lima` no CSV."
+    }
+  ],
+  "fica_como_esta": [
+    {
+      "elemento": "loja/relatorio.py",
+      "motivo": "Uma função pequena, um ator só (financeiro). Separar não elimina nenhuma mudança cruzada. Os dois bugs dela são correções, não refatoração."
+    },
+    {
+      "elemento": "loja/util.py",
+      "motivo": "Função pura e estável, sem dependências."
+    },
+    {
+      "elemento": "main.py",
+      "motivo": "Continua chamando `GerenciadorDePedidos()` sem argumentos, que é o contrato preservado."
+    }
+  ]
+}

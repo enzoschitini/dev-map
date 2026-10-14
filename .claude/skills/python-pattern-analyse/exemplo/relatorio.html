@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Análise de refatoração · Fluxo de pedidos da loja</title>
+<script>
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('devmap-theme'); } catch (e) {}
+    if (t) document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap">
+<style>
+:root {
+  --font-head: "Geist", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  --bg: #ffffff; --bg-2: #f8f8fa; --ink: #030710; --ink-2: #3f3f40; --ink-3: #707071;
+  --line: rgba(11,12,14,.1); --line-soft: #eeeeef; --fill: #f3f3f4;
+  --primary: #161f34; --accent: #4b61d1; --accent-fill: rgba(75,97,209,.09);
+  --code-bg: #ffffff; --code-ink: #4c4f69; --t-c: #72758b; --t-s: #368724; --t-k: #8839ef; --t-n: #ce4c01; --t-f: #1e66f5;
+  --hl: rgba(255,196,0,.16); --hl-bd: #e0a400;
+  --note-bg: #f4f4f5; --note-bd: #dedee2; --note-ic: #707071;
+  --info-bg: #ebf1ff; --info-bd: #b6c8f7; --info-ic: #3552c8;
+  --tip-bg: #e8f6ec; --tip-bd: #a5d8b6; --tip-ic: #1d7a48;
+  --warn-bg: #fff5dd; --warn-bd: #ecd08a; --warn-ic: #96600b;
+  --danger-bg: #ffecec; --danger-bd: #f3b4b1; --danger-ic: #b9362e;
+  --r-sm: 10px; --r-md: 12px; --r-lg: 16px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #030710; --bg-2: #080c18; --ink: #eceef3; --ink-2: #c5c7ce; --ink-3: #9193a0;
+    --line: rgba(255,255,255,.1); --line-soft: rgba(255,255,255,.07); --fill: rgba(255,255,255,.05);
+    --primary: #eceef3; --accent: #93a4ff; --accent-fill: rgba(147,164,255,.12);
+    --code-bg: #0a0e1a; --code-ink: #cdd6f4; --t-c: #8a90ad; --t-s: #a6e3a1; --t-k: #cba6f7; --t-n: #fab387; --t-f: #89b4fa;
+    --hl: rgba(250,179,135,.14); --hl-bd: #fab387;
+    --note-bg: rgba(255,255,255,.05); --note-bd: rgba(255,255,255,.12); --note-ic: #9193a0;
+    --info-bg: rgba(75,97,209,.16); --info-bd: rgba(120,140,240,.4); --info-ic: #9fb0ff;
+    --tip-bg: rgba(46,160,98,.15); --tip-bd: rgba(80,190,130,.38); --tip-ic: #7fdcaa;
+    --warn-bg: rgba(214,150,30,.14); --warn-bd: rgba(230,175,70,.38); --warn-ic: #f0c577;
+    --danger-bg: rgba(220,70,60,.15); --danger-bd: rgba(240,110,100,.4); --danger-ic: #ff9e97;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #030710; --bg-2: #080c18; --ink: #eceef3; --ink-2: #c5c7ce; --ink-3: #9193a0;
+  --line: rgba(255,255,255,.1); --line-soft: rgba(255,255,255,.07); --fill: rgba(255,255,255,.05);
+  --primary: #eceef3; --accent: #93a4ff; --accent-fill: rgba(147,164,255,.12);
+  --code-bg: #0a0e1a; --code-ink: #cdd6f4; --t-c: #8a90ad; --t-s: #a6e3a1; --t-k: #cba6f7; --t-n: #fab387; --t-f: #89b4fa;
+  --hl: rgba(250,179,135,.14); --hl-bd: #fab387;
+  --note-bg: rgba(255,255,255,.05); --note-bd: rgba(255,255,255,.12); --note-ic: #9193a0;
+  --info-bg: rgba(75,97,209,.16); --info-bd: rgba(120,140,240,.4); --info-ic: #9fb0ff;
+  --tip-bg: rgba(46,160,98,.15); --tip-bd: rgba(80,190,130,.38); --tip-ic: #7fdcaa;
+  --warn-bg: rgba(214,150,30,.14); --warn-bd: rgba(230,175,70,.38); --warn-ic: #f0c577;
+  --danger-bg: rgba(220,70,60,.15); --danger-bd: rgba(240,110,100,.4); --danger-ic: #ff9e97;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 1rem/1.65 var(--font-body); -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+code { font-family: var(--font-mono); font-size: .86em; background: var(--fill); border: 1px solid var(--line-soft); padding: .08em .38em; border-radius: 6px; overflow-wrap: anywhere; }
+h1, h2, h3, h4 { font-family: var(--font-head); letter-spacing: -.02em; color: var(--ink); }
+h3 { font-size: 1.125rem; margin: 28px 0 12px; }
+h4 { font-size: .8125rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin: 22px 0 8px; font-family: var(--font-body); }
+p { margin: 0 0 12px; }
+ul { margin: 0 0 12px; padding-left: 20px; }
+.muted { color: var(--ink-3); }
+.small { font-size: .8125rem; }
+
+.topbar { position: sticky; top: 0; z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 24px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line-soft); }
+.brand { display: flex; align-items: center; gap: 10px; font: 600 .9375rem var(--font-head); }
+.logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--primary); color: var(--bg); font-size: .75rem; }
+.top-actions { display: flex; gap: 8px; }
+.ghost { font: 500 .8125rem var(--font-body); color: var(--ink-2); background: transparent; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 6px 12px; cursor: pointer; }
+.ghost:hover { background: var(--fill); }
+
+.layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+.toc { position: sticky; top: 72px; align-self: start; max-height: calc(100vh - 90px); overflow-y: auto; padding: 32px 0; }
+.toc-title { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin-bottom: 10px; }
+.toc ol { list-style: none; margin: 0; padding: 0; }
+.toc a { display: flex; gap: 10px; padding: 6px 10px; border-radius: var(--r-sm); color: var(--ink-2); text-decoration: none; font-size: .875rem; }
+.toc a span { font-family: var(--font-mono); font-size: .75rem; color: var(--ink-3); padding-top: 2px; }
+.toc a:hover, .toc a.on { background: var(--accent-fill); color: var(--accent); }
+main { min-width: 0; padding-bottom: 64px; }
+
+.hero { padding: 48px 0 32px; border-bottom: 1px solid var(--line-soft); }
+.eyebrow { font-size: .875rem; font-weight: 600; color: var(--accent); margin-bottom: 10px; }
+.hero h1 { font-size: clamp(2rem, 4vw, 2.75rem); line-height: 1.1; margin: 0; letter-spacing: -.035em; }
+.lead { margin: 14px 0 0; font-size: 1.125rem; line-height: 1.7; color: var(--ink-3); max-width: 70ch; }
+.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 28px 0 0; }
+.meta div { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-2); }
+.meta dt { font-size: .75rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
+.meta dd { margin: 4px 0 0; font-weight: 500; font-size: .9375rem; overflow-wrap: anywhere; }
+
+.section { padding: 40px 0 8px; }
+.section h2 { display: flex; align-items: baseline; gap: 12px; font-size: 1.625rem; margin: 0 0 8px; }
+.section h2 .num { font: 500 .875rem var(--font-mono); color: var(--accent); }
+.section-lead { color: var(--ink-3); max-width: 75ch; margin-bottom: 20px; }
+.prose { max-width: 78ch; }
+
+.verdict { position: relative; padding: 22px 24px; border-radius: var(--r-lg); border: 1px solid var(--info-bd); background: var(--info-bg); margin: 8px 0 20px; overflow: hidden; }
+.verdict::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--info-ic); }
+.verdict.sev-alta { border-color: var(--danger-bd); background: var(--danger-bg); } .verdict.sev-alta::before { background: var(--danger-ic); }
+.verdict.sev-media { border-color: var(--warn-bd); background: var(--warn-bg); } .verdict.sev-media::before { background: var(--warn-ic); }
+.verdict.sev-baixa { border-color: var(--tip-bd); background: var(--tip-bg); } .verdict.sev-baixa::before { background: var(--tip-ic); }
+.verdict-kicker { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); }
+.verdict-title { font: 600 1.375rem/1.35 var(--font-head); margin-top: 6px; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 22px 0; }
+.kpi { padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2); }
+.kpi-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+.kpi-value { font: 700 2rem/1.2 var(--font-head); margin-top: 4px; }
+.kpi-value.small { font-size: 1.0625rem; font-weight: 600; line-height: 1.4; }
+.kpi-text { margin-top: 6px; font-size: .9375rem; line-height: 1.5; color: var(--ink-2); }
+.kpi-foot { font-size: .8125rem; color: var(--ink-3); margin-top: 6px; }
+.bar { display: flex; gap: 3px; height: 8px; margin-top: 10px; border-radius: 99px; overflow: hidden; background: var(--fill); }
+.seg { display: block; min-width: 8px; }
+.seg.sev-alta, .dot.sev-alta { background: var(--danger-ic); }
+.seg.sev-media, .dot.sev-media { background: var(--warn-ic); }
+.seg.sev-baixa, .dot.sev-baixa { background: var(--info-ic); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.highlights { list-style: none; padding: 0; display: grid; gap: 8px; }
+.highlights li { position: relative; padding: 10px 14px 10px 36px; border: 1px solid var(--line-soft); border-radius: var(--r-md); }
+.highlights li::before { content: "→"; position: absolute; left: 14px; color: var(--accent); font-weight: 600; }
+
+.solid-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 10px; }
+.solid { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line); }
+.solid-letter { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 10px; font: 700 1.125rem var(--font-head); background: var(--fill); }
+.solid.sev-alta .solid-letter { background: var(--danger-bg); color: var(--danger-ic); border: 1px solid var(--danger-bd); }
+.solid.sev-media .solid-letter { background: var(--warn-bg); color: var(--warn-ic); border: 1px solid var(--warn-bd); }
+.solid.sev-baixa .solid-letter { background: var(--info-bg); color: var(--info-ic); border: 1px solid var(--info-bd); }
+.solid.ok .solid-letter { background: var(--tip-bg); color: var(--tip-ic); border: 1px solid var(--tip-bd); }
+.solid-name { font-weight: 600; font-size: .9375rem; }
+.solid-refs { font-size: .8125rem; color: var(--ink-3); }
+
+.table-wrap { overflow-x: auto; margin: 12px 0 20px; border: 1px solid var(--line); border-radius: var(--r-lg); }
+table { width: 100%; border-collapse: collapse; font-size: .875rem; line-height: 1.55; }
+th { text-align: left; font-weight: 600; padding: 10px 14px; background: var(--bg-2); border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; font-family: var(--font-mono); }
+.elements ul.resp { margin: 0; padding-left: 18px; }
+.elements ul.resp li { margin-bottom: 4px; }
+code.strong { font-weight: 600; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 14px 0; }
+.card { padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--r-lg); }
+.card h3 { margin-top: 0; font-size: 1rem; }
+
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; margin: 2px 4px 2px 0; border-radius: 99px; font-size: .75rem; font-weight: 500; border: 1px solid var(--line); color: var(--ink-2); background: var(--bg); white-space: nowrap; }
+.pill.sev-alta, .pill.warn { background: var(--danger-bg); border-color: var(--danger-bd); color: var(--danger-ic); }
+.pill.warn { background: var(--warn-bg); border-color: var(--warn-bd); color: var(--warn-ic); }
+.pill.sev-media { background: var(--warn-bg); border-color: var(--warn-bd); color: var(--warn-ic); }
+.pill.sev-baixa { background: var(--info-bg); border-color: var(--info-bd); color: var(--info-ic); }
+.pill.principle { background: var(--accent-fill); border-color: transparent; color: var(--accent); }
+.pill.effect { font-family: var(--font-mono); font-size: .6875rem; }
+.pill.actor { margin-left: 8px; background: var(--fill); border-color: transparent; }
+.pill.lvl-alto { background: var(--tip-bg); border-color: var(--tip-bd); color: var(--tip-ic); }
+.pill.lvl-medio { background: var(--info-bg); border-color: var(--info-bd); color: var(--info-ic); }
+.ref { display: inline-block; padding: 0 7px; margin: 0 2px; border-radius: 6px; font: 600 .75rem/1.6 var(--font-mono); text-decoration: none; border: 1px solid var(--line); color: var(--ink-2); background: var(--bg); }
+.ref.sev-alta { color: var(--danger-ic); border-color: var(--danger-bd); background: var(--danger-bg); }
+.ref.sev-media { color: var(--warn-ic); border-color: var(--warn-bd); background: var(--warn-bg); }
+.ref.sev-baixa { color: var(--info-ic); border-color: var(--info-bd); background: var(--info-bg); }
+.ref.rec { color: var(--accent); border-color: transparent; background: var(--accent-fill); }
+
+.stepper { list-style: none; margin: 16px 0 0; padding: 0; position: relative; }
+.step { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 16px; padding-bottom: 18px; }
+.step::before { content: ""; position: absolute; left: 19px; top: 40px; bottom: 0; width: 2px; background: var(--line); }
+.step:last-child::before { display: none; }
+.step-n { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--primary); color: var(--bg); font: 600 .9375rem var(--font-head); }
+.step-body { padding: 10px 16px 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
+.step-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.step-title { font: 600 1rem var(--font-head); }
+code.where { font-size: .75rem; }
+.step-desc { color: var(--ink-2); font-size: .9375rem; margin-top: 4px; }
+.step-io { font-size: .8125rem; color: var(--ink-3); margin-top: 6px; }
+.arrow { color: var(--accent); font-weight: 600; margin: 0 4px; }
+.step-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }
+.step-tags .refs { margin-left: auto; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 18px; }
+.chip { font: 500 .8125rem var(--font-body); padding: 6px 12px; border-radius: 99px; border: 1px solid var(--line); background: var(--bg); color: var(--ink-2); cursor: pointer; }
+.chip span { color: var(--ink-3); margin-left: 4px; }
+.chip.on { background: var(--primary); color: var(--bg); border-color: var(--primary); }
+.chip.on span { color: inherit; opacity: .7; }
+.findings, .recs { display: grid; gap: 18px; }
+.finding, .rec-card { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px 20px; background: var(--bg); scroll-margin-top: 80px; }
+.finding:target, .rec-card:target { box-shadow: 0 0 0 3px var(--accent-fill); border-color: var(--accent); }
+.bug-row { scroll-margin-top: 80px; }
+.bug-row:target td { background: var(--accent-fill); }
+.finding-head, .rec-head { display: flex; align-items: flex-start; gap: 12px; }
+.finding-head h3, .rec-head h3 { flex: 1; margin: 2px 0 0; font-size: 1.125rem; }
+.id { flex: none; display: grid; place-items: center; min-width: 40px; height: 30px; padding: 0 8px; border-radius: 8px; font: 600 .8125rem var(--font-mono); }
+.id.sev-alta { background: var(--danger-bg); color: var(--danger-ic); border: 1px solid var(--danger-bd); }
+.id.sev-media { background: var(--warn-bg); color: var(--warn-ic); border: 1px solid var(--warn-bd); }
+.id.sev-baixa { background: var(--info-bg); color: var(--info-ic); border: 1px solid var(--info-bd); }
+.id.rec { background: var(--accent-fill); color: var(--accent); }
+.finding-meta { margin: 10px 0 0 52px; }
+.label { display: block; font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin-bottom: 4px; }
+.signal { margin: 14px 0; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--accent-fill); border-radius: 0 var(--r-sm) var(--r-sm) 0; font-size: .9375rem; }
+.impact { margin-top: 12px; }
+.finding-foot { display: flex; align-items: baseline; gap: 10px; padding-top: 12px; margin-top: 4px; border-top: 1px dashed var(--line); }
+.finding-foot .label { display: inline; margin: 0; }
+.finding[hidden] { display: none; }
+
+.code { margin: 14px 0; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--fill); padding: 2px; }
+.code-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; padding: 0 6px 0 12px; font-size: .75rem; color: var(--ink-3); }
+.code-title { font-weight: 500; color: var(--ink-2); }
+.code-title code { font-size: .75rem; }
+.copy { font: 500 .6875rem var(--font-body); color: var(--ink-3); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px; cursor: pointer; }
+.copy:hover { color: var(--ink); }
+.code-body { border-radius: 14px; background: var(--code-bg); overflow: hidden; }
+.code pre { margin: 0; padding: 12px 0; overflow-x: auto; font: 400 .8125rem/1.6 var(--font-mono); color: var(--code-ink); tab-size: 4; }
+.code pre code { background: none; border: 0; padding: 0; font-size: inherit; display: block; min-width: max-content; }
+.ln { display: block; padding: 0 16px; border-left: 3px solid transparent; }
+.numbered .ln { padding-left: 0; }
+.ln .n { display: inline-block; width: 3.4em; padding-right: 1.2em; text-align: right; color: var(--t-c); opacity: .65; user-select: none; }
+.ln.hl { background: var(--hl); border-left-color: var(--hl-bd); }
+.lc { white-space: pre; }
+.code-note { padding: 8px 12px 6px; font-size: .8125rem; color: var(--ink-2); }
+.t-c { color: var(--t-c); font-style: italic; } .t-s { color: var(--t-s); } .t-k { color: var(--t-k); } .t-n { color: var(--t-n); } .t-f { color: var(--t-f); }
+
+.matrix-wrap { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 6px; margin: 40px 0 28px; }
+.matrix-y { display: grid; grid-template-rows: repeat(3, minmax(64px, auto)); align-items: center; font-size: .75rem; color: var(--ink-3); position: relative; }
+.matrix-y .axis-title { position: absolute; top: -22px; left: 0; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.matrix { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(64px, auto)); gap: 6px; }
+.cell { padding: 8px; border-radius: var(--r-sm); background: var(--bg-2); border: 1px solid var(--line-soft); display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
+.cell.quick { background: var(--tip-bg); border-color: var(--tip-bd); }
+.matrix-x { grid-column: 1 / -1; display: grid; grid-template-columns: 80px repeat(3, minmax(0, 1fr)); gap: 6px; font-size: .75rem; color: var(--ink-3); text-align: center; }
+.matrix-caption { grid-column: 1 / -1; font-size: .8125rem; color: var(--ink-3); }
+.mchip { font-size: .75rem; padding: 3px 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+.mchip b { font-family: var(--font-mono); color: var(--accent); margin-right: 2px; }
+
+.rec-titles { flex: 1; }
+.rec-pattern { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-top: 4px; font-size: .875rem; }
+.pattern-name { font-weight: 600; color: var(--accent); }
+.rec-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; max-width: 220px; }
+.rec-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 4px 28px; }
+.quicktest { list-style: none; padding: 0; display: grid; gap: 8px; }
+.quicktest li { display: flex; gap: 12px; padding: 10px 12px; border-radius: var(--r-md); background: var(--bg-2); border: 1px solid var(--line-soft); }
+.quicktest .mark { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-size: .75rem; font-weight: 700; }
+.quicktest .yes .mark { background: var(--tip-bg); color: var(--tip-ic); border: 1px solid var(--tip-bd); }
+.quicktest .no .mark { background: var(--danger-bg); color: var(--danger-ic); border: 1px solid var(--danger-bd); }
+.quicktest .q { font-weight: 600; font-size: .875rem; }
+.quicktest .a { font-size: .875rem; color: var(--ink-2); }
+.callout { margin: 16px 0; padding: 14px 18px; border-radius: var(--r-lg); border: 1px solid var(--info-bd); background: var(--info-bg); font-size: .9375rem; }
+.callout p:last-child, .callout ul:last-child { margin-bottom: 0; }
+.callout-title { font-weight: 600; font-size: .8125rem; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; color: var(--info-ic); }
+.callout.warn { border-color: var(--warn-bd); background: var(--warn-bg); } .callout.warn .callout-title { color: var(--warn-ic); }
+.callout.tip { border-color: var(--tip-bd); background: var(--tip-bg); } .callout.tip .callout-title { color: var(--tip-ic); }
+.callout.danger { border-color: var(--danger-bd); background: var(--danger-bg); } .callout.danger .callout-title { color: var(--danger-ic); }
+.rec-links { font-size: .8125rem; color: var(--ink-3); margin-top: 8px; }
+
+.roadmap { list-style: none; padding: 0; margin: 12px 0 0; counter-reset: road; }
+.road-step { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; position: relative; padding-bottom: 16px; }
+.road-step::before { content: ""; position: absolute; left: 21px; top: 44px; bottom: 0; width: 2px; background: repeating-linear-gradient(var(--line) 0 6px, transparent 6px 10px); }
+.road-step:last-child::before { display: none; }
+.road-n { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; border: 1.5px solid var(--accent); color: var(--accent); font: 700 1rem var(--font-head); background: var(--accent-fill); }
+.road-body { padding: 10px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); }
+.road-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 6px; }
+.road-head strong { margin-right: auto; font-family: var(--font-head); }
+
+.gloss-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.gloss { padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); }
+.gloss-type { font-size: .6875rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); }
+.gloss-name { font: 600 1.0625rem var(--font-head); margin: 2px 0 8px; }
+.gloss p { font-size: .875rem; color: var(--ink-2); }
+.gloss-links { font-size: .8125rem; }
+.foot { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line-soft); font-size: .8125rem; color: var(--ink-3); }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 16px; }
+  .toc { display: none; }
+  .rec-grid { grid-template-columns: minmax(0, 1fr); }
+  .rec-head { flex-wrap: wrap; } .rec-badges { justify-content: flex-start; max-width: none; }
+  .finding-meta { margin-left: 0; }
+  .topbar { padding: 10px 16px; }
+}
+@media (max-width: 560px) {
+  .matrix-wrap { grid-template-columns: 52px minmax(0, 1fr); }
+  .matrix-x { grid-template-columns: 52px repeat(3, minmax(0, 1fr)); }
+  .step { grid-template-columns: 32px minmax(0, 1fr); gap: 10px; } .step-n { width: 32px; height: 32px; } .step::before { left: 15px; top: 32px; }
+}
+@media print {
+  .topbar, .toc, .filters, .copy { display: none !important; }
+  .layout { display: block; max-width: none; padding: 0; }
+  .finding[hidden] { display: block !important; }
+  .section { break-inside: auto; } .finding, .rec-card, .step, .road-step { break-inside: avoid; }
+  body { font-size: 11pt; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">DM</span><span>DevMap <span class="muted">· Relatório de refatoração</span></span></div>
+  <div class="top-actions">
+    <button type="button" class="ghost" id="print">Imprimir</button>
+    <button type="button" class="ghost" id="theme" aria-label="Alternar tema">Tema</button>
+  </div>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Seções do relatório"><div class="toc-title">Neste relatório</div><ol><li><a href="#resumo"><span>01</span>Resumo executivo</a></li><li><a href="#escopo"><span>02</span>Escopo e contrato</a></li><li><a href="#fluxo"><span>03</span>O fluxo hoje</a></li><li><a href="#elementos"><span>04</span>Elementos e responsabilidades</a></li><li><a href="#diagnostico"><span>05</span>Diagnóstico</a></li><li><a href="#recomendacoes"><span>06</span>Recomendações</a></li><li><a href="#descartados"><span>07</span>Considerados e descartados</a></li><li><a href="#arquitetura"><span>08</span>Arquitetura proposta</a></li><li><a href="#roteiro"><span>09</span>Roteiro de implementação</a></li><li><a href="#riscos"><span>10</span>Riscos, bugs e o que fica</a></li><li><a href="#glossario"><span>11</span>Glossário</a></li></ol></nav>
+  <main>
+    <section class="hero">
+      <div class="eyebrow">Análise de código Python · SOLID e Design Patterns</div>
+      <h1>Fluxo de pedidos da loja</h1>
+      <p class="lead">Recebe um pedido, calcula desconto e frete, cobra no gateway escolhido, grava no banco e avisa o cliente por e-mail. Também marca pedidos como enviados ou cancelados.</p>
+      <dl class="meta"><div><dt>Projeto</dt><dd>loja</dd></div><div><dt>Ponto de entrada</dt><dd><code>loja/pedidos.py:GerenciadorDePedidos.processar</code></dd></div><div><dt>Escopo</dt><dd>4 arquivos · 168 linhas</dd></div><div><dt>Data</dt><dd>2026-10-14</dd></div></dl>
+    </section>
+    <section id="resumo" class="section"><h2><span class="num">01</span>Resumo executivo</h2>
+      <div class="verdict sev-alta">
+        <div class="verdict-kicker">Veredito · prioridade alta</div>
+        <div class="verdict-title">Refatoração recomendada antes do próximo gateway ou regra de desconto</div>
+      </div>
+      <div class="prose"><p>Todo o fluxo de pedidos mora em um método de 84 linhas que fala com banco, dois gateways de pagamento e servidor de e-mail. Ele funciona, mas cada mudança comercial, financeira ou de comunicação passa pelo mesmo lugar, e nada pode ser testado sem rede, SMTP e relógio de verdade.</p><p>A proposta é pequena de propósito: separar o cálculo do pedido, que é a regra, do que é infraestrutura; pôr cada gateway atrás de um adaptador; e transformar as regras de desconto em funções escolhidas pelo tipo de cliente. Cinco hipóteses de pattern que pareciam caber ficaram de fora, cada uma com o gatilho que a traria de volta.</p></div>
+      
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-label">Achados</div><div class="kpi-value">5</div>
+          <div class="bar"><span class="seg sev-alta" style="flex:2" title="Alta: 2"></span><span class="seg sev-media" style="flex:2" title="Média: 2"></span><span class="seg sev-baixa" style="flex:1" title="Baixa: 1"></span></div><div class="kpi-foot"><span class="dot sev-alta"></span>2 alta · <span class="dot sev-media"></span>2 média · <span class="dot sev-baixa"></span>1 baixa</div></div>
+        <div class="kpi"><div class="kpi-label">Recomendações</div><div class="kpi-value">4</div>
+          <div class="kpi-foot">Single Responsibility, Dependency Inversion, Adapter, Strategy</div></div>
+        <div class="kpi"><div class="kpi-label">Esforço estimado</div><div class="kpi-value small">3 a 4 dias</div>
+          <div class="kpi-foot">6 passos no roteiro</div></div>
+        <div class="kpi"><div class="kpi-label">Risco da refatoração</div><div class="kpi-text">Médio. Sem testes hoje; o passo 0 cria a rede de segurança antes de qualquer mudança.</div></div>
+      </div>
+      <h3>Principais pontos</h3><ul class='highlights'><li>Um gateway novo hoje exige editar a regra do pedido; com os adaptadores, vira uma classe nova <a class="ref sev-alta" href="#A2">A2</a> <a class="ref rec" href="#R3">R3</a></li><li>O cálculo de total (desconto, Black Friday, frete) passa a ser uma função pura, testável em milissegundos <a class="ref sev-alta" href="#A1">A1</a> <a class="ref rec" href="#R1">R1</a></li><li>Banco e e-mail entram pelo construtor, e <code>GerenciadorDePedidos()</code> continua funcionando para o <code>main.py</code> <a class="ref sev-media" href="#A4">A4</a> <a class="ref rec" href="#R2">R2</a></li><li>State, Observer, Facade, Template Method e um Strategy para o frete foram avaliados e descartados por enquanto: o código ainda não tem as forças que os justificam</li><li>Há bugs que a refatoração <strong>não</strong> corrige, como a cobrança antes da gravação <a class="ref sev-alta" href="#B2">B2</a>; eles ficam num passo próprio, decidido à parte</li></ul>
+      <h3>SOLID neste fluxo</h3>
+      <div class="solid-grid"><div class="solid sev-alta"><div class="solid-letter">S</div><div><div class="solid-name">Single Responsibility</div><div class="solid-refs">2 achados · <a class="ref sev-alta" href="#A1">A1</a> <a class="ref sev-media" href="#A4">A4</a></div></div></div><div class="solid sev-alta"><div class="solid-letter">O</div><div><div class="solid-name">Open/Closed</div><div class="solid-refs">3 achados · <a class="ref sev-alta" href="#A2">A2</a> <a class="ref sev-media" href="#A3">A3</a> <a class="ref sev-baixa" href="#A5">A5</a></div></div></div><div class="solid ok"><div class="solid-letter">L</div><div><div class="solid-name">Liskov Substitution</div><div class="solid-refs">sem violação relevante</div></div></div><div class="solid ok"><div class="solid-letter">I</div><div><div class="solid-name">Interface Segregation</div><div class="solid-refs">sem violação relevante</div></div></div><div class="solid sev-alta"><div class="solid-letter">D</div><div><div class="solid-name">Dependency Inversion</div><div class="solid-refs">3 achados · <a class="ref sev-alta" href="#A2">A2</a> <a class="ref sev-media" href="#A3">A3</a> <a class="ref sev-media" href="#A4">A4</a></div></div></div></div></section><section id="escopo" class="section"><h2><span class="num">02</span>Escopo e contrato</h2><p class="section-lead">4 arquivos, 168 linhas. Ponto de entrada: <code>loja/pedidos.py:GerenciadorDePedidos.processar</code>.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Arquivo</th><th class="num">Linhas</th><th>Papel no fluxo</th></tr></thead>
+        <tbody><tr><td><code>loja/pedidos.py</code></td><td class="num">147</td><td>Todo o fluxo: validação, preço, pagamento, persistência, e-mail e mudança de status</td></tr><tr><td><code>loja/relatorio.py</code></td><td class="num">10</td><td>Exporta as vendas em CSV a partir da tabela <code>pedidos</code></td></tr><tr><td><code>loja/util.py</code></td><td class="num">2</td><td>Formatação de moeda, sem uso dentro do fluxo</td></tr><tr><td><code>main.py</code></td><td class="num">9</td><td>Único chamador de <code>GerenciadorDePedidos</code> no projeto</td></tr></tbody></table></div>
+      <div class="grid-2">
+        <div class="card"><h3>Testes existentes</h3><p>Não há testes. Nada no repositório exercita <code>processar</code>, <code>marcar_enviado</code> ou <code>cancelar</code>.</p></div>
+        <div class="card"><h3>Fora do escopo</h3><ul><li>As APIs da PagFácil e da PayMundi, que são externas e só foram lidas para entender o formato das respostas</li></ul></div>
+      </div>
+      <h3>Contrato a preservar</h3>
+      <p class="muted">O que a refatoração não pode mudar, porque alguém de fora depende disso.</p>
+      <ul><li><code>GerenciadorDePedidos()</code> sem argumentos, lendo <code>LOJA_DB</code>, <code>SMTP_HOST</code>, <code>PAGFACIL_KEY</code> e <code>PAYMUNDI_KEY</code> do ambiente.</li><li><code>processar(dados: dict)</code> devolve <code>{&quot;id&quot;, &quot;total&quot;, &quot;transacao&quot;}</code>, com <code>total</code> arredondado como hoje.</li><li>Mensagens de erro: <code>pedido sem itens</code>, <code>email inválido</code>, <code>quantidade inválida para &lt;sku&gt;</code>, <code>pagamento recusado: …</code>, <code>gateway desconhecido: …</code>, <code>pedido não existe</code> e as de transição de status.</li><li>Ordem dos efeitos: cobra, grava, envia o e-mail, escreve o log.</li><li>Tabela <code>pedidos</code> com as colunas atuais, lida também por <code>relatorio.py</code>.</li><li>Assunto e texto dos três e-mails.</li></ul></section><section id="fluxo" class="section"><h2><span class="num">03</span>O fluxo hoje</h2><p class="section-lead">As etapas na ordem em que acontecem, com os efeitos colaterais de cada uma e os achados que as atingem.</p><div class="prose"><p>O caminho principal é <code>processar</code>. As outras duas operações, <code>marcar_enviado</code> e <code>cancelar</code>, mudam o status de um pedido já gravado.</p></div><ol class="stepper">
+          <li class="step">
+            <div class="step-n">1</div>
+            <div class="step-body">
+              <div class="step-head"><span class="step-title">Validar o pedido</span><code class="where">loja/pedidos.py:25-32</code></div>
+              <div class="step-desc">Confere itens, e-mail e quantidades; levanta <code>ValueError</code> com a mensagem do problema.</div>
+              <div class="step-io"><code>dados</code> (dict) <span class="arrow">→</span> —</div>
+              <div class="step-tags"><span class="refs"><a class="ref sev-alta" href="#A1">A1</a></span></div>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">2</div>
+            <div class="step-body">
+              <div class="step-head"><span class="step-title">Calcular o desconto</span><code class="where">loja/pedidos.py:34-49</code></div>
+              <div class="step-desc">Escolhe a regra pelo texto <code>tipo_cliente</code> e soma 5% em novembro.</div>
+              <div class="step-io">itens, <code>tipo_cliente</code> <span class="arrow">→</span> <code>total</code> sem frete</div>
+              <div class="step-tags"><span class="pill effect">relógio</span><span class="refs"><a class="ref sev-alta" href="#A1">A1</a> <a class="ref sev-media" href="#A3">A3</a></span></div>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">3</div>
+            <div class="step-body">
+              <div class="step-head"><span class="step-title">Calcular o frete</span><code class="where">loja/pedidos.py:51-58</code></div>
+              <div class="step-desc">R$ 15 para SP, RJ e MG, R$ 30 para o resto, grátis acima de R$ 300.</div>
+              <div class="step-io"><code>uf</code>, <code>total</code> <span class="arrow">→</span> <code>total</code> com frete</div>
+              <div class="step-tags"><span class="refs"><a class="ref sev-alta" href="#A1">A1</a></span></div>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">4</div>
+            <div class="step-body">
+              <div class="step-head"><span class="step-title">Cobrar no gateway</span><code class="where">loja/pedidos.py:60-85</code></div>
+              <div class="step-desc">Monta a requisição de cada fornecedor e interpreta a resposta de cada um.</div>
+              <div class="step-io"><code>total</code>, <code>cartao</code>, <code>gateway</code> <span class="arrow">→</span> <code>transacao</code></div>
+              <div class="step-tags"><span class="pill effect">rede</span><span class="pill effect">ambiente</span><span class="refs"><a class="ref sev-alta" href="#A2">A2</a></span></div>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">5</div>
+            <div class="step-body">
+              <div class="step-head"><span class="step-title">Gravar o pedido</span><code class="where">loja/pedidos.py:87-93</code></div>
+              <div class="step-desc">INSERT com status <code>pago</code>.</div>
+              <div class="step-io">dados do pedido <span class="arrow">→</span> <code>pedido_id</code></div>
+              <div class="step-tags"><span class="pill effect">banco</span><span class="refs"><a class="ref sev-media" href="#A4">A4</a></span></div>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">6</div>
+            <div class="step-body">
+              <div class="step-head"><span class="step-title">Avisar o cliente</span><code class="where">loja/pedidos.py:95-106</code></div>
+              <div class="step-desc">Envia o e-mail de confirmação e escreve uma linha de log no stdout.</div>
+              <div class="step-io"><code>pedido_id</code>, <code>total</code>, <code>transacao</code> <span class="arrow">→</span> dict com <code>id</code>, <code>total</code>, <code>transacao</code></div>
+              <div class="step-tags"><span class="pill effect">e-mail</span><span class="pill effect">stdout</span><span class="pill effect">relógio</span><span class="refs"><a class="ref sev-media" href="#A4">A4</a></span></div>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">7</div>
+            <div class="step-body">
+              <div class="step-head"><span class="step-title">Mudar o status</span><code class="where">loja/pedidos.py:109-147</code></div>
+              <div class="step-desc"><code>marcar_enviado</code> e <code>cancelar</code>: leem o status, atualizam e mandam e-mail.</div>
+              <div class="step-io"><code>pedido_id</code> <span class="arrow">→</span> —</div>
+              <div class="step-tags"><span class="pill effect">banco</span><span class="pill effect">e-mail</span><span class="refs"><a class="ref sev-media" href="#A4">A4</a> <a class="ref sev-baixa" href="#A5">A5</a></span></div>
+            </div>
+          </li></ol></section><section id="elementos" class="section"><h2><span class="num">04</span>Elementos e responsabilidades</h2><p class="section-lead">Para cada elemento, a pergunta do Single Responsibility: quem pede mudança aqui, e por quê? Mais de um ator é sinal de responsabilidades misturadas.</p>
+          <div class="table-wrap"><table class="elements">
+            <thead><tr><th>Elemento</th><th>Responsabilidades e quem pede mudança</th></tr></thead>
+            <tbody><tr><td><code class="strong">GerenciadorDePedidos</code><div class="muted small">classe · <code>loja/pedidos.py:15</code></div><span class="pill warn">5 motivos para mudar</span></td><td><ul class="resp"><li>Validar o pedido e calcular desconto e frete<span class="pill actor">Comercial</span></li><li>Falar com a PagFácil e a PayMundi<span class="pill actor">Financeiro</span></li><li>Criar a tabela e gravar pedidos<span class="pill actor">Dados</span></li><li>Texto e envio dos e-mails<span class="pill actor">Atendimento</span></li><li>Regras de transição de status<span class="pill actor">Operações</span></li></ul></td></tr><tr><td><code class="strong">gerar_relatorio_vendas</code><div class="muted small">função · <code>loja/relatorio.py:1</code></div></td><td><ul class="resp"><li>Consultar e formatar o CSV de vendas<span class="pill actor">Financeiro</span></li></ul></td></tr><tr><td><code class="strong">formatar_moeda</code><div class="muted small">função · <code>loja/util.py:1</code></div></td><td><ul class="resp"><li>Formatar valores em reais<span class="pill actor">Atendimento</span></li></ul></td></tr></tbody></table></div></section><section id="diagnostico" class="section"><h2><span class="num">05</span>Diagnóstico</h2><p class="section-lead">Cada achado parte de um sinal concreto no código, com a evidência lida do arquivo e a consequência prática.</p>
+      <div class="filters" role="group" aria-label="Filtrar por severidade"><button type="button" class="chip on" data-filter="todos">Todos <span>5</span></button><button type="button" class="chip" data-filter="alta">Alta <span>2</span></button><button type="button" class="chip" data-filter="media">Média <span>2</span></button><button type="button" class="chip" data-filter="baixa">Baixa <span>1</span></button></div>
+      <div class="findings">
+          <article class="finding" id="A1" data-sev="alta">
+            <header class="finding-head">
+              <span class="id sev-alta">A1</span>
+              <h3>Uma classe com cinco motivos para mudar</h3>
+              <span class="pill sev sev-alta">Alta</span>
+            </header>
+            <div class="finding-meta"><span class="pill principle">Single Responsibility</span><span class="pill category">responsabilidades</span></div>
+            <div class="signal"><span class="label">Sinal</span>Imports de mundos distantes no mesmo arquivo: <code>sqlite3</code>, <code>smtplib</code> e <code>urllib</code> ao lado da regra de preço</div>
+            <figure class="code numbered"><div class="code-head"><span class="code-title"><code>loja/pedidos.py</code> · linhas 1–12</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="n">1</span><span class="lc"><span class="t-k">import</span> datetime</span></span><span class="ln"><span class="n">2</span><span class="lc"><span class="t-k">import</span> json</span></span><span class="ln"><span class="n">3</span><span class="lc"><span class="t-k">import</span> os</span></span><span class="ln hl"><span class="n">4</span><span class="lc"><span class="t-k">import</span> smtplib</span></span><span class="ln hl"><span class="n">5</span><span class="lc"><span class="t-k">import</span> sqlite3</span></span><span class="ln hl"><span class="n">6</span><span class="lc"><span class="t-k">import</span> urllib.request</span></span><span class="ln"><span class="n">7</span><span class="lc"><span class="t-k">from</span> email.message <span class="t-k">import</span> <span class="t-f">EmailMessage</span></span></span><span class="ln"><span class="n">8</span><span class="lc"> </span></span><span class="ln hl"><span class="n">9</span><span class="lc"><span class="t-f">DB_PATH</span> = os.environ.<span class="t-f">get</span>(<span class="t-s">&quot;LOJA_DB&quot;</span>, <span class="t-s">&quot;loja.db&quot;</span>)</span></span><span class="ln hl"><span class="n">10</span><span class="lc"><span class="t-f">SMTP_HOST</span> = os.environ.<span class="t-f">get</span>(<span class="t-s">&quot;SMTP_HOST&quot;</span>, <span class="t-s">&quot;smtp.loja.com&quot;</span>)</span></span><span class="ln hl"><span class="n">11</span><span class="lc"><span class="t-f">PAGFACIL_KEY</span> = os.environ.<span class="t-f">get</span>(<span class="t-s">&quot;PAGFACIL_KEY&quot;</span>, <span class="t-s">&quot;&quot;</span>)</span></span><span class="ln hl"><span class="n">12</span><span class="lc"><span class="t-f">PAYMUNDI_KEY</span> = os.environ.<span class="t-f">get</span>(<span class="t-s">&quot;PAYMUNDI_KEY&quot;</span>, <span class="t-s">&quot;&quot;</span>)</span></span></code></pre><textarea class="raw" hidden>import datetime
+import json
+import os
+import smtplib
+import sqlite3
+import urllib.request
+from email.message import EmailMessage
+
+DB_PATH = os.environ.get(&quot;LOJA_DB&quot;, &quot;loja.db&quot;)
+SMTP_HOST = os.environ.get(&quot;SMTP_HOST&quot;, &quot;smtp.loja.com&quot;)
+PAGFACIL_KEY = os.environ.get(&quot;PAGFACIL_KEY&quot;, &quot;&quot;)
+PAYMUNDI_KEY = os.environ.get(&quot;PAYMUNDI_KEY&quot;, &quot;&quot;)</textarea></div><div class="code-note">O arquivo da regra de preço importa banco, e-mail e HTTP, e lê quatro variáveis de ambiente.</div></figure><figure class="code numbered"><div class="code-head"><span class="code-title"><code>loja/pedidos.py</code> · linhas 34–58</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln hl"><span class="n">34</span><span class="lc"><span class="t-c"># total com desconto</span></span></span><span class="ln"><span class="n">35</span><span class="lc">subtotal = <span class="t-f">sum</span>(i[<span class="t-s">&quot;preco&quot;</span>] * i[<span class="t-s">&quot;qtd&quot;</span>] <span class="t-k">for</span> i <span class="t-k">in</span> dados[<span class="t-s">&quot;itens&quot;</span>])</span></span><span class="ln"><span class="n">36</span><span class="lc">tipo = dados.<span class="t-f">get</span>(<span class="t-s">&quot;tipo_cliente&quot;</span>, <span class="t-s">&quot;comum&quot;</span>)</span></span><span class="ln"><span class="n">37</span><span class="lc"><span class="t-k">if</span> tipo == <span class="t-s">&quot;comum&quot;</span>:</span></span><span class="ln"><span class="n">38</span><span class="lc">    desconto = <span class="t-n">0</span></span></span><span class="ln"><span class="n">39</span><span class="lc"><span class="t-k">elif</span> tipo == <span class="t-s">&quot;vip&quot;</span>:</span></span><span class="ln"><span class="n">40</span><span class="lc">    desconto = subtotal * <span class="t-n">0.10</span></span></span><span class="ln"><span class="n">41</span><span class="lc"><span class="t-k">elif</span> tipo == <span class="t-s">&quot;funcionario&quot;</span>:</span></span><span class="ln"><span class="n">42</span><span class="lc">    desconto = subtotal * <span class="t-n">0.30</span></span></span><span class="ln"><span class="n">43</span><span class="lc"><span class="t-k">elif</span> tipo == <span class="t-s">&quot;atacado&quot;</span>:</span></span><span class="ln"><span class="n">44</span><span class="lc">    desconto = subtotal * <span class="t-n">0.15</span> <span class="t-k">if</span> subtotal &gt; <span class="t-n">1000</span> <span class="t-k">else</span> subtotal * <span class="t-n">0.05</span></span></span><span class="ln"><span class="n">45</span><span class="lc"><span class="t-k">else</span>:</span></span><span class="ln"><span class="n">46</span><span class="lc">    desconto = <span class="t-n">0</span></span></span><span class="ln"><span class="n">47</span><span class="lc"><span class="t-k">if</span> datetime.date.<span class="t-f">today</span>().month == <span class="t-n">11</span> <span class="t-k">and</span> tipo != <span class="t-s">&quot;funcionario&quot;</span>:  <span class="t-c"># black friday</span></span></span><span class="ln"><span class="n">48</span><span class="lc">    desconto += subtotal * <span class="t-n">0.05</span></span></span><span class="ln"><span class="n">49</span><span class="lc">total = <span class="t-f">round</span>(subtotal - desconto, <span class="t-n">2</span>)</span></span><span class="ln"><span class="n">50</span><span class="lc"> </span></span><span class="ln hl"><span class="n">51</span><span class="lc"><span class="t-c"># frete</span></span></span><span class="ln"><span class="n">52</span><span class="lc"><span class="t-k">if</span> dados.<span class="t-f">get</span>(<span class="t-s">&quot;uf&quot;</span>) <span class="t-k">in</span> (<span class="t-s">&quot;SP&quot;</span>, <span class="t-s">&quot;RJ&quot;</span>, <span class="t-s">&quot;MG&quot;</span>):</span></span><span class="ln"><span class="n">53</span><span class="lc">    frete = <span class="t-n">15.0</span></span></span><span class="ln"><span class="n">54</span><span class="lc"><span class="t-k">else</span>:</span></span><span class="ln"><span class="n">55</span><span class="lc">    frete = <span class="t-n">30.0</span></span></span><span class="ln"><span class="n">56</span><span class="lc"><span class="t-k">if</span> total &gt; <span class="t-n">300</span>:</span></span><span class="ln"><span class="n">57</span><span class="lc">    frete = <span class="t-n">0</span></span></span><span class="ln"><span class="n">58</span><span class="lc">total += frete</span></span></code></pre><textarea class="raw" hidden># total com desconto
+subtotal = sum(i[&quot;preco&quot;] * i[&quot;qtd&quot;] for i in dados[&quot;itens&quot;])
+tipo = dados.get(&quot;tipo_cliente&quot;, &quot;comum&quot;)
+if tipo == &quot;comum&quot;:
+    desconto = 0
+elif tipo == &quot;vip&quot;:
+    desconto = subtotal * 0.10
+elif tipo == &quot;funcionario&quot;:
+    desconto = subtotal * 0.30
+elif tipo == &quot;atacado&quot;:
+    desconto = subtotal * 0.15 if subtotal &gt; 1000 else subtotal * 0.05
+else:
+    desconto = 0
+if datetime.date.today().month == 11 and tipo != &quot;funcionario&quot;:  # black friday
+    desconto += subtotal * 0.05
+total = round(subtotal - desconto, 2)
+
+# frete
+if dados.get(&quot;uf&quot;) in (&quot;SP&quot;, &quot;RJ&quot;, &quot;MG&quot;):
+    frete = 15.0
+else:
+    frete = 30.0
+if total &gt; 300:
+    frete = 0
+total += frete</textarea></div><div class="code-note">Desconto e frete, que são a regra comercial, ficam no meio do mesmo método que cobra, grava e envia e-mail.</div></figure>
+            <div class="impact"><span class="label">O que dói</span><p>Comercial, financeiro, dados, atendimento e operações pedem mudanças no mesmo arquivo, e no mesmo método. Mudar o texto do e-mail exige reler o cálculo de preço, e testar o desconto de atacado exige subir banco, gateway e SMTP falsos. O <code>git blame</code> da regra de preço vira o histórico de tudo.</p></div>
+            <div class="finding-foot"><span class="label">Tratado em</span><a class="ref rec" href="#R1">R1</a></div>
+          </article>
+          <article class="finding" id="A2" data-sev="alta">
+            <header class="finding-head">
+              <span class="id sev-alta">A2</span>
+              <h3>Os gateways de pagamento moram dentro da regra do pedido</h3>
+              <span class="pill sev sev-alta">Alta</span>
+            </header>
+            <div class="finding-meta"><span class="pill principle">Dependency Inversion</span><span class="pill principle">Open/Closed</span><span class="pill category">acoplamento</span></div>
+            <div class="signal"><span class="label">Sinal</span>Dois fornecedores para a mesma operação: <code>if gateway == &quot;pagfacil&quot;</code> … <code>elif gateway == &quot;paymundi&quot;</code>, com os códigos de retorno de cada um comparados como texto</div>
+            <figure class="code numbered"><div class="code-head"><span class="code-title"><code>loja/pedidos.py</code> · linhas 61–85</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="n">61</span><span class="lc">gateway = dados.<span class="t-f">get</span>(<span class="t-s">&quot;gateway&quot;</span>, <span class="t-s">&quot;pagfacil&quot;</span>)</span></span><span class="ln hl"><span class="n">62</span><span class="lc"><span class="t-k">if</span> gateway == <span class="t-s">&quot;pagfacil&quot;</span>:</span></span><span class="ln"><span class="n">63</span><span class="lc">    body = json.<span class="t-f">dumps</span>({<span class="t-s">&quot;valor_centavos&quot;</span>: <span class="t-f">int</span>(total * <span class="t-n">100</span>), <span class="t-s">&quot;cartao&quot;</span>: dados[<span class="t-s">&quot;cartao&quot;</span>]}).<span class="t-f">encode</span>()</span></span><span class="ln"><span class="n">64</span><span class="lc">    req = urllib.request.<span class="t-f">Request</span>(</span></span><span class="ln"><span class="n">65</span><span class="lc">        <span class="t-s">&quot;https://api.pagfacil.com/v1/cobrancas&quot;</span>,</span></span><span class="ln"><span class="n">66</span><span class="lc">        data=body,</span></span><span class="ln"><span class="n">67</span><span class="lc">        headers={<span class="t-s">&quot;Authorization&quot;</span>: <span class="t-s">&quot;Bearer &quot;</span> + <span class="t-f">PAGFACIL_KEY</span>, <span class="t-s">&quot;Content-Type&quot;</span>: <span class="t-s">&quot;application/json&quot;</span>},</span></span><span class="ln"><span class="n">68</span><span class="lc">    )</span></span><span class="ln"><span class="n">69</span><span class="lc">    resp = json.<span class="t-f">loads</span>(urllib.request.<span class="t-f">urlopen</span>(req).<span class="t-f">read</span>())</span></span><span class="ln hl"><span class="n">70</span><span class="lc">    <span class="t-k">if</span> resp[<span class="t-s">&quot;situacao&quot;</span>] != <span class="t-s">&quot;APROVADA&quot;</span>:</span></span><span class="ln"><span class="n">71</span><span class="lc">        <span class="t-k">raise</span> <span class="t-f">Exception</span>(<span class="t-s">&quot;pagamento recusado: &quot;</span> + resp.<span class="t-f">get</span>(<span class="t-s">&quot;motivo&quot;</span>, <span class="t-s">&quot;&quot;</span>))</span></span><span class="ln"><span class="n">72</span><span class="lc">    transacao = resp[<span class="t-s">&quot;id_cobranca&quot;</span>]</span></span><span class="ln hl"><span class="n">73</span><span class="lc"><span class="t-k">elif</span> gateway == <span class="t-s">&quot;paymundi&quot;</span>:</span></span><span class="ln"><span class="n">74</span><span class="lc">    body = json.<span class="t-f">dumps</span>({<span class="t-s">&quot;amount&quot;</span>: total, <span class="t-s">&quot;currency&quot;</span>: <span class="t-s">&quot;BRL&quot;</span>, <span class="t-s">&quot;card_token&quot;</span>: dados[<span class="t-s">&quot;cartao&quot;</span>]}).<span class="t-f">encode</span>()</span></span><span class="ln"><span class="n">75</span><span class="lc">    req = urllib.request.<span class="t-f">Request</span>(</span></span><span class="ln"><span class="n">76</span><span class="lc">        <span class="t-s">&quot;https://paymundi.io/v2/charges&quot;</span>,</span></span><span class="ln"><span class="n">77</span><span class="lc">        data=body,</span></span><span class="ln"><span class="n">78</span><span class="lc">        headers={<span class="t-s">&quot;X-Api-Key&quot;</span>: <span class="t-f">PAYMUNDI_KEY</span>, <span class="t-s">&quot;Content-Type&quot;</span>: <span class="t-s">&quot;application/json&quot;</span>},</span></span><span class="ln"><span class="n">79</span><span class="lc">    )</span></span><span class="ln"><span class="n">80</span><span class="lc">    resp = json.<span class="t-f">loads</span>(urllib.request.<span class="t-f">urlopen</span>(req).<span class="t-f">read</span>())</span></span><span class="ln hl"><span class="n">81</span><span class="lc">    <span class="t-k">if</span> resp[<span class="t-s">&quot;status&quot;</span>] != <span class="t-s">&quot;succeeded&quot;</span>:</span></span><span class="ln"><span class="n">82</span><span class="lc">        <span class="t-k">raise</span> <span class="t-f">Exception</span>(<span class="t-s">&quot;pagamento recusado: &quot;</span> + resp[<span class="t-s">&quot;error&quot;</span>][<span class="t-s">&quot;message&quot;</span>])</span></span><span class="ln"><span class="n">83</span><span class="lc">    transacao = resp[<span class="t-s">&quot;charge_id&quot;</span>]</span></span><span class="ln"><span class="n">84</span><span class="lc"><span class="t-k">else</span>:</span></span><span class="ln hl"><span class="n">85</span><span class="lc">    <span class="t-k">raise</span> <span class="t-f">Exception</span>(<span class="t-s">&quot;gateway desconhecido: &quot;</span> + gateway)</span></span></code></pre><textarea class="raw" hidden>gateway = dados.get(&quot;gateway&quot;, &quot;pagfacil&quot;)
+if gateway == &quot;pagfacil&quot;:
+    body = json.dumps({&quot;valor_centavos&quot;: int(total * 100), &quot;cartao&quot;: dados[&quot;cartao&quot;]}).encode()
+    req = urllib.request.Request(
+        &quot;https://api.pagfacil.com/v1/cobrancas&quot;,
+        data=body,
+        headers={&quot;Authorization&quot;: &quot;Bearer &quot; + PAGFACIL_KEY, &quot;Content-Type&quot;: &quot;application/json&quot;},
+    )
+    resp = json.loads(urllib.request.urlopen(req).read())
+    if resp[&quot;situacao&quot;] != &quot;APROVADA&quot;:
+        raise Exception(&quot;pagamento recusado: &quot; + resp.get(&quot;motivo&quot;, &quot;&quot;))
+    transacao = resp[&quot;id_cobranca&quot;]
+elif gateway == &quot;paymundi&quot;:
+    body = json.dumps({&quot;amount&quot;: total, &quot;currency&quot;: &quot;BRL&quot;, &quot;card_token&quot;: dados[&quot;cartao&quot;]}).encode()
+    req = urllib.request.Request(
+        &quot;https://paymundi.io/v2/charges&quot;,
+        data=body,
+        headers={&quot;X-Api-Key&quot;: PAYMUNDI_KEY, &quot;Content-Type&quot;: &quot;application/json&quot;},
+    )
+    resp = json.loads(urllib.request.urlopen(req).read())
+    if resp[&quot;status&quot;] != &quot;succeeded&quot;:
+        raise Exception(&quot;pagamento recusado: &quot; + resp[&quot;error&quot;][&quot;message&quot;])
+    transacao = resp[&quot;charge_id&quot;]
+else:
+    raise Exception(&quot;gateway desconhecido: &quot; + gateway)</textarea></div></figure>
+            <div class="impact"><span class="label">O que dói</span><p>O terceiro gateway entra como mais um <code>elif</code> dentro de <code>processar</code>, ao lado da regra de preço. O formato de cada fornecedor (centavos ou reais, <code>situacao</code> ou <code>status</code>) vaza para o pedido, e não há como testar a cobrança sem rede ou sem <code>patch</code> em <code>urllib</code>.</p></div>
+            <div class="finding-foot"><span class="label">Tratado em</span><a class="ref rec" href="#R3">R3</a></div>
+          </article>
+          <article class="finding" id="A3" data-sev="media">
+            <header class="finding-head">
+              <span class="id sev-media">A3</span>
+              <h3>O tipo de cliente escolhe a regra de desconto numa escada de <code>if</code></h3>
+              <span class="pill sev sev-media">Média</span>
+            </header>
+            <div class="finding-meta"><span class="pill principle">Open/Closed</span><span class="pill principle">Dependency Inversion</span><span class="pill category">variação</span></div>
+            <div class="signal"><span class="label">Sinal</span>Um texto escolhe o algoritmo (<code>if tipo == &quot;vip&quot;</code> … <code>elif</code>), e o relógio é lido dentro da regra (<code>datetime.date.today()</code>)</div>
+            <figure class="code numbered"><div class="code-head"><span class="code-title"><code>loja/pedidos.py</code> · linhas 35–49</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="n">35</span><span class="lc">subtotal = <span class="t-f">sum</span>(i[<span class="t-s">&quot;preco&quot;</span>] * i[<span class="t-s">&quot;qtd&quot;</span>] <span class="t-k">for</span> i <span class="t-k">in</span> dados[<span class="t-s">&quot;itens&quot;</span>])</span></span><span class="ln"><span class="n">36</span><span class="lc">tipo = dados.<span class="t-f">get</span>(<span class="t-s">&quot;tipo_cliente&quot;</span>, <span class="t-s">&quot;comum&quot;</span>)</span></span><span class="ln hl"><span class="n">37</span><span class="lc"><span class="t-k">if</span> tipo == <span class="t-s">&quot;comum&quot;</span>:</span></span><span class="ln"><span class="n">38</span><span class="lc">    desconto = <span class="t-n">0</span></span></span><span class="ln hl"><span class="n">39</span><span class="lc"><span class="t-k">elif</span> tipo == <span class="t-s">&quot;vip&quot;</span>:</span></span><span class="ln"><span class="n">40</span><span class="lc">    desconto = subtotal * <span class="t-n">0.10</span></span></span><span class="ln hl"><span class="n">41</span><span class="lc"><span class="t-k">elif</span> tipo == <span class="t-s">&quot;funcionario&quot;</span>:</span></span><span class="ln"><span class="n">42</span><span class="lc">    desconto = subtotal * <span class="t-n">0.30</span></span></span><span class="ln hl"><span class="n">43</span><span class="lc"><span class="t-k">elif</span> tipo == <span class="t-s">&quot;atacado&quot;</span>:</span></span><span class="ln"><span class="n">44</span><span class="lc">    desconto = subtotal * <span class="t-n">0.15</span> <span class="t-k">if</span> subtotal &gt; <span class="t-n">1000</span> <span class="t-k">else</span> subtotal * <span class="t-n">0.05</span></span></span><span class="ln"><span class="n">45</span><span class="lc"><span class="t-k">else</span>:</span></span><span class="ln"><span class="n">46</span><span class="lc">    desconto = <span class="t-n">0</span></span></span><span class="ln hl"><span class="n">47</span><span class="lc"><span class="t-k">if</span> datetime.date.<span class="t-f">today</span>().month == <span class="t-n">11</span> <span class="t-k">and</span> tipo != <span class="t-s">&quot;funcionario&quot;</span>:  <span class="t-c"># black friday</span></span></span><span class="ln"><span class="n">48</span><span class="lc">    desconto += subtotal * <span class="t-n">0.05</span></span></span><span class="ln"><span class="n">49</span><span class="lc">total = <span class="t-f">round</span>(subtotal - desconto, <span class="t-n">2</span>)</span></span></code></pre><textarea class="raw" hidden>subtotal = sum(i[&quot;preco&quot;] * i[&quot;qtd&quot;] for i in dados[&quot;itens&quot;])
+tipo = dados.get(&quot;tipo_cliente&quot;, &quot;comum&quot;)
+if tipo == &quot;comum&quot;:
+    desconto = 0
+elif tipo == &quot;vip&quot;:
+    desconto = subtotal * 0.10
+elif tipo == &quot;funcionario&quot;:
+    desconto = subtotal * 0.30
+elif tipo == &quot;atacado&quot;:
+    desconto = subtotal * 0.15 if subtotal &gt; 1000 else subtotal * 0.05
+else:
+    desconto = 0
+if datetime.date.today().month == 11 and tipo != &quot;funcionario&quot;:  # black friday
+    desconto += subtotal * 0.05
+total = round(subtotal - desconto, 2)</textarea></div></figure>
+            <div class="impact"><span class="label">O que dói</span><p>Cada tipo de cliente novo é um <code>elif</code> no meio do fluxo de pagamento. A Black Friday depende do mês real, então o teste dessa regra só passa em novembro, ou exige <code>patch</code> no <code>datetime</code>.</p></div>
+            <div class="finding-foot"><span class="label">Tratado em</span><a class="ref rec" href="#R4">R4</a></div>
+          </article>
+          <article class="finding" id="A4" data-sev="media">
+            <header class="finding-head">
+              <span class="id sev-media">A4</span>
+              <h3>Banco e e-mail são criados e chamados dentro da regra</h3>
+              <span class="pill sev sev-media">Média</span>
+            </header>
+            <div class="finding-meta"><span class="pill principle">Dependency Inversion</span><span class="pill principle">Single Responsibility</span><span class="pill category">acoplamento</span></div>
+            <div class="signal"><span class="label">Sinal</span>Construtor de classe concreta dentro do negócio (<code>sqlite3.connect</code>, <code>smtplib.SMTP</code>) e o mesmo bloco de e-mail copiado três vezes</div>
+            <figure class="code numbered"><div class="code-head"><span class="code-title"><code>loja/pedidos.py</code> · linhas 16–22</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="n">16</span><span class="lc"><span class="t-k">def</span> <span class="t-f">__init__</span>(self):</span></span><span class="ln hl"><span class="n">17</span><span class="lc">    self.conn = sqlite3.<span class="t-f">connect</span>(<span class="t-f">DB_PATH</span>)</span></span><span class="ln"><span class="n">18</span><span class="lc">    self.conn.<span class="t-f">execute</span>(</span></span><span class="ln"><span class="n">19</span><span class="lc">        <span class="t-s">&quot;CREATE TABLE IF NOT EXISTS pedidos (&quot;</span></span></span><span class="ln"><span class="n">20</span><span class="lc">        <span class="t-s">&quot;id INTEGER PRIMARY KEY, cliente TEXT, email TEXT, total REAL, &quot;</span></span></span><span class="ln"><span class="n">21</span><span class="lc">        <span class="t-s">&quot;status TEXT, gateway TEXT, transacao TEXT)&quot;</span></span></span><span class="ln"><span class="n">22</span><span class="lc">    )</span></span></code></pre><textarea class="raw" hidden>def __init__(self):
+    self.conn = sqlite3.connect(DB_PATH)
+    self.conn.execute(
+        &quot;CREATE TABLE IF NOT EXISTS pedidos (&quot;
+        &quot;id INTEGER PRIMARY KEY, cliente TEXT, email TEXT, total REAL, &quot;
+        &quot;status TEXT, gateway TEXT, transacao TEXT)&quot;
+    )</textarea></div><div class="code-note">Instanciar a classe já abre o banco e cria a tabela.</div></figure><figure class="code numbered"><div class="code-head"><span class="code-title"><code>loja/pedidos.py</code> · linhas 117–123</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="n">117</span><span class="lc">msg = <span class="t-f">EmailMessage</span>()</span></span><span class="ln"><span class="n">118</span><span class="lc">msg[<span class="t-s">&quot;Subject&quot;</span>] = <span class="t-s">f&quot;Pedido {pedido_id} enviado&quot;</span></span></span><span class="ln"><span class="n">119</span><span class="lc">msg[<span class="t-s">&quot;From&quot;</span>] = <span class="t-s">&quot;loja@loja.com&quot;</span></span></span><span class="ln"><span class="n">120</span><span class="lc">msg[<span class="t-s">&quot;To&quot;</span>] = email</span></span><span class="ln"><span class="n">121</span><span class="lc">msg.<span class="t-f">set_content</span>(<span class="t-s">f&quot;Olá {cliente}, seu pedido foi enviado. Rastreio: {codigo_rastreio}&quot;</span>)</span></span><span class="ln hl"><span class="n">122</span><span class="lc"><span class="t-k">with</span> smtplib.<span class="t-f">SMTP</span>(<span class="t-f">SMTP_HOST</span>) <span class="t-k">as</span> s:</span></span><span class="ln hl"><span class="n">123</span><span class="lc">    s.<span class="t-f">send_message</span>(msg)</span></span></code></pre><textarea class="raw" hidden>msg = EmailMessage()
+msg[&quot;Subject&quot;] = f&quot;Pedido {pedido_id} enviado&quot;
+msg[&quot;From&quot;] = &quot;loja@loja.com&quot;
+msg[&quot;To&quot;] = email
+msg.set_content(f&quot;Olá {cliente}, seu pedido foi enviado. Rastreio: {codigo_rastreio}&quot;)
+with smtplib.SMTP(SMTP_HOST) as s:
+    s.send_message(msg)</textarea></div><div class="code-note">O mesmo bloco aparece nas linhas 96–104 e 137–143, mudando só o assunto e o texto.</div></figure>
+            <div class="impact"><span class="label">O que dói</span><p>Trocar SQLite por outro banco, ou SMTP por um serviço de e-mail, significa editar a classe que calcula preço. O remetente <code>loja@loja.com</code> está escrito três vezes, e a próxima mudança vai esquecer uma delas.</p></div>
+            <div class="finding-foot"><span class="label">Tratado em</span><a class="ref rec" href="#R2">R2</a></div>
+          </article>
+          <article class="finding" id="A5" data-sev="baixa">
+            <header class="finding-head">
+              <span class="id sev-baixa">A5</span>
+              <h3>A mesma escada de status em duas operações</h3>
+              <span class="pill sev sev-baixa">Baixa</span>
+            </header>
+            <div class="finding-meta"><span class="pill principle">Open/Closed</span><span class="pill category">variação</span></div>
+            <div class="signal"><span class="label">Sinal</span>A mesma escada de <code>if</code> sobre a fase em vários métodos: <code>if status == &quot;pago&quot;</code> / <code>elif</code> no começo de <code>marcar_enviado</code> e de <code>cancelar</code></div>
+            <figure class="code numbered"><div class="code-head"><span class="code-title"><code>loja/pedidos.py</code> · linhas 113–127</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="n">113</span><span class="lc">status, email, cliente = row</span></span><span class="ln hl"><span class="n">114</span><span class="lc"><span class="t-k">if</span> status == <span class="t-s">&quot;pago&quot;</span>:</span></span><span class="ln"><span class="n">115</span><span class="lc">    self.conn.<span class="t-f">execute</span>(<span class="t-s">&quot;UPDATE pedidos SET status = &#x27;enviado&#x27; WHERE id = ?&quot;</span>, (pedido_id,))</span></span><span class="ln"><span class="n">116</span><span class="lc">    self.conn.<span class="t-f">commit</span>()</span></span><span class="ln"><span class="n">117</span><span class="lc">    msg = <span class="t-f">EmailMessage</span>()</span></span><span class="ln"><span class="n">118</span><span class="lc">    msg[<span class="t-s">&quot;Subject&quot;</span>] = <span class="t-s">f&quot;Pedido {pedido_id} enviado&quot;</span></span></span><span class="ln"><span class="n">119</span><span class="lc">    msg[<span class="t-s">&quot;From&quot;</span>] = <span class="t-s">&quot;loja@loja.com&quot;</span></span></span><span class="ln"><span class="n">120</span><span class="lc">    msg[<span class="t-s">&quot;To&quot;</span>] = email</span></span><span class="ln"><span class="n">121</span><span class="lc">    msg.<span class="t-f">set_content</span>(<span class="t-s">f&quot;Olá {cliente}, seu pedido foi enviado. Rastreio: {codigo_rastreio}&quot;</span>)</span></span><span class="ln"><span class="n">122</span><span class="lc">    <span class="t-k">with</span> smtplib.<span class="t-f">SMTP</span>(<span class="t-f">SMTP_HOST</span>) <span class="t-k">as</span> s:</span></span><span class="ln"><span class="n">123</span><span class="lc">        s.<span class="t-f">send_message</span>(msg)</span></span><span class="ln hl"><span class="n">124</span><span class="lc"><span class="t-k">elif</span> status == <span class="t-s">&quot;enviado&quot;</span>:</span></span><span class="ln"><span class="n">125</span><span class="lc">    <span class="t-k">raise</span> <span class="t-f">Exception</span>(<span class="t-s">&quot;pedido já enviado&quot;</span>)</span></span><span class="ln hl"><span class="n">126</span><span class="lc"><span class="t-k">elif</span> status == <span class="t-s">&quot;cancelado&quot;</span>:</span></span><span class="ln"><span class="n">127</span><span class="lc">    <span class="t-k">raise</span> <span class="t-f">Exception</span>(<span class="t-s">&quot;pedido cancelado não pode ser enviado&quot;</span>)</span></span></code></pre><textarea class="raw" hidden>status, email, cliente = row
+if status == &quot;pago&quot;:
+    self.conn.execute(&quot;UPDATE pedidos SET status = &#x27;enviado&#x27; WHERE id = ?&quot;, (pedido_id,))
+    self.conn.commit()
+    msg = EmailMessage()
+    msg[&quot;Subject&quot;] = f&quot;Pedido {pedido_id} enviado&quot;
+    msg[&quot;From&quot;] = &quot;loja@loja.com&quot;
+    msg[&quot;To&quot;] = email
+    msg.set_content(f&quot;Olá {cliente}, seu pedido foi enviado. Rastreio: {codigo_rastreio}&quot;)
+    with smtplib.SMTP(SMTP_HOST) as s:
+        s.send_message(msg)
+elif status == &quot;enviado&quot;:
+    raise Exception(&quot;pedido já enviado&quot;)
+elif status == &quot;cancelado&quot;:
+    raise Exception(&quot;pedido cancelado não pode ser enviado&quot;)</textarea></div><div class="code-note"><code>cancelar</code> (linhas 133–147) repete a estrutura.</div></figure>
+            <div class="impact"><span class="label">O que dói</span><p>As transições válidas não estão escritas em lugar nenhum: para saber de onde se chega a <code>cancelado</code>, é preciso ler os dois métodos. Hoje são três status e duas operações, então a dor ainda é pequena.</p></div>
+            <div class="finding-foot"><span class="label">Tratado em</span><a class="ref" href="#descartados">ver descartados</a></div>
+          </article></div></section><section id="recomendacoes" class="section"><h2><span class="num">06</span>Recomendações</h2><p class="section-lead">Cada recomendação resolve achados do diagnóstico, passou pelo Teste rápido do pattern e diz o custo que traz.</p>
+      <div class="matrix-wrap">
+        <div class="matrix-y"><span class="axis-title">Impacto</span><div>Alto</div><div>Médio</div><div>Baixo</div></div>
+        <div class="matrix"><div class="cell quick"></div><div class="cell quick"><a class="mchip" href="#R1"><b>R1</b> Single Responsibility</a><a class="mchip" href="#R2"><b>R2</b> Dependency Inversion</a><a class="mchip" href="#R3"><b>R3</b> Adapter</a></div><div class="cell"></div><div class="cell"><a class="mchip" href="#R4"><b>R4</b> Strategy</a></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div></div>
+        <div class="matrix-x"><div></div><div>Pequeno</div><div>Médio</div><div>Grande</div></div>
+        <div class="matrix-caption">Esforço →  · em destaque: alto impacto com esforço pequeno ou médio, que é por onde começar.</div>
+      </div><div class="recs">
+          <article class="rec-card" id="R1">
+            <header class="rec-head">
+              <span class="id rec">R1</span>
+              <div class="rec-titles"><h3>Tirar o cálculo do pedido de dentro do processamento</h3>
+                <div class="rec-pattern"><span class="pattern-name">Single Responsibility</span><span class="muted">Princípio SOLID</span></div></div>
+              <div class="rec-badges"><span class="pill lvl-alto">Impacto alto</span><span class="pill effort">Esforço médio</span></div>
+            </header>
+            <div class="rec-grid">
+              <div><h4>Resolve</h4><p><a class="ref sev-alta" href="#A1">A1</a></p><h4>Onde</h4><ul><li><code>loja/pedidos.py:25-58</code> vira o novo <code>loja/calculo.py</code></li><li><code>processar</code> passa a chamar <code>validar(dados)</code> e <code>calcular_total(...)</code></li></ul></div>
+              <div><h4>Por que este pattern</h4><p>A validação, o desconto e o frete são a regra comercial, e são o que mais muda. Hoje elas estão presas entre a cobrança e o banco. Separadas numa função pura, elas ganham um teste de uma linha e deixam de mudar junto com o resto.</p><p>É o primeiro passo porque os outros dependem dele: sem o cálculo isolado, os adaptadores e as regras de desconto continuariam encostados no I/O.</p></div>
+            </div>
+            <h4>Teste rápido</h4><p class="muted small">As perguntas da página do pattern, em ordem. ✓ a resposta deixa seguir; ✗ a resposta manda parar.</p><ul class="quicktest"><li class="yes"><span class="mark">✓</span><div><div class="q">Quem pede mudança aqui, e por quê? A resposta tem mais de um nome?</div><div class="a">Cinco nomes: comercial, financeiro, dados, atendimento e operações (ver Elementos).</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">É uma classe pequena e coesa, com um ator só?</div><div class="a">Não. São 147 linhas e cinco atores.</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">É script de uma vez ou protótipo?</div><div class="a">Não. É o fluxo de vendas, chamado em produção.</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">É só um método de seis linhas que faz duas coisas?</div><div class="a">Não. O cálculo tem 34 linhas e três regras com donos diferentes.</div></div></li></ul>
+            <h4>Papéis no código</h4><div class='table-wrap'><table><thead><tr><th>Papel</th><th>No código</th></tr></thead><tbody><tr><td>Regra de negócio, sem I/O</td><td><code>validar(dados)</code> e <code>calcular_total(itens, tipo_cliente, uf, hoje)</code> em <code>loja/calculo.py</code></td></tr><tr><td>Quem junta as peças</td><td><code>GerenciadorDePedidos.processar</code></td></tr></tbody></table></div>
+            <h4>Como fica</h4><figure class="code"><div class="code-head"><span class="code-title">proposta — loja/calculo.py</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="lc"><span class="t-f">UF_FRETE_REDUZIDO</span> = (<span class="t-s">&quot;SP&quot;</span>, <span class="t-s">&quot;RJ&quot;</span>, <span class="t-s">&quot;MG&quot;</span>)</span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"><span class="t-k">def</span> <span class="t-f">validar</span>(dados):</span></span><span class="ln"><span class="lc">    <span class="t-k">if</span> <span class="t-k">not</span> dados.<span class="t-f">get</span>(<span class="t-s">&quot;itens&quot;</span>):</span></span><span class="ln"><span class="lc">        <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">&quot;pedido sem itens&quot;</span>)</span></span><span class="ln"><span class="lc">    <span class="t-k">if</span> <span class="t-s">&quot;@&quot;</span> <span class="t-k">not</span> <span class="t-k">in</span> dados.<span class="t-f">get</span>(<span class="t-s">&quot;email&quot;</span>, <span class="t-s">&quot;&quot;</span>):</span></span><span class="ln"><span class="lc">        <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">&quot;email inválido&quot;</span>)</span></span><span class="ln"><span class="lc">    <span class="t-k">for</span> item <span class="t-k">in</span> dados[<span class="t-s">&quot;itens&quot;</span>]:</span></span><span class="ln"><span class="lc">        <span class="t-k">if</span> item[<span class="t-s">&quot;qtd&quot;</span>] &lt;= <span class="t-n">0</span>:</span></span><span class="ln"><span class="lc">            <span class="t-k">raise</span> <span class="t-f">ValueError</span>(<span class="t-s">f&quot;quantidade inválida para {item[&#x27;sku&#x27;]}&quot;</span>)</span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"><span class="t-k">def</span> <span class="t-f">calcular_frete</span>(uf, total):</span></span><span class="ln"><span class="lc">    <span class="t-k">if</span> total &gt; <span class="t-n">300</span>:</span></span><span class="ln"><span class="lc">        <span class="t-k">return</span> <span class="t-n">0</span></span></span><span class="ln"><span class="lc">    <span class="t-k">return</span> <span class="t-n">15.0</span> <span class="t-k">if</span> uf <span class="t-k">in</span> <span class="t-f">UF_FRETE_REDUZIDO</span> <span class="t-k">else</span> <span class="t-n">30.0</span></span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"><span class="t-k">def</span> <span class="t-f">calcular_total</span>(itens, tipo_cliente, uf, hoje):</span></span><span class="ln"><span class="lc">    subtotal = <span class="t-f">sum</span>(i[<span class="t-s">&quot;preco&quot;</span>] * i[<span class="t-s">&quot;qtd&quot;</span>] <span class="t-k">for</span> i <span class="t-k">in</span> itens)</span></span><span class="ln"><span class="lc">    desconto = <span class="t-f">calcular_desconto</span>(subtotal, tipo_cliente, hoje)  <span class="t-c"># R4</span></span></span><span class="ln"><span class="lc">    total = <span class="t-f">round</span>(subtotal - desconto, <span class="t-n">2</span>)</span></span><span class="ln"><span class="lc">    <span class="t-k">return</span> total + <span class="t-f">calcular_frete</span>(uf, total)</span></span></code></pre><textarea class="raw" hidden>UF_FRETE_REDUZIDO = (&quot;SP&quot;, &quot;RJ&quot;, &quot;MG&quot;)
+
+
+def validar(dados):
+    if not dados.get(&quot;itens&quot;):
+        raise ValueError(&quot;pedido sem itens&quot;)
+    if &quot;@&quot; not in dados.get(&quot;email&quot;, &quot;&quot;):
+        raise ValueError(&quot;email inválido&quot;)
+    for item in dados[&quot;itens&quot;]:
+        if item[&quot;qtd&quot;] &lt;= 0:
+            raise ValueError(f&quot;quantidade inválida para {item[&#x27;sku&#x27;]}&quot;)
+
+
+def calcular_frete(uf, total):
+    if total &gt; 300:
+        return 0
+    return 15.0 if uf in UF_FRETE_REDUZIDO else 30.0
+
+
+def calcular_total(itens, tipo_cliente, uf, hoje):
+    subtotal = sum(i[&quot;preco&quot;] * i[&quot;qtd&quot;] for i in itens)
+    desconto = calcular_desconto(subtotal, tipo_cliente, hoje)  # R4
+    total = round(subtotal - desconto, 2)
+    return total + calcular_frete(uf, total)</textarea></div></figure>
+            <div class="callout warn"><div class="callout-title">Custo e quando não usar</div><p>Conferido contra &quot;Quando não aplicar&quot; do Single Responsibility: não é classe pequena e coesa, não é script de uma vez e não é um método de seis linhas. A separação é por <strong>motivo de mudança</strong>, e não uma classe por verbo: o cálculo inteiro fica num módulo só.</p><p>Um módulo a mais. Quem lê <code>processar</code> precisa abrir <code>calculo.py</code> para ver a conta, o que é o objetivo.</p></div>
+            <div class="rec-links">Documentação: <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/single-responsibility.html" target="_blank" rel="noopener">Explicação</a></div>
+          </article>
+          <article class="rec-card" id="R2">
+            <header class="rec-head">
+              <span class="id rec">R2</span>
+              <div class="rec-titles"><h3>Receber o banco e o e-mail pelo construtor</h3>
+                <div class="rec-pattern"><span class="pattern-name">Dependency Inversion</span><span class="muted">Princípio SOLID</span></div></div>
+              <div class="rec-badges"><span class="pill lvl-alto">Impacto alto</span><span class="pill effort">Esforço médio</span></div>
+            </header>
+            <div class="rec-grid">
+              <div><h4>Resolve</h4><p><a class="ref sev-media" href="#A4">A4</a></p><h4>Onde</h4><ul><li><code>loja/pedidos.py:16-22</code> e os blocos de SQL e SMTP</li><li>novos <code>loja/repositorio.py</code> e <code>loja/notificacao.py</code></li></ul></div>
+              <div><h4>Por que este pattern</h4><p>O banco e o e-mail são as duas dependências que mais atrapalham o teste e que têm chance real de trocar. A regra define o que precisa (<code>salvar</code>, <code>buscar_status</code>, <code>avisar</code>) e as classes de SQLite e SMTP implementam isso.</p><p>O <code>GerenciadorDePedidos()</code> sem argumentos continua funcionando: o construtor monta as versões padrão a partir do ambiente quando nada é passado. O <code>main.py</code> não muda.</p></div>
+            </div>
+            <h4>Teste rápido</h4><p class="muted small">As perguntas da página do pattern, em ordem. ✓ a resposta deixa seguir; ✗ a resposta manda parar.</p><ul class="quicktest"><li class="yes"><span class="mark">✓</span><div><div class="q">A dependência muda, é lenta ou é difícil de testar?</div><div class="a">As duas são difíceis de testar (SQLite em disco, SMTP real), e o e-mail tem troca provável para um serviço.</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">É biblioteca padrão estável e sem efeito colateral?</div><div class="a">Não. <code>sqlite3</code> e <code>smtplib</code> fazem I/O.</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">É script curto, em que o ponto de montagem seria maior que o código?</div><div class="a">Não. A montagem cabe em dez linhas no construtor.</div></div></li></ul>
+            <h4>Papéis no código</h4><div class='table-wrap'><table><thead><tr><th>Papel</th><th>No código</th></tr></thead><tbody><tr><td>Abstração definida pela regra</td><td><code>RepositorioDePedidos</code> e <code>Notificador</code> (<code>Protocol</code>)</td></tr><tr><td>Detalhe</td><td><code>RepositorioSQLite</code>, <code>NotificadorSMTP</code></td></tr><tr><td>Ponto de montagem</td><td><code>GerenciadorDePedidos.__init__</code> com valores padrão</td></tr></tbody></table></div>
+            <h4>Como fica</h4><figure class="code"><div class="code-head"><span class="code-title">proposta — loja/pedidos.py (construtor)</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="lc"><span class="t-k">class</span> <span class="t-f">GerenciadorDePedidos</span>:</span></span><span class="ln"><span class="lc">    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, repositorio=<span class="t-k">None</span>, notificador=<span class="t-k">None</span>, gateways=<span class="t-k">None</span>, relogio=datetime.date.today):</span></span><span class="ln"><span class="lc">        self._repositorio = repositorio <span class="t-k">or</span> <span class="t-f">RepositorioSQLite</span>(os.environ.<span class="t-f">get</span>(<span class="t-s">&quot;LOJA_DB&quot;</span>, <span class="t-s">&quot;loja.db&quot;</span>))</span></span><span class="ln"><span class="lc">        self._notificador = notificador <span class="t-k">or</span> <span class="t-f">NotificadorSMTP</span>(os.environ.<span class="t-f">get</span>(<span class="t-s">&quot;SMTP_HOST&quot;</span>, <span class="t-s">&quot;smtp.loja.com&quot;</span>))</span></span><span class="ln"><span class="lc">        self._gateways = gateways <span class="t-k">or</span> <span class="t-f">gateways_padrao</span>()  <span class="t-c"># R3</span></span></span><span class="ln"><span class="lc">        self._hoje = relogio</span></span></code></pre><textarea class="raw" hidden>class GerenciadorDePedidos:
+    def __init__(self, repositorio=None, notificador=None, gateways=None, relogio=datetime.date.today):
+        self._repositorio = repositorio or RepositorioSQLite(os.environ.get(&quot;LOJA_DB&quot;, &quot;loja.db&quot;))
+        self._notificador = notificador or NotificadorSMTP(os.environ.get(&quot;SMTP_HOST&quot;, &quot;smtp.loja.com&quot;))
+        self._gateways = gateways or gateways_padrao()  # R3
+        self._hoje = relogio</textarea></div></figure>
+            <div class="callout warn"><div class="callout-title">Custo e quando não usar</div><p>Conferido contra &quot;Quando não aplicar&quot; do Dependency Inversion. <code>json</code> e <code>datetime</code> ficam diretos; só o relógio é injetado, porque a regra de Black Friday depende dele. Não haverá <code>IRepositorio</code> espelhando a classe: as interfaces têm só os métodos que o pedido usa.</p><p>Duas interfaces pequenas e um construtor com parâmetros opcionais. O &quot;ir para a definição&quot; de <code>salvar</code> cai no <code>Protocol</code>.</p></div>
+            <div class="rec-links">Documentação: <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/dependency-inversion.html" target="_blank" rel="noopener">Explicação</a></div>
+          </article>
+          <article class="rec-card" id="R3">
+            <header class="rec-head">
+              <span class="id rec">R3</span>
+              <div class="rec-titles"><h3>Um adaptador por gateway, atrás de uma interface do pedido</h3>
+                <div class="rec-pattern"><span class="pattern-name">Adapter</span><span class="muted">Pattern estrutural</span></div></div>
+              <div class="rec-badges"><span class="pill lvl-alto">Impacto alto</span><span class="pill effort">Esforço médio</span></div>
+            </header>
+            <div class="rec-grid">
+              <div><h4>Resolve</h4><p><a class="ref sev-alta" href="#A2">A2</a></p><h4>Onde</h4><ul><li><code>loja/pedidos.py:61-85</code> sai da regra</li><li>novo <code>loja/pagamentos.py</code> com <code>PagFacil</code> e <code>PayMundi</code></li></ul></div>
+              <div><h4>Por que este pattern</h4><p>O pedido quer uma coisa só: cobrar um valor num cartão e receber o id da transação. Cada fornecedor faz isso com outro nome de campo, outra unidade (centavos ou reais) e outro formato de erro. O adaptador é o único lugar que conhece esse formato, e um gateway novo vira uma classe nova, registrada no dicionário de gateways, sem tocar no pedido.</p></div>
+            </div>
+            <h4>Teste rápido</h4><p class="muted small">As perguntas da página do pattern, em ordem. ✓ a resposta deixa seguir; ✗ a resposta manda parar.</p><ul class="quicktest"><li class="yes"><span class="mark">✓</span><div><div class="q">Já existe algo pronto que resolve?</div><div class="a">Sim: as APIs da PagFácil e da PayMundi.</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">A interface dele é diferente da que o seu código precisa?</div><div class="a">Sim. Campos, unidade de valor e formato de erro diferentes entre si e do que o pedido precisa.</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">Você pode mudar a interface na origem?</div><div class="a">Não. São APIs de terceiros.</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">A diferença vai aparecer em mais de um lugar, ou atrapalha testar?</div><div class="a">Atrapalha testar: hoje só dá para testar <code>processar</code> com <code>patch</code> em <code>urllib</code>.</div></div></li></ul>
+            <h4>Papéis no código</h4><div class='table-wrap'><table><thead><tr><th>Papel</th><th>No código</th></tr></thead><tbody><tr><td>Alvo</td><td><code>Gateway</code> (<code>Protocol</code>) com <code>cobrar(valor, cartao) -&gt; str</code></td></tr><tr><td>Cliente</td><td><code>GerenciadorDePedidos.processar</code></td></tr><tr><td>Adaptado</td><td>As APIs HTTP da PagFácil e da PayMundi</td></tr><tr><td>Adaptador</td><td><code>PagFacil</code>, <code>PayMundi</code></td></tr></tbody></table></div>
+            <h4>Como fica</h4><figure class="code"><div class="code-head"><span class="code-title">proposta — loja/pagamentos.py</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="lc"><span class="t-k">class</span> <span class="t-f">Gateway</span>(<span class="t-f">Protocol</span>):</span></span><span class="ln"><span class="lc">    <span class="t-k">def</span> <span class="t-f">cobrar</span>(self, valor: <span class="t-f">float</span>, cartao: <span class="t-f">str</span>) -&gt; <span class="t-f">str</span>: ...</span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"><span class="t-k">class</span> <span class="t-f">PagFacil</span>:</span></span><span class="ln"><span class="lc">    <span class="t-k">def</span> <span class="t-f">__init__</span>(self, chave):</span></span><span class="ln"><span class="lc">        self._chave = chave</span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc">    <span class="t-k">def</span> <span class="t-f">cobrar</span>(self, valor, cartao):</span></span><span class="ln"><span class="lc">        resp = <span class="t-f">_post</span>(<span class="t-s">&quot;https://api.pagfacil.com/v1/cobrancas&quot;</span>,</span></span><span class="ln"><span class="lc">                     {<span class="t-s">&quot;valor_centavos&quot;</span>: <span class="t-f">int</span>(valor * <span class="t-n">100</span>), <span class="t-s">&quot;cartao&quot;</span>: cartao},</span></span><span class="ln"><span class="lc">                     {<span class="t-s">&quot;Authorization&quot;</span>: <span class="t-s">&quot;Bearer &quot;</span> + self._chave})</span></span><span class="ln"><span class="lc">        <span class="t-k">if</span> resp[<span class="t-s">&quot;situacao&quot;</span>] != <span class="t-s">&quot;APROVADA&quot;</span>:</span></span><span class="ln"><span class="lc">            <span class="t-k">raise</span> <span class="t-f">Exception</span>(<span class="t-s">&quot;pagamento recusado: &quot;</span> + resp.<span class="t-f">get</span>(<span class="t-s">&quot;motivo&quot;</span>, <span class="t-s">&quot;&quot;</span>))</span></span><span class="ln"><span class="lc">        <span class="t-k">return</span> resp[<span class="t-s">&quot;id_cobranca&quot;</span>]</span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"><span class="t-k">class</span> <span class="t-f">PayMundi</span>:</span></span><span class="ln"><span class="lc">    ...  <span class="t-c"># mesma forma, com amount/currency/card_token e status == &quot;succeeded&quot;</span></span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"><span class="t-k">def</span> <span class="t-f">gateways_padrao</span>():</span></span><span class="ln"><span class="lc">    <span class="t-k">return</span> {<span class="t-s">&quot;pagfacil&quot;</span>: <span class="t-f">PagFacil</span>(os.environ.<span class="t-f">get</span>(<span class="t-s">&quot;PAGFACIL_KEY&quot;</span>, <span class="t-s">&quot;&quot;</span>)),</span></span><span class="ln"><span class="lc">            <span class="t-s">&quot;paymundi&quot;</span>: <span class="t-f">PayMundi</span>(os.environ.<span class="t-f">get</span>(<span class="t-s">&quot;PAYMUNDI_KEY&quot;</span>, <span class="t-s">&quot;&quot;</span>))}</span></span></code></pre><textarea class="raw" hidden>class Gateway(Protocol):
+    def cobrar(self, valor: float, cartao: str) -&gt; str: ...
+
+
+class PagFacil:
+    def __init__(self, chave):
+        self._chave = chave
+
+    def cobrar(self, valor, cartao):
+        resp = _post(&quot;https://api.pagfacil.com/v1/cobrancas&quot;,
+                     {&quot;valor_centavos&quot;: int(valor * 100), &quot;cartao&quot;: cartao},
+                     {&quot;Authorization&quot;: &quot;Bearer &quot; + self._chave})
+        if resp[&quot;situacao&quot;] != &quot;APROVADA&quot;:
+            raise Exception(&quot;pagamento recusado: &quot; + resp.get(&quot;motivo&quot;, &quot;&quot;))
+        return resp[&quot;id_cobranca&quot;]
+
+
+class PayMundi:
+    ...  # mesma forma, com amount/currency/card_token e status == &quot;succeeded&quot;
+
+
+def gateways_padrao():
+    return {&quot;pagfacil&quot;: PagFacil(os.environ.get(&quot;PAGFACIL_KEY&quot;, &quot;&quot;)),
+            &quot;paymundi&quot;: PayMundi(os.environ.get(&quot;PAYMUNDI_KEY&quot;, &quot;&quot;))}</textarea></div><div class="code-note">No pedido, a escada de <code>if</code> vira <code>self._gateways[gateway].cobrar(total, dados[&quot;cartao&quot;])</code>, com a mesma mensagem para gateway desconhecido.</div></figure>
+            <div class="callout warn"><div class="callout-title">Custo e quando não usar</div><p>Nenhuma linha de &quot;Quando não usar&quot; se aplica: o projeto não controla os dois lados, são dois fornecedores, não é código descartável, e a interface alvo é diferente da de cada API.</p><p>Um módulo e uma interface a mais. O <code>int(valor * 100)</code> da PagFácil continua igual de propósito: a correção do arredondamento é um bug separado.</p></div>
+            <div class="rec-links">Documentação: <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/estruturais/adapter/explicacao.html" target="_blank" rel="noopener">Explicação</a> · <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/estruturais/adapter/uso.html" target="_blank" rel="noopener">Exemplos de uso</a></div>
+          </article>
+          <article class="rec-card" id="R4">
+            <header class="rec-head">
+              <span class="id rec">R4</span>
+              <div class="rec-titles"><h3>Regras de desconto como funções escolhidas pelo tipo de cliente</h3>
+                <div class="rec-pattern"><span class="pattern-name">Strategy</span><span class="muted">Pattern comportamental</span></div></div>
+              <div class="rec-badges"><span class="pill lvl-medio">Impacto médio</span><span class="pill effort">Esforço pequeno</span></div>
+            </header>
+            <div class="rec-grid">
+              <div><h4>Resolve</h4><p><a class="ref sev-media" href="#A3">A3</a></p><h4>Onde</h4><ul><li><code>loja/pedidos.py:36-48</code> vira <code>calcular_desconto</code> em <code>loja/calculo.py</code></li></ul></div>
+              <div><h4>Por que este pattern</h4><p>Há quatro jeitos de calcular o desconto, com a mesma entrada (subtotal) e a mesma saída (valor), e a escolha vem do dado do pedido. É Strategy, mas na forma que a própria página recomenda para variantes pequenas e sem estado: <strong>funções</strong> num dicionário, e não uma classe por regra. Três das quatro regras diferem só num número, e por isso viram <code>percentual(0.10)</code>.</p><p>O relógio entra como parâmetro (<code>hoje</code>), e o teste da Black Friday passa a rodar em qualquer mês.</p></div>
+            </div>
+            <h4>Teste rápido</h4><p class="muted small">As perguntas da página do pattern, em ordem. ✓ a resposta deixa seguir; ✗ a resposta manda parar.</p><ul class="quicktest"><li class="yes"><span class="mark">✓</span><div><div class="q">Existe mais de um jeito de verdade?</div><div class="a">Sim: comum, vip, funcionário e atacado.</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">Os jeitos recebem as mesmas entradas e devolvem o mesmo tipo de resultado?</div><div class="a">Sim: subtotal → desconto.</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">A escolha é fixa por tipo, para sempre?</div><div class="a">Não há classe de cliente: o tipo chega como texto no pedido.</div></div></li><li class="yes"><span class="mark">✓</span><div><div class="q">A escolha vem de fora e pode mudar sem mexer na classe?</div><div class="a">Sim, vem do dado do pedido.</div></div></li></ul>
+            <h4>Papéis no código</h4><div class='table-wrap'><table><thead><tr><th>Papel</th><th>No código</th></tr></thead><tbody><tr><td>Estratégia</td><td>Uma função <code>subtotal -&gt; desconto</code></td></tr><tr><td>Estratégias concretas</td><td><code>percentual(0.10)</code>, <code>percentual(0.30)</code>, <code>atacado</code></td></tr><tr><td>Contexto</td><td><code>calcular_desconto</code>, que escolhe pelo <code>tipo_cliente</code></td></tr></tbody></table></div>
+            <h4>Como fica</h4><figure class="code"><div class="code-head"><span class="code-title">proposta — loja/calculo.py (desconto)</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="lc"><span class="t-k">def</span> <span class="t-f">percentual</span>(taxa):</span></span><span class="ln"><span class="lc">    <span class="t-k">return</span> <span class="t-k">lambda</span> subtotal: subtotal * taxa</span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"><span class="t-k">def</span> <span class="t-f">atacado</span>(subtotal):</span></span><span class="ln"><span class="lc">    <span class="t-k">return</span> subtotal * (<span class="t-n">0.15</span> <span class="t-k">if</span> subtotal &gt; <span class="t-n">1000</span> <span class="t-k">else</span> <span class="t-n">0.05</span>)</span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"><span class="t-f">REGRAS_DE_DESCONTO</span> = {</span></span><span class="ln"><span class="lc">    <span class="t-s">&quot;vip&quot;</span>: <span class="t-f">percentual</span>(<span class="t-n">0.10</span>),</span></span><span class="ln"><span class="lc">    <span class="t-s">&quot;funcionario&quot;</span>: <span class="t-f">percentual</span>(<span class="t-n">0.30</span>),</span></span><span class="ln"><span class="lc">    <span class="t-s">&quot;atacado&quot;</span>: atacado,</span></span><span class="ln"><span class="lc">}</span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"> </span></span><span class="ln"><span class="lc"><span class="t-k">def</span> <span class="t-f">calcular_desconto</span>(subtotal, tipo_cliente, hoje):</span></span><span class="ln"><span class="lc">    regra = <span class="t-f">REGRAS_DE_DESCONTO</span>.<span class="t-f">get</span>(tipo_cliente, <span class="t-k">lambda</span> s: <span class="t-n">0</span>)</span></span><span class="ln"><span class="lc">    desconto = <span class="t-f">regra</span>(subtotal)</span></span><span class="ln"><span class="lc">    <span class="t-k">if</span> hoje.month == <span class="t-n">11</span> <span class="t-k">and</span> tipo_cliente != <span class="t-s">&quot;funcionario&quot;</span>:  <span class="t-c"># black friday</span></span></span><span class="ln"><span class="lc">        desconto += subtotal * <span class="t-n">0.05</span></span></span><span class="ln"><span class="lc">    <span class="t-k">return</span> desconto</span></span></code></pre><textarea class="raw" hidden>def percentual(taxa):
+    return lambda subtotal: subtotal * taxa
+
+
+def atacado(subtotal):
+    return subtotal * (0.15 if subtotal &gt; 1000 else 0.05)
+
+
+REGRAS_DE_DESCONTO = {
+    &quot;vip&quot;: percentual(0.10),
+    &quot;funcionario&quot;: percentual(0.30),
+    &quot;atacado&quot;: atacado,
+}
+
+
+def calcular_desconto(subtotal, tipo_cliente, hoje):
+    regra = REGRAS_DE_DESCONTO.get(tipo_cliente, lambda s: 0)
+    desconto = regra(subtotal)
+    if hoje.month == 11 and tipo_cliente != &quot;funcionario&quot;:  # black friday
+        desconto += subtotal * 0.05
+    return desconto</textarea></div></figure>
+            <div class="callout warn"><div class="callout-title">Custo e quando não usar</div><p>Duas linhas de &quot;Quando não usar&quot; moldaram a forma: &quot;cada variante é uma função pequena e sem estado&quot; (então funções, não classes) e &quot;as variantes diferem em um número&quot; (então <code>percentual(taxa)</code>, não uma classe por taxa). Nenhuma impede o pattern.</p><p>A regra fica num dicionário em vez de à vista na escada de <code>if</code>. Para tipos de cliente vindos de configuração, o dicionário pode passar a ser montado a partir dela, sem mudar o resto.</p></div>
+            <div class="rec-links">Documentação: <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/comportamentais/strategy/explicacao.html" target="_blank" rel="noopener">Explicação</a> · <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/comportamentais/strategy/uso.html" target="_blank" rel="noopener">Exemplos de uso</a></div>
+          </article></div></section><section id="descartados" class="section"><h2><span class="num">07</span>Considerados e descartados</h2><p class="section-lead">Patterns que pareciam caber e não passaram no Teste rápido ou caíram em "Quando não usar". Saber o que não fazer faz parte da proposta.</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Pattern</th><th>Sinal visto</th><th>Por que não agora</th><th>Gatilho para rever</th></tr></thead>
+            <tbody><tr><td><strong>State</strong></td><td>A mesma escada sobre <code>status</code> em <code>marcar_enviado</code> e <code>cancelar</code> <a class="ref sev-baixa" href="#A5">A5</a></td><td>Teste rápido, pergunta 4: as fases só decidem quais transições valem. Fora isso, cada operação faz a mesma coisa (atualiza e avisa). O &quot;Quando não usar&quot; do State indica um <code>enum</code> e um dicionário de transições, e a nota da página diz para começar com o <code>if</code> até a segunda ou terceira operação.</td><td>Uma terceira operação sobre o status (reembolso, devolução), ou uma fase que passe a ter comportamento próprio</td></tr><tr><td><strong>Observer</strong></td><td>Pedido pago, enviado e cancelado disparam um e-mail <a class="ref sev-media" href="#A4">A4</a></td><td>Teste rápido, pergunta 1: só uma parte reage, e sempre a mesma. O notificador injetado em <a class="ref rec" href="#R2">R2</a> basta.</td><td>Um segundo interessado no mesmo evento (estoque, nota fiscal, analytics)</td></tr><tr><td><strong>Facade</strong></td><td><code>processar</code> executa validar → calcular → cobrar → gravar → avisar, nessa ordem <a class="ref sev-alta" href="#A1">A1</a></td><td>Teste rápido, pergunta 2: só o <code>main.py</code> chama o fluxo. <code>GerenciadorDePedidos</code> continua como porta de entrada para preservar o contrato, sem uma camada nova.</td><td>Um segundo chamador (API, job, painel) repetindo a mesma sequência</td></tr><tr><td><strong>Template Method</strong></td><td>Os dois gateways seguem o mesmo roteiro: montar corpo → POST → conferir status → ler id <a class="ref sev-alta" href="#A2">A2</a></td><td>O que varia entre os dois é a tradução da interface de cada fornecedor, que é o caso do Adapter. Com dois adaptadores curtos, uma classe base só esconderia a diferença. O <code>_post</code> comum já tira a repetição.</td><td>Um terceiro gateway HTTP com o mesmo roteiro e passos obrigatórios em comum (assinatura, retentativa)</td></tr><tr><td><strong>Strategy</strong></td><td>Regra de frete por UF no meio de <code>processar</code> <a class="ref sev-alta" href="#A1">A1</a></td><td>Teste rápido, pergunta 1: há um jeito só de calcular o frete. Vira a função <code>calcular_frete</code> em <a class="ref rec" href="#R1">R1</a>, sem interface.</td><td>Uma segunda forma de frete escolhida de fora (transportadora, retirada na loja)</td></tr></tbody></table></div></section><section id="arquitetura" class="section"><h2><span class="num">08</span>Arquitetura proposta</h2><div class="prose"></div><div class="grid-2"><figure class="code"><div class="code-head"><span class="code-title">Hoje</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="lc">loja/</span></span><span class="ln"><span class="lc">  pedidos.py     # validação, preço, pagamento, SQL, SMTP, status</span></span><span class="ln"><span class="lc">  relatorio.py   # CSV de vendas</span></span><span class="ln"><span class="lc">  util.py        # formatar_moeda</span></span><span class="ln"><span class="lc">main.py</span></span></code></pre><textarea class="raw" hidden>loja/
+  pedidos.py     # validação, preço, pagamento, SQL, SMTP, status
+  relatorio.py   # CSV de vendas
+  util.py        # formatar_moeda
+main.py</textarea></div></figure><figure class="code"><div class="code-head"><span class="code-title">Proposta</span><button class="copy" type="button" aria-label="Copiar código">Copiar</button></div><div class="code-body"><pre><code><span class="ln"><span class="lc">loja/</span></span><span class="ln"><span class="lc">  pedidos.py      # GerenciadorDePedidos: orquestra e monta os padrões</span></span><span class="ln"><span class="lc">  calculo.py      # validar, calcular_total, desconto, frete (sem I/O)</span></span><span class="ln"><span class="lc">  pagamentos.py   # Gateway (Protocol), PagFacil, PayMundi</span></span><span class="ln"><span class="lc">  repositorio.py  # RepositorioDePedidos (Protocol), RepositorioSQLite</span></span><span class="ln"><span class="lc">  notificacao.py  # Notificador (Protocol), NotificadorSMTP</span></span><span class="ln"><span class="lc">  relatorio.py    # sem mudança</span></span><span class="ln"><span class="lc">  util.py         # sem mudança</span></span><span class="ln"><span class="lc">main.py           # sem mudança</span></span></code></pre><textarea class="raw" hidden>loja/
+  pedidos.py      # GerenciadorDePedidos: orquestra e monta os padrões
+  calculo.py      # validar, calcular_total, desconto, frete (sem I/O)
+  pagamentos.py   # Gateway (Protocol), PagFacil, PayMundi
+  repositorio.py  # RepositorioDePedidos (Protocol), RepositorioSQLite
+  notificacao.py  # Notificador (Protocol), NotificadorSMTP
+  relatorio.py    # sem mudança
+  util.py         # sem mudança
+main.py           # sem mudança</textarea></div></figure></div><div class="callout tip"><div class="callout-title">Ponto de montagem</div><p>O construtor de <code>GerenciadorDePedidos</code> é o único lugar que conhece SQLite, SMTP e as classes de gateway. Sem argumentos, ele lê o ambiente como hoje; nos testes, recebe falsos. <code>calculo.py</code> não importa nada de infraestrutura.</p></div></section><section id="roteiro" class="section"><h2><span class="num">09</span>Roteiro de implementação</h2><p class="section-lead">A ordem segue o retorno: primeiro a rede de segurança, depois separar responsabilidades, inverter dependências e só então os patterns. Cada passo termina com os testes verdes.</p><ol class="roadmap">
+          <li class="road-step">
+            <div class="road-n">0</div>
+            <div class="road-body">
+              <div class="road-head"><strong>Rede de segurança</strong><span class="pill effort">Esforço médio</span></div>
+              <p>Testes de caracterização de <code>processar</code>, <code>marcar_enviado</code> e <code>cancelar</code> com SQLite em arquivo temporário, <code>smtplib.SMTP</code> e <code>urllib.request.urlopen</code> trocados por falsos e a data fixada. Cobrir os tipos de cliente, novembro, frete por UF e acima de R$ 300, os dois gateways, recusa e gateway desconhecido, e as transições de status.</p>
+              <div class="muted small">Verificação: Os testes passam no código original, sem nenhuma mudança.</div>
+            </div>
+          </li>
+          <li class="road-step">
+            <div class="road-n">1</div>
+            <div class="road-body">
+              <div class="road-head"><strong>Cálculo do pedido fora do processamento</strong><span class="pill effort">Esforço médio</span><a class="ref rec" href="#R1">R1</a></div>
+              <p>Criar <code>calculo.py</code> e fazer <code>processar</code> chamá-lo. Nenhuma assinatura pública muda.</p>
+              <div class="muted small">Verificação: Testes de caracterização verdes; testes novos de <code>calcular_total</code> sem I/O.</div>
+            </div>
+          </li>
+          <li class="road-step">
+            <div class="road-n">2</div>
+            <div class="road-body">
+              <div class="road-head"><strong>Regras de desconto como funções</strong><span class="pill effort">Esforço pequeno</span><a class="ref rec" href="#R4">R4</a></div>
+              <p>Trocar a escada por <code>REGRAS_DE_DESCONTO</code> e receber <code>hoje</code> como parâmetro.</p>
+              <div class="muted small">Verificação: O teste da Black Friday roda com uma data de novembro fixada.</div>
+            </div>
+          </li>
+          <li class="road-step">
+            <div class="road-n">3</div>
+            <div class="road-body">
+              <div class="road-head"><strong>Banco e e-mail pelo construtor</strong><span class="pill effort">Esforço médio</span><a class="ref rec" href="#R2">R2</a></div>
+              <p>Criar <code>repositorio.py</code> e <code>notificacao.py</code>, mover o SQL e os três blocos de e-mail, e montar os padrões no construtor.</p>
+              <div class="muted small">Verificação: <code>main.py</code> roda sem mudança; os testes de caracterização ficam verdes.</div>
+            </div>
+          </li>
+          <li class="road-step">
+            <div class="road-n">4</div>
+            <div class="road-body">
+              <div class="road-head"><strong>Adaptadores de gateway</strong><span class="pill effort">Esforço médio</span><a class="ref rec" href="#R3">R3</a></div>
+              <p>Criar <code>pagamentos.py</code> e trocar a escada de <code>if</code> por <code>self._gateways[gateway]</code>, mantendo a mensagem <code>gateway desconhecido</code>.</p>
+              <div class="muted small">Verificação: Testes de cada adaptador com <code>_post</code> falso; caracterização verde.</div>
+            </div>
+          </li>
+          <li class="road-step">
+            <div class="road-n">5</div>
+            <div class="road-body">
+              <div class="road-head"><strong>Correções, decididas à parte</strong><span class="pill effort">Esforço médio</span> <a class="ref sev-alta" href="#B2">B2</a>  <a class="ref sev-media" href="#B1">B1</a>  <a class="ref sev-media" href="#B3">B3</a></div>
+              <p>Fora da refatoração. Cada correção muda o contrato e precisa de decisão: gravar o pedido como <code>pendente</code> antes de cobrar <a class="ref sev-alta" href="#B2">B2</a>, arredondar os centavos <a class="ref sev-media" href="#B1">B1</a> e pôr <code>timeout</code> nas chamadas HTTP <a class="ref sev-media" href="#B3">B3</a>. Com o código já separado, cada uma vira uma mudança pequena num lugar só.</p>
+              <div class="muted small">Verificação: Um teste novo por bug, e o teste de caracterização correspondente atualizado com o motivo.</div>
+            </div>
+          </li></ol></section><section id="riscos" class="section"><h2><span class="num">10</span>Riscos, bugs e o que fica</h2><h3>Riscos</h3><div class='table-wrap'><table><thead><tr><th>Risco</th><th>Mitigação</th></tr></thead><tbody><tr><td>Mudar sem querer o arredondamento do total ou a ordem cobrança → gravação → e-mail</td><td>Testes de caracterização com valores que exercitam o <code>round</code> e verificam a ordem das chamadas aos falsos</td></tr><tr><td>Algum código fora do repositório instanciar <code>GerenciadorDePedidos</code> e acessar <code>conn</code> diretamente</td><td>Manter <code>self.conn</code> como propriedade que delega ao repositório SQLite até confirmar que ninguém usa</td></tr><tr><td><code>relatorio.py</code> depende do esquema da tabela</td><td>Não mudar colunas nesta refatoração; o esquema fica dentro de <code>RepositorioSQLite</code> como está</td></tr></tbody></table></div><h3>Bugs e comportamentos estranhos</h3><div class='callout danger'><div class='callout-title'>Fora da refatoração</div><p>Achados durante a análise. A refatoração preserva o comportamento atual; cada correção deve ser um passo próprio, decidido à parte.</p></div><div class='table-wrap'><table><thead><tr><th>Id</th><th>Onde</th><th>O que acontece</th><th>Impacto</th><th>Severidade</th></tr></thead><tbody><tr id="B1" class="bug-row"><td><span class="id sev-media">B1</span></td><td><code>loja/pedidos.py:63</code></td><td><code>int(total * 100)</code> trunca em vez de arredondar: R$ 300,03 vira 30002 centavos.</td><td>Cobrança um centavo menor em parte dos pedidos.</td><td><span class="pill sev sev-media">Média</span></td></tr><tr id="B2" class="bug-row"><td><span class="id sev-alta">B2</span></td><td><code>loja/pedidos.py:61-93</code></td><td>A cobrança acontece antes do INSERT. Se gravar falhar (ou faltar <code>cliente</code>), o cliente é cobrado e o pedido não existe.</td><td>Cobrança sem pedido; reprocessar cobra de novo.</td><td><span class="pill sev sev-alta">Alta</span></td></tr><tr id="B3" class="bug-row"><td><span class="id sev-media">B3</span></td><td><code>loja/pedidos.py:69</code></td><td><code>urlopen</code> sem <code>timeout</code>.</td><td>Um gateway lento trava o processo indefinidamente.</td><td><span class="pill sev sev-media">Média</span></td></tr><tr id="B4" class="bug-row"><td><span class="id sev-baixa">B4</span></td><td><code>loja/relatorio.py:2-5</code></td><td>A docstring fala em datas, mas o filtro é por <code>id BETWEEN</code>.</td><td>Quem passa datas recebe só o cabeçalho.</td><td><span class="pill sev sev-baixa">Baixa</span></td></tr><tr id="B5" class="bug-row"><td><span class="id sev-baixa">B5</span></td><td><code>loja/relatorio.py:9</code></td><td><code>.replace(&quot;.&quot;, &quot;,&quot;)</code> vale para a linha inteira, inclusive o nome do cliente.</td><td><code>Ana S. Lima</code> vira <code>Ana S, Lima</code> no CSV.</td><td><span class="pill sev sev-baixa">Baixa</span></td></tr></tbody></table></div><h3>O que fica como está</h3><div class='table-wrap'><table><thead><tr><th>Elemento</th><th>Por que não mexer</th></tr></thead><tbody><tr><td><code>loja/relatorio.py</code></td><td>Uma função pequena, um ator só (financeiro). Separar não elimina nenhuma mudança cruzada. Os dois bugs dela são correções, não refatoração.</td></tr><tr><td><code>loja/util.py</code></td><td>Função pura e estável, sem dependências.</td></tr><tr><td><code>main.py</code></td><td>Continua chamando <code>GerenciadorDePedidos()</code> sem argumentos, que é o contrato preservado.</td></tr></tbody></table></div></section><section id="glossario" class="section"><h2><span class="num">11</span>Glossário</h2><p class="section-lead">Os princípios e patterns citados neste relatório, como estão na documentação do DevMap.</p><div class="gloss-grid"><div class="gloss"><div class="gloss-type">Princípio SOLID</div><div class="gloss-name">Single Responsibility</div><p>Como evitar que uma classe quebre toda vez que qualquer pessoa da empresa muda de ideia, dando a cada motivo de mudança o seu próprio lugar.</p><div class="gloss-links"><a href="https://enzoschitini.github.io/dev-map/pages/clean-code/single-responsibility.html" target="_blank" rel="noopener">Explicação</a></div></div><div class="gloss"><div class="gloss-type">Princípio SOLID</div><div class="gloss-name">Dependency Inversion</div><p>Como fazer a regra de negócio mandar na infraestrutura, e não o contrário, para trocar banco, e-mail ou relógio sem tocar nas regras.</p><div class="gloss-links"><a href="https://enzoschitini.github.io/dev-map/pages/clean-code/dependency-inversion.html" target="_blank" rel="noopener">Explicação</a></div></div><div class="gloss"><div class="gloss-type">Princípio SOLID</div><div class="gloss-name">Open/Closed</div><p>Como acrescentar um caso novo escrevendo código novo, sem reabrir e retestar o código que já funcionava.</p><div class="gloss-links"><a href="https://enzoschitini.github.io/dev-map/pages/clean-code/open-closed.html" target="_blank" rel="noopener">Explicação</a></div></div><div class="gloss"><div class="gloss-type">Pattern estrutural</div><div class="gloss-name">Adapter</div><p>Como encaixar uma interface que você não controla na interface que o seu código espera, sem espalhar a diferença pelo sistema inteiro.</p><div class="gloss-links"><a href="https://enzoschitini.github.io/dev-map/pages/clean-code/estruturais/adapter/explicacao.html" target="_blank" rel="noopener">Explicação</a> · <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/estruturais/adapter/uso.html" target="_blank" rel="noopener">Exemplos de uso</a></div></div><div class="gloss"><div class="gloss-type">Pattern comportamental</div><div class="gloss-name">Strategy</div><p>Como trocar o jeito de fazer uma coisa sem mexer em quem a pede, e sem um <code>if</code> novo a cada jeito que aparece.</p><div class="gloss-links"><a href="https://enzoschitini.github.io/dev-map/pages/clean-code/comportamentais/strategy/explicacao.html" target="_blank" rel="noopener">Explicação</a> · <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/comportamentais/strategy/uso.html" target="_blank" rel="noopener">Exemplos de uso</a></div></div><div class="gloss"><div class="gloss-type">Pattern comportamental</div><div class="gloss-name">State</div><p>Como fazer um objeto que se comporta de um jeito em cada fase da vida dele sem encher todos os métodos de <code>if</code> sobre em qual fase ele está.</p><div class="gloss-links"><a href="https://enzoschitini.github.io/dev-map/pages/clean-code/comportamentais/state/explicacao.html" target="_blank" rel="noopener">Explicação</a> · <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/comportamentais/state/uso.html" target="_blank" rel="noopener">Exemplos de uso</a></div></div><div class="gloss"><div class="gloss-type">Pattern comportamental</div><div class="gloss-name">Observer</div><p>Como avisar várias partes do sistema de que algo aconteceu, sem que quem avisa precise saber quem são elas, nem quantas.</p><div class="gloss-links"><a href="https://enzoschitini.github.io/dev-map/pages/clean-code/comportamentais/observer/explicacao.html" target="_blank" rel="noopener">Explicação</a> · <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/comportamentais/observer/uso.html" target="_blank" rel="noopener">Exemplos de uso</a></div></div><div class="gloss"><div class="gloss-type">Pattern estrutural</div><div class="gloss-name">Facade</div><p>Como dar uma porta de entrada simples para um conjunto de peças que só funcionam quando chamadas na ordem certa, para que quem usa não precise conhecer cada uma.</p><div class="gloss-links"><a href="https://enzoschitini.github.io/dev-map/pages/clean-code/estruturais/facade/explicacao.html" target="_blank" rel="noopener">Explicação</a> · <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/estruturais/facade/uso.html" target="_blank" rel="noopener">Exemplos de uso</a></div></div><div class="gloss"><div class="gloss-type">Pattern comportamental</div><div class="gloss-name">Template Method</div><p>Como escrever uma vez só a ordem dos passos de um processo, e deixar cada variação preencher apenas o passo que é diferente dela.</p><div class="gloss-links"><a href="https://enzoschitini.github.io/dev-map/pages/clean-code/comportamentais/template-method/explicacao.html" target="_blank" rel="noopener">Explicação</a> · <a href="https://enzoschitini.github.io/dev-map/pages/clean-code/comportamentais/template-method/uso.html" target="_blank" rel="noopener">Exemplos de uso</a></div></div></div></section>
+    <footer class="foot">Gerado em 2026-10-14 pela skill <code>python-pattern-analyse</code>. Nenhum arquivo do projeto foi alterado durante a análise.</footer>
+  </main>
+</div>
+<script>
+(function () {
+  var root = document.documentElement;
+  document.getElementById('theme').addEventListener('click', function () {
+    var atual = root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var novo = atual === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = novo;
+    try { localStorage.setItem('devmap-theme', novo); } catch (e) {}
+  });
+  document.getElementById('print').addEventListener('click', function () { window.print(); });
+
+  var chips = document.querySelectorAll('.filters .chip');
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      chips.forEach(function (c) { c.classList.toggle('on', c === chip); });
+      var f = chip.dataset.filter;
+      document.querySelectorAll('.finding').forEach(function (el) {
+        el.hidden = !(f === 'todos' || el.dataset.sev === f);
+      });
+    });
+  });
+
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var raw = btn.closest('.code').querySelector('.raw');
+      var texto = raw ? raw.value : '';
+      var pronto = function () { btn.textContent = 'Copiado'; setTimeout(function () { btn.textContent = 'Copiar'; }, 1400); };
+      if (navigator.clipboard) navigator.clipboard.writeText(texto).then(pronto, function () {});
+    });
+  });
+
+  var links = {};
+  document.querySelectorAll('.toc a').forEach(function (a) { links[a.getAttribute('href').slice(1)] = a; });
+  if ('IntersectionObserver' in window) {
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting && links[e.target.id]) {
+          Object.keys(links).forEach(function (k) { links[k].classList.toggle('on', k === e.target.id); });
+        }
+      });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    document.querySelectorAll('main .section').forEach(function (s) { obs.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>
